@@ -243,7 +243,7 @@ def water_material():
     nt.links.new(fc, n2.inputs['Vector'])
     ht = _math(nt, 'ADD', n1.outputs['Fac'], _math(nt, 'MULTIPLY', n2.outputs['Fac'], _math(nt, 'ADD', 0.25, _math(nt, 'MULTIPLY', foam, 1.2))))
     bump = nt.nodes.new('ShaderNodeBump'); bump.inputs['Distance'].default_value = 0.15
-    nt.links.new(_math(nt, 'ADD', 0.06, _math(nt, 'MULTIPLY', foam, 0.35)), bump.inputs['Strength'])
+    nt.links.new(_math(nt, 'ADD', 0.08, _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', foam, _attr(nt, 'wake')), 0.4)), bump.inputs['Strength'])
     nt.links.new(ht, bump.inputs['Height'])
     # clear shallow water: transmissive, faintly tinted
     clear = nt.nodes.new('ShaderNodeBsdfPrincipled')
@@ -262,20 +262,27 @@ def water_material():
     dfac = _math(nt, 'SUBTRACT', 1.0, _math(nt, 'EXPONENT', _math(nt, 'DIVIDE', depth, -1.1)))
     dfac = _math(nt, 'MULTIPLY', dfac, _maprange(nt, shore, 0.0, 2.5, 0.35, 0.92))
     body = _mixsh(nt, dfac, clear.outputs[0], deep.outputs[0])
-    # whitewater: steep reaches only, broken into flow-aligned streaks and clumps
-    fn = nt.nodes.new('ShaderNodeTexNoise'); fn.inputs['Scale'].default_value = 1.2; fn.inputs['Detail'].default_value = 10
-    fn.inputs['Roughness'].default_value = 0.7
-    nt.links.new(fc, fn.inputs['Vector'])
-    fv = nt.nodes.new('ShaderNodeTexVoronoi'); fv.inputs['Scale'].default_value = 0.9
-    nt.links.new(fc, fv.inputs['Vector'])
-    brk = _math(nt, 'ADD', _math(nt, 'MULTIPLY', fn.outputs['Fac'], 0.8), _math(nt, 'MULTIPLY', fv.outputs['Distance'], 0.5))
-    fmask = _maprange(nt, _math(nt, 'ADD', _math(nt, 'MULTIPLY', foam, 0.75), brk), 1.05, 1.35)
-    fmask = _math(nt, 'MULTIPLY', fmask, _maprange(nt, foam, 0.12, 0.5))
+    # whitewater: only where the reach is steep (map rapids, riffle lips, cascades) and in the wakes behind
+    # boulders; always broken into flow-aligned lace (streaks + clumps), never a sheet
+    wake = _attr(nt, 'wake')
+    famt = _math(nt, 'MAXIMUM', foam, _math(nt, 'MULTIPLY', wake, 0.9))
+    fc2 = _flow_coords(nt, stretch=(0.35, 2.2))
+    fn = nt.nodes.new('ShaderNodeTexNoise'); fn.inputs['Scale'].default_value = 1.1; fn.inputs['Detail'].default_value = 12
+    fn.inputs['Roughness'].default_value = 0.72; fn.inputs['Distortion'].default_value = 0.6
+    nt.links.new(fc2, fn.inputs['Vector'])
+    fv = nt.nodes.new('ShaderNodeTexVoronoi'); fv.feature = 'DISTANCE_TO_EDGE'; fv.inputs['Scale'].default_value = 1.4
+    nt.links.new(fc2, fv.inputs['Vector'])
+    lace = _math(nt, 'ADD', _math(nt, 'MULTIPLY', fn.outputs['Fac'], 0.75), _math(nt, 'MULTIPLY', _math(nt, 'SUBTRACT', 0.25, fv.outputs['Distance']), 0.9))
+    thr = _math(nt, 'SUBTRACT', 1.05, _math(nt, 'MULTIPLY', famt, 0.75))
+    fmask = _maprange(nt, _math(nt, 'SUBTRACT', lace, thr), 0.0, 0.12)
+    fmask = _math(nt, 'MULTIPLY', fmask, _maprange(nt, famt, 0.08, 0.35))
     white = nt.nodes.new('ShaderNodeBsdfPrincipled')
-    _inp(white, 'Base Color').default_value = (0.80, 0.83, 0.82, 1)
-    _inp(white, 'Roughness').default_value = 0.5
-    _inp(white, 'Subsurface Weight').default_value = 0.3
-    nt.links.new(bump.outputs['Normal'], _inp(white, 'Normal'))
+    _inp(white, 'Base Color').default_value = (0.82, 0.85, 0.84, 1)
+    _inp(white, 'Roughness').default_value = 0.55
+    _inp(white, 'Subsurface Weight').default_value = 0.35
+    fb = nt.nodes.new('ShaderNodeBump'); fb.inputs['Strength'].default_value = 0.5; fb.inputs['Distance'].default_value = 0.1
+    nt.links.new(fn.outputs['Fac'], fb.inputs['Height']); nt.links.new(bump.outputs['Normal'], fb.inputs['Normal'])
+    nt.links.new(fb.outputs['Normal'], _inp(white, 'Normal'))
     surf = _mixsh(nt, fmask, body, white.outputs[0])
     nt.links.new(surf, out.inputs['Surface'])
     return m
@@ -337,7 +344,9 @@ def bed_material():
     nt.links.new(bp.outputs['Normal'], _inp(b, 'Normal'))
     # soft edge into the surrounding terrain
     tr = nt.nodes.new('ShaderNodeBsdfTransparent')
-    alpha = _maprange(nt, _math(nt, 'ADD', edge, _math(nt, 'MULTIPLY', ln.outputs['Fac'], 0.3)), 0.25, 0.75)
+    rn = nt.nodes.new('ShaderNodeTexNoise'); rn.inputs['Scale'].default_value = 0.6; rn.inputs['Detail'].default_value = 6
+    nt.links.new(tc.outputs['Object'], rn.inputs['Vector'])
+    alpha = _maprange(nt, _math(nt, 'ADD', edge, _math(nt, 'MULTIPLY', _math(nt, 'SUBTRACT', rn.outputs['Fac'], 0.5), 0.6)), 0.15, 0.45)
     nt.links.new(_mixsh(nt, alpha, tr.outputs[0], b.outputs[0]), out.inputs['Surface'])
     return m
 
@@ -409,28 +418,139 @@ def _boulder_proto(rng, subdiv=2):
     return v, f
 
 
-def build_boulders(D, coll, mat, seed=7, max_n=4200):
+def _load_json(p):
+    import json
+    with open(P(p)) as f:
+        return json.load(f)
+
+
+class Keepout:
+    """Road / bridge clearance test for props (numpy only). Segments are bucketed on a 16 px grid.
+    Roads: pavement half-width + shoulder + ditch (1.5 m) + 4 m. Bridges: deck half-width + 6 m, over the
+    whole span (+ 6 m past each abutment)."""
+    CELL = 16
+
+    def __init__(self):
+        segs = []
+        try:
+            for f in _load_json('data/roads/roads.geojson')['features']:
+                pr = f['properties']
+                r = (pr.get('width_m', 8) / 2 + (pr.get('shoulder_m') or 0) + 1.5 + 4.0) / MPP
+                c = np.asarray(f['geometry']['coordinates'], float)[:, :2]
+                for a, b in zip(c[:-1], c[1:]):
+                    segs.append((a[0], a[1], b[0], b[1], r))
+        except FileNotFoundError:
+            pass
+        try:
+            for f in _load_json('data/roads/bridges.geojson')['features']:
+                pr = f['properties']
+                r = ((pr.get('deck_width_m') or 10) / 2 + 6.0) / MPP
+                c = np.asarray(f['geometry']['coordinates'], float)[:, :2]
+                if len(c) >= 2:  # extend 6 m past both ends
+                    d0 = c[0] - c[1]; d1 = c[-1] - c[-2]
+                    c = np.vstack([c[0] + d0 / max(np.hypot(*d0), 1e-6) * 6 / MPP, c, c[-1] + d1 / max(np.hypot(*d1), 1e-6) * 6 / MPP])
+                for a, b in zip(c[:-1], c[1:]):
+                    segs.append((a[0], a[1], b[0], b[1], r))
+        except FileNotFoundError:
+            pass
+        self.S = np.asarray(segs, float).reshape(-1, 5)
+        self.grid = {}
+        for k, (x0, y0, x1, y1, r) in enumerate(self.S):
+            gx0, gx1 = int((min(x0, x1) - r) // self.CELL), int((max(x0, x1) + r) // self.CELL)
+            gy0, gy1 = int((min(y0, y1) - r) // self.CELL), int((max(y0, y1) + r) // self.CELL)
+            for gy in range(gy0, gy1 + 1):
+                for gx in range(gx0, gx1 + 1):
+                    self.grid.setdefault((gx, gy), []).append(k)
+
+    def blocked(self, x, y, extra=0.0):
+        ids = self.grid.get((int(x // self.CELL), int(y // self.CELL)))
+        if not ids:
+            return False
+        s = self.S[ids]
+        ax, ay, bx, by, r = s.T
+        vx, vy = bx - ax, by - ay
+        t = np.clip(((x - ax) * vx + (y - ay) * vy) / np.maximum(vx * vx + vy * vy, 1e-9), 0, 1)
+        d = np.hypot(ax + t * vx - x, ay + t * vy - y)
+        return bool((d < r + extra).any())
+
+
+def _value_noise(shape, cell, seed):
+    """Smooth value noise in [0, 1] (numpy only), feature size ~cell px."""
     rng = np.random.default_rng(seed)
-    wet, depth, slope, bank = D['wet'], D['depth'], D['slope'], D['bank']
+    h, w = shape
+    gh, gw = h // cell + 3, w // cell + 3
+    g = rng.random((gh, gw))
+    y = np.arange(h) / cell; x = np.arange(w) / cell
+    y0 = y.astype(int); x0 = x.astype(int); fy = (y - y0)[:, None]; fx = (x - x0)[None, :]
+    fy = fy * fy * (3 - 2 * fy); fx = fx * fx * (3 - 2 * fx)
+    a = g[y0][:, x0]; b = g[y0][:, x0 + 1]; c = g[y0 + 1][:, x0]; d = g[y0 + 1][:, x0 + 1]
+    return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy
+
+
+def place_boulders(D, seed=7, max_n=6500):
+    """Boulder placement: boulder fields in rapids and riffles (clustered), scattered stones in runs, rock
+    gardens along cut banks and rocky margins; never on roads, shoulders, ditches or at bridges."""
+    rng = np.random.default_rng(seed)
+    wet, depth, bank, foam = D['wet'], D['depth'], D['bank'], D['foam']
+    rapid = np.clip((D['slope'] - 0.012) / 0.03, 0, 1)
+    fast = np.maximum(rapid, foam)
     near = _dilate(wet, 3) & ~wet
-    rapid = np.clip((slope - 0.012) / 0.03, 0, 1)
-    # probability per pixel: rapids and riffles (many), rocky banks (some), pools (few), creeks' margins
-    p = np.where(wet, 0.004 + 0.16 * np.maximum(rapid, D['foam']) + 0.02 * (depth < 0.8), 0.0)
-    p += np.where(near, 0.05 * np.clip(bank, 0, 1) + 0.02 * rapid, 0.0)
+    cl = _value_noise(wet.shape, 9, seed + 1)
+    clusters = np.clip((cl - 0.45) / 0.3, 0, 1) ** 1.5          # patchy boulder fields
+    p = np.where(wet, 0.003 + (0.05 + 0.35 * clusters) * fast + 0.03 * clusters * (depth < 1.0), 0.0)
+    p += np.where(near, (0.02 + 0.12 * clusters) * np.clip(bank, 0, 1) + 0.03 * fast * clusters, 0.0)
     ys, xs = np.nonzero(p > 0)
     pick = rng.random(len(ys)) < p[ys, xs]
     ys, xs = ys[pick], xs[pick]
     if len(ys) > max_n:
         sel = rng.choice(len(ys), max_n, replace=False); ys, xs = ys[sel], xs[sel]
-    if not len(ys):
+    ko = Keepout()
+    out = []
+    for y, x in zip(ys, xs):
+        fxp, fyp = x + rng.random(), y + rng.random()
+        big = 1.35 if fast[y, x] > 0.5 else 1.0
+        r = float(np.clip(rng.lognormal(-0.35, 0.6), 0.2, 2.8)) * big
+        if ko.blocked(fxp, fyp, extra=r / MPP):
+            continue  # never on roads, shoulders, ditches or under/over bridges
+        out.append((fxp, fyp, r))
+    return out
+
+
+def boulder_wake(D, rocks):
+    """Raster (px) of wake strength behind boulders in moving water: elongated downstream stamps."""
+    wake = np.zeros((H, W), np.float32)
+    fast = np.clip(np.maximum(np.clip((D['slope'] - 0.006) / 0.03, 0, 1), D['foam']), 0, 1)
+    for x, y, r in rocks:
+        xi, yi = int(x), int(y)
+        if not (0 <= xi < W and 0 <= yi < H) or not D['wet'][yi, xi]:
+            continue
+        sp = fast[yi, xi]
+        if sp < 0.05:
+            continue
+        dx, dy = D['fdx'][yi, xi], D['fdy'][yi, xi]
+        rp = max(r / MPP, 0.3)
+        L = 1.5 + 4.0 * rp * (0.5 + sp)
+        R = int(L + 2)
+        y0, y1, x0, x1 = max(0, yi - R), min(H, yi + R + 1), max(0, xi - R), min(W, xi + R + 1)
+        gy, gx = np.mgrid[y0:y1, x0:x1]
+        ux, uy = gx + 0.5 - x, gy + 0.5 - y
+        along = ux * dx + uy * dy
+        across = -ux * dy + uy * dx
+        v = np.exp(-(np.maximum(along, -0.3 * rp) / L) ** 2 * 2) * np.exp(-(across / (0.6 + 0.8 * rp)) ** 2) * (along > -0.8 * rp)
+        wake[y0:y1, x0:x1] = np.maximum(wake[y0:y1, x0:x1], (v * (0.35 + 0.65 * sp)).astype(np.float32))
+    return wake * D['wet']
+
+
+def build_boulders(D, rocks, coll, mat, seed=7):
+    if not rocks:
         return None
+    rng = np.random.default_rng(seed + 100)
     T = HF(D['T'])
     pv, pf = _boulder_proto(rng, 2)
     V, F, WZ = [], [], []
     off = 0
-    for y, x in zip(ys, xs):
-        fxp, fyp = x + rng.random(), y + rng.random()
-        r = float(np.clip(rng.lognormal(-0.2, 0.55), 0.25, 2.6)) * (1.25 if rapid[y, x] > 0.5 else 1.0)
+    for fxp, fyp, r in rocks:
+        y, x = int(fyp), int(fxp)
         sq = rng.uniform(0.45, 0.8)
         # per-rock lumpy deformation: low-order harmonics of the unit sphere
         k = rng.normal(0, 1, (3, 3))
@@ -469,7 +589,12 @@ def build_water(coll, mat=None):
     shore_steps = _erode_steps(wet, 6)
     skirt = _dilate(wet, 1)
     near3 = _dilate(wet, 4) & ~wet
-    bedcells = _dilate(wet, 1) | (near3 & (np.abs(D['bank']) > 0.15))
+    # distance to water on land (px, 0 in water, capped): drives the rocky/cobbled bank band
+    dland = _erode_steps(~wet, 6)
+    bedcells = _dilate(wet, 5)
+    bnoise = _value_noise(wet.shape, 3, 11)
+    rocks = place_boulders(D)
+    wake = boulder_wake(D, rocks)
     objs = []
     for cy in range(math.ceil(H / CHUNK)):
         for cx in range(math.ceil(W / CHUNK)):
@@ -485,10 +610,11 @@ def build_water(coll, mat=None):
                 pxi = np.clip(vx.astype(int), 0, W - 1); pyi = np.clip(vy.astype(int), 0, H - 1)
                 dep = np.maximum(z - T.at(vx, vy), 0)
                 foam = D['foam'][pyi, pxi]
+                wk = wake[pyi, pxi]
                 flow = np.stack([D['fdx'][pyi, pxi], -D['fdy'][pyi, pxi], np.zeros_like(bx)], 1)
                 objs.append(_mesh(f'WATER_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mat,
-                                  attrs={'depth': ('FLOAT', dep), 'foam': ('FLOAT', foam), 'shore': ('FLOAT', shore_steps[pyi, pxi]),
-                                         'flow': ('FLOAT_VECTOR', flow)}))
+                                  attrs={'depth': ('FLOAT', dep), 'foam': ('FLOAT', foam), 'wake': ('FLOAT', wk),
+                                         'shore': ('FLOAT', shore_steps[pyi, pxi]), 'flow': ('FLOAT_VECTOR', flow)}))
             # ---- riverbed / bars / rocky banks
             ys, xs = np.nonzero(bedcells[sl])
             if len(ys):
@@ -499,10 +625,10 @@ def build_water(coll, mat=None):
                 pxi = np.clip(vx.astype(int), 0, W - 1); pyi = np.clip(vy.astype(int), 0, H - 1)
                 wlv = WLc[vy.astype(int), vx.astype(int)]
                 dep = np.where(np.isfinite(wlv), wlv - zt, -1.0)
-                inside = bedcells.astype(np.float32)
-                edge = (inside[pyi, pxi] + inside[np.clip(pyi - 1, 0, H - 1), pxi] + inside[pyi, np.clip(pxi - 1, 0, W - 1)] +
-                        inside[np.clip(pyi - 1, 0, H - 1), np.clip(pxi - 1, 0, W - 1)]) / 4
-                edge = np.maximum(edge * 0.6 + wet[pyi, pxi] * 0.4, 0) * (1 - 0.0)
+                # cobble/rock band on the banks: full at the waterline, fading out 2-5 px up the bank (ragged)
+                dl = dland[pyi, pxi]
+                reach_px = 2.0 + 3.0 * np.clip(np.abs(D['bank'][pyi, pxi]), 0, 1) + 1.5 * bnoise[pyi, pxi]
+                edge = np.clip(1.0 - (dl - 0.5) / reach_px, 0, 1)
                 objs.append(_mesh(f'WATER_Bed_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mbed,
                                   attrs={'depth': ('FLOAT', dep), 'bank': ('FLOAT', D['bank'][pyi, pxi]), 'edge': ('FLOAT', edge)}))
             # ---- wet shore film
@@ -517,7 +643,7 @@ def build_water(coll, mat=None):
                 wetf = np.clip(1 - hab / 0.9, 0, 1) * np.isfinite(wlv)
                 objs.append(_mesh(f'WATER_Shore_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mshore,
                                   attrs={'wet': ('FLOAT', wetf)}))
-    b = build_boulders(D, coll, mrock)
+    b = build_boulders(D, rocks, coll, mrock)
     if b is not None:
         objs.append(b)
     return objs

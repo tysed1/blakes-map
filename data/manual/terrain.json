@@ -210,6 +210,8 @@
   ],
   "fixed_below_m": 1.0,
   "uplift_exp": 0.4,
-  "noise_m": 0.5
+  "noise_m": 0.5,
+  "max_over": 1.2,
+  "max_over_m": 6.0
  }
 }

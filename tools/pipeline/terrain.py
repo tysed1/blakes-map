@@ -50,8 +50,8 @@ except ImportError:  # slow fallback
 MPP = 2.5
 # deepest natural gap the terrain itself provides per route type; anything beyond is an engineered cut
 # (grading) or a sign the alignment should change (switchbacks) - reported by grading, not hidden here
-MAX_CUT = {'freeway': 14.0, 'highway': 14.0, 'ramp': 10.0, 'arterial': 10.0, 'main_street': 8.0, 'collector': 10.0,
-           'urban_street': 6.0, 'residential': 6.0, 'rural': 8.0, 'gravel': 5.0, 'dirt': 4.0, 'driveway': 3.0, 'rail': 14.0}
+MAX_CUT = {'freeway': 40.0, 'highway': 40.0, 'ramp': 16.0, 'arterial': 20.0, 'main_street': 10.0, 'collector': 16.0,
+           'urban_street': 6.0, 'residential': 6.0, 'rural': 14.0, 'gravel': 8.0, 'dirt': 5.0, 'driveway': 3.0, 'rail': 30.0}
 MAX_GRADE = {'freeway': 0.06, 'highway': 0.08, 'ramp': 0.07, 'arterial': 0.08, 'main_street': 0.08, 'collector': 0.10,
              'urban_street': 0.12, 'residential': 0.12, 'rural': 0.12, 'gravel': 0.15, 'dirt': 0.18, 'driveway': 0.20, 'rail': 0.022}
 
@@ -670,7 +670,7 @@ def evolve_core(base, rel, fixed, cell, ev, seed=5):
     rs = np.maximum(z - base, 0)
     sg = ev.get('rescale_sigma_px', 12)
     bd = cv2.GaussianBlur(rel, (0, 0), sg); bs = cv2.GaussianBlur(rs, (0, 0), sg)
-    ratio = np.clip(bd / np.maximum(bs, 1.0), 0.3, 3.0)
+    ratio = np.clip(bd / np.maximum(bs, 1.0), 0.05, 3.0)
     return (rs * ratio).astype(np.float32)
 
 
@@ -972,8 +972,10 @@ def main():
     ev = cfg.get('evolve')
     if ev and ev.get('steps', 0) > 0:
         rel_ev = evolve_landscape(relief, valley, wmask, ev)
+        # erosion adds form, not mass: never much above the design (keeps gaps, passes and lowland edges)
+        rel_ev = np.minimum(np.maximum(rel_ev, 0), relief * ev.get('max_over', 1.2) + ev.get('max_over_m', 6.0))
         wv = smoothstep(ev.get('blend_m', [15, 45])[0], ev.get('blend_m', [15, 45])[1], cv2.GaussianBlur(relief, (0, 0), 4))
-        relief = relief * (1 - wv) + np.maximum(rel_ev, 0) * wv
+        relief = relief * (1 - wv) + rel_ev * wv
         _dbg('relief_evolved', relief)
 
     # banks: relief -> 0 toward the water

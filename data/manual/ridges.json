@@ -54,7 +54,7 @@
  "saddles": [
   {"name": "Pickens Gap (Pickens Farm Rd over Laurel Ridge / Laurel Branch ridge)", "at": [703, 20], "elev_m": 438, "radius_px": 45},
   {"name": "Bald Ridge saddle", "at": [700, 186], "elev_m": 540, "radius_px": 24},
-  {"name": "Dockery Gap (Dockery Rd)", "at": [788, 526], "elev_m": 392, "radius_px": 50},
+  {"name": "Dockery Gap (Dockery Rd)", "at": [788, 526], "elev_m": 378, "radius_px": 60},
   {"name": "Laurel Gap (US 19 / South Fork head)", "at": [852, 384], "elev_m": 352, "radius_px": 50}
  ]
 }
