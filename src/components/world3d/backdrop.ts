@@ -142,7 +142,7 @@ export function buildSky(sunDir: THREE.Vector3, tex: THREE.Texture | null, haze:
         c += vec3(1.0,0.72,0.45) * (pow(s, 6.0)*0.28 + pow(s, 300.0)*1.5);
         // haze band: the sky melts into the same aerial-perspective colour as the terrain fog
         float mu = max(dot(d, sunDir), 0.0);
-        vec3 fc = mix(haze * 2.1, sunHaze * 1.3, clamp(pow(mu, 6.0) * 0.85 + pow(mu, 1.5) * 0.18, 0.0, 1.0));
+        vec3 fc = mix(haze * mix(1.15, 2.1, smoothstep(0.0, 0.06, h)), sunHaze * 1.3, clamp(pow(mu, 6.0) * 0.85 + pow(mu, 1.5) * 0.18, 0.0, 1.0));
         c = mix(c, fc, 1.0 - smoothstep(-0.02, 0.1, h));
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>

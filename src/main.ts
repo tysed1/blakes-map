@@ -82,7 +82,7 @@ async function ensure3D() {
   const nice = (n: string) => n.replace(/^(CAM|TC)_/, '').replace(/_/g, ' ');
   const fill = () => { shots.innerHTML = '<option value="">Shots…</option>' + Object.keys(w3d!.cams).map((k) => `<option value="${k}">${nice(k)}</option>`).join(''); };
   const poll = setInterval(() => { if (w3d!.camsReady) { clearInterval(poll); fill(); } }, 300);
-  shots.onchange = () => { if (shots.value) { w3d!.setCam(shots.value); document.querySelectorAll('#camMode button').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.m === 'free')); } shots.value = ''; };
+  shots.onchange = () => { if (shots.value) { w3d!.flyTo(shots.value, 5); document.querySelectorAll('#camMode button').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.m === 'free')); } shots.value = ''; };
   for (const l of LAYERS) if (l.in3d) w3d.setLayer(l.in3d, ($(`#lay-${l.key}`) as HTMLInputElement).checked || l.key === 'terrain');
   $('#loading').style.display = 'none';
   (window as any).w3d = w3d;
