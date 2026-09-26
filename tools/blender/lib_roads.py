@@ -1910,5 +1910,12 @@ def build(root, ctx):
     nb = build_bridges(coll('BRIDGES'), net, T, mats)
     nr = build_rail(coll('RAIL'), T, mats, bbox, root)
     ctx['road_net'] = net
+    # verges use the terrain material: give them the same ecology attributes as the terrain chunks
+    try:
+        import lib_materials as LM
+        objs = [o for c in (cr, bpy.data.collections.get('JUNCTIONS'), bpy.data.collections.get('RAIL')) if c for o in c.objects if o.type == 'MESH' and not o.modifiers]
+        LM.add_terrain_attributes(objs)
+    except Exception as ex:
+        print('  (terrain attributes on road verges skipped:', ex, ')')
     print(f'  lib_roads: {ne} road edges, {nj} junctions, {nb} bridges, {nr} railways')
     return net

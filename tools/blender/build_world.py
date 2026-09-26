@@ -793,9 +793,15 @@ def main():
     print('terrain...'); terr = build_terrain(collection('TERRAIN', root), mats['terrain'])
     LM.add_terrain_attributes(terr)  # A3: ecology attributes (moisture, fields, canopy...) for materials + ground cover
     print('water...'); build_water(collection('WATER', root), mats['water'])
-    print('roads...'); build_roads(collection('ROADS', root), mats, types)
-    print('bridges...'); build_bridges(collection('BRIDGES', root), mats, types)
-    print('rail...'); build_rail(collection('RAIL', root), mats)
+    try:  # A2: engineered roads/junctions/bridges/rail (lib_roads) + roadside infrastructure (lib_infrastructure)
+        import lib_roads as LR, lib_infrastructure as LI
+        rctx = {'T': T, 'collection': collection, 'mesh_obj': mesh_obj, 'luw': LUW}
+        print('roads...'); LR.build(root, rctx)
+        print('infrastructure...'); LI.build(root, rctx)
+    except Exception:
+        import traceback; traceback.print_exc()
+        print('roads (legacy fallback)...'); build_roads(collection('ROADS', root), mats, types)
+        build_bridges(collection('BRIDGES', root), mats, types); build_rail(collection('RAIL', root), mats)
     print('backdrop...'); build_backdrop(collection('BACKDROP', root), mats['backdrop'])
     if not OPT('--no-trees'):
         print('vegetation...')
