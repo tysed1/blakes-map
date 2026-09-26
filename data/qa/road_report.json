@@ -1,11 +1,11 @@
 {
  "summary": {
-  "radius:warn": 20,
-  "short_edge:warn": 3
+  "radius:warn": 21,
+  "short_edge:warn": 2
  },
  "components": 1,
- "edges": 1387,
- "nodes": 1038,
+ "edges": 1381,
+ "nodes": 1031,
  "issues": [
   {
    "kind": "radius",
@@ -201,21 +201,21 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
+    1810.3,
+    324.6
+   ],
+   "msg": "TV_RD_3184 (urban_street) curve radius 10 m < 12 m",
+   "ref": "TV_RD_3184"
+  },
+  {
+   "kind": "radius",
+   "severity": "warn",
+   "at": [
     1808.6,
     221.8
    ],
    "msg": "TV_RD_2949 (urban_street) curve radius 10 m < 12 m",
    "ref": "TV_RD_2949"
-  },
-  {
-   "kind": "short_edge",
-   "severity": "warn",
-   "at": [
-    1830.2,
-    289.3
-   ],
-   "msg": "TV_RD_2994 only 3.8 m between junctions",
-   "ref": "TV_RD_2994"
   },
   {
    "kind": "radius",

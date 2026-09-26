@@ -260,13 +260,13 @@ def scatter(T, cls, seed=7):
     p_can = np.zeros((H, W), np.float32)
     p_can += forest * 0.95 * edge_in * gaps
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
-    p_can[rock] = 0.22 * np.clip(0.6 + 0.4 * n15[rock], 0, 1)
+    p_can[rock] = 0.3 * np.clip(0.6 + 0.4 * n15[rock], 0, 1)
     p_can = np.where(dev, np.clip(0.2 + 0.18 * n100, 0.03, 0.45), p_can)
     p_can[cls == COM] = 0.05; p_can[cls == IND] = 0.03; p_can[cls == RAIL] = 0.0
-    p_can[cls == MEADOW] = np.maximum(p_can[cls == MEADOW] * 0.4, 0.025)
+    p_can[cls == MEADOW] = np.maximum(p_can[cls == MEADOW] * 0.4, 0.008)
     p_can[cls == FARM] = 0.0
     p_can *= np.where(slope > 1.1, 0.6, 1.0)
-    x, y, xi, yi = _jitter_grid(2.4, rng, p_can)
+    x, y, xi, yi = _jitter_grid(2.0, rng, p_can)
     ok = clear_ok(x, y, 0); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
     m = moist[yi, xi]; r = np.clip(tpi[yi, xi], -1, 1); s = sun[yi, xi]; c = cr[yi, xi]
     dry = np.clip(0.5 * np.clip(s, 0, 1) + 0.5 * np.clip(r, 0, 1) + 0.4 * (0.5 - m), 0, 1)
@@ -398,11 +398,10 @@ def scatter_props(rng, T, cls, eco, forest, sdn, rock, drock, road1, rail1, wet,
         k = rng.choice(len(names), len(x), p=p)
         kid = np.array([PID[names[i]] for i in k])
         out.append(np.stack([x, y, T[yi, xi], np.exp(rng.normal(scale_mu, scale_sd, len(x))), kid, rng.random(len(x)) * 6.283], 1))
-    # river / creek bank boulders + rocks in the shallow channel margins (rocky rivers, rapids)
-    inwater = ndi.distance_transform_edt(wet) * 2.5
+    # dry upper-bank rocks (in-channel / waterline boulders are placed by A1's lib_water)
     steepbank = smoothstep(0.1, 0.5, slope)
-    bank = np.exp(-dwater / 5) * ~wet * (0.35 + 0.65 * steepbank) + wet * np.exp(-inwater / 5) * 0.45
-    add(bank * np.clip(0.5 + 0.5 * n15, 0, 1) * 0.55, 1.6, {'boulder_large': 0.35, 'boulder': 1.0, 'rock_small': 1.2}, 0.0, 0.35, allow_water=True)
+    bank = np.exp(-((dwater - 7) / 5) ** 2) * ~wet * (0.3 + 0.7 * steepbank)
+    add(bank * np.clip(0.5 + 0.5 * n15, 0, 1) * 0.25, 1.6, {'boulder': 1.0, 'rock_small': 1.5}, -0.1, 0.3)
     # talus below cliffs / rock outcrops, scattered rock on steep ground
     tal = np.exp(-drock / 15) * smoothstep(0.2, 0.55, slope) * ~rock + rock * 0.25
     add(tal * 0.6, 1.5, {'boulder_large': 0.5, 'boulder': 1.0, 'rock_small': 0.8}, 0.1, 0.35)

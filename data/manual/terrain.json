@@ -152,14 +152,21 @@
   "tolerance_m": 2.0
  },
  "erosion": {
-  "spl_steps": 25,
+  "spl_steps": 0,
   "spl_K": 0.06,
   "spl_m": 0.5,
   "spl_diffusion": 5.0,
   "droplets": 0,
   "talus": 0.9,
   "thermal_iters": 60,
-  "max_breach_m": 3.0
+  "max_breach_m": 3.0,
+  "fine_steps": 0,
+  "fine_K": 0.012,
+  "fine_diffusion": 1.0,
+  "fine_max_m": 12.0,
+  "round_iters": 3,
+  "round_sigma": 3.0,
+  "round_thr_m": 1.5
  },
  "water": {
   "rapid_gain": 7.0,
@@ -189,5 +196,20 @@
   "town": 0.3,
   "city": 0.75
  },
- "sea_note": "No sea. Lowest point ~280 m (Tanner River at the east edge)."
+ "sea_note": "No sea. Lowest point ~280 m (Tanner River at the east edge).",
+ "evolve": {
+  "steps": 300,
+  "K": 0.04,
+  "m": 0.5,
+  "diffusion": 2.0,
+  "uplift": 1.0,
+  "rescale_sigma_px": 12,
+  "blend_m": [
+   15,
+   45
+  ],
+  "fixed_below_m": 1.0,
+  "uplift_exp": 0.4,
+  "noise_m": 0.5
+ }
 }

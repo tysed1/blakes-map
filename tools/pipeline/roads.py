@@ -37,6 +37,16 @@ def wpx(t):
     return TYPES[t]['width_m'] / 2.5
 
 
+def width_for(t, lanes=None):
+    """Finished width (m) of a road of type t with an explicit lane count."""
+    spec = TYPES[t]
+    if not lanes or lanes == spec['lanes'] or 'section' not in spec:
+        return spec['width_m']
+    sec = spec['section']
+    side = sec.get('parking_m', sec.get('shoulder_paved_m', 0.0))
+    return round(lanes * sec['lane_w'] + 2 * side + sec.get('median_m', 0.0), 1)
+
+
 # ------------------------------------------------------------------ helpers
 def sample_along(pts, step=1.0):
     return resample(np.asarray(pts, float), step)
@@ -420,6 +430,8 @@ def interchange_ramps(manual):
             else:
                 x = np.vstack([x, nxt[::-1][1:]])
         ramps, sep = diamond(ic, f, x, wpx(byid[ic['freeway']][0]['type']) / 2, wpx('ramp') / 2, spec['defaults'])
+        if ic.get('kind') == 'overpass':
+            ramps = []  # grade separation only
         if ic.get('kind') == 'half_diamond':
             cy = sep['point'][1]
             side = ic.get('keep_gore_side', 'north')
@@ -853,7 +865,7 @@ def write(G, zones):
         props = {
             'id': rid, 'type': t, 'name': a.get('name'), 'route': a.get('route'),
             'from': node_ids[u], 'to': node_ids[v],
-            'width_m': spec['width_m'], 'lanes': a.get('lanes') or spec['lanes'], 'surface': spec['surface'],
+            'width_m': width_for(t, a.get('lanes')), 'lanes': a.get('lanes') or spec['lanes'], 'surface': spec['surface'],
             'material': spec['material'], 'shoulder_m': spec['shoulder_m'], 'speed_mph': spec['speed_mph'],
             'oneway': bool(a.get('oneway')), 'layer': a.get('layer') or 0,
             'interchange': a.get('interchange'), 'min_radius_m': a.get('min_radius_m'), 'virtual': bool(a.get('virtual')),

@@ -37,8 +37,8 @@
   },
   {
    "id": "IC_TV_SR60_RIVERFRONT",
-   "name": "SR 60 / Riverfront Pkwy Interchange",
-   "kind": "half_diamond",
+   "name": "SR 60 / Riverfront Pkwy grade separation",
+   "kind": "overpass",
    "freeway": "HWY_SR60",
    "crossroad": [
     "TV_RIVERFRONT"
@@ -46,7 +46,8 @@
    "ramp_offset_px": 55,
    "terminal_offset_px": 15,
    "keep_gore_side": "north",
-   "note": "Half diamond: the freeway crosses the Tanner immediately south of Riverfront Pkwy, so only the north-side ramps (SB exit, NB entrance) are built."
+   "note": "Was a half diamond. Vertical design makes it infeasible: SR 60 descends from the US 76 diamond to its Tanner River bridge at the 6% freeway limit and is 10-17 m above the river bank here, so ramps down to Riverfront Pkwy would need ~12% grades. SR 60 now crosses over Riverfront Pkwy on its river-bridge approach viaduct (upper=freeway); Tannersville traffic uses the SR 60/US 76 diamond.",
+   "upper": "freeway"
   }
  ]
 }

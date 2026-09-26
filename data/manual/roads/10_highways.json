@@ -113,7 +113,7 @@
    "id": "HWY_US19",
    "name": "US 19",
    "type": "highway",
-   "lanes": 4,
+   "lanes": 2,
    "wp": [
     [
      245,
@@ -235,7 +235,7 @@
    "name": "Main Street (US 19)",
    "route": "US 19",
    "type": "main_street",
-   "lanes": 4,
+   "lanes": 2,
    "wp": [
     [
      990,
@@ -267,7 +267,7 @@
    "id": "HWY_US19_E",
    "name": "US 19",
    "type": "highway",
-   "lanes": 4,
+   "lanes": 2,
    "wp": [
     [
      1140,

@@ -452,7 +452,13 @@ def core_material():
     tr = N.new('ShaderNodeBsdfTranslucent'); L.new(col, tr.inputs['Color'])
     mixs = N.new('ShaderNodeMixShader'); mixs.inputs['Fac'].default_value = 0.25
     L.new(bsdf.outputs[0], mixs.inputs[1]); L.new(tr.outputs[0], mixs.inputs[2])
-    L.new(mixs.outputs[0], out.inputs['Surface'])
+    # partially transparent to shadow rays: sun leaks through crowns (lit undersides, soft shade)
+    lp = N.new('ShaderNodeLightPath'); tp = N.new('ShaderNodeBsdfTransparent')
+    sh = N.new('ShaderNodeMath'); sh.operation = 'MULTIPLY'; sh.inputs[1].default_value = 0.5
+    L.new(lp.outputs['Is Shadow Ray'], sh.inputs[0])
+    ms = N.new('ShaderNodeMixShader'); L.new(sh.outputs[0], ms.inputs['Fac'])
+    L.new(mixs.outputs[0], ms.inputs[1]); L.new(tp.outputs[0], ms.inputs[2])
+    L.new(ms.outputs[0], out.inputs['Surface'])
     return m
 
 
@@ -524,16 +530,16 @@ FAMILY_OF = [s[1] for s in SPECIES]
 # early-autumn Blue Ridge palettes (linear albedo tints). graphics ref: deep olive greens,
 # ~30-40% warm ochre / amber / rust accents in hardwoods, dark blue-green conifers.
 PAL = {
-    'oak':     [((0.060, 0.078, 0.028), 0.40), ((0.075, 0.080, 0.030), 0.2), ((0.16, 0.10, 0.030), 0.22), ((0.15, 0.065, 0.025), 0.18)],
-    'maple':   [((0.065, 0.080, 0.030), 0.35), ((0.26, 0.085, 0.020), 0.25), ((0.24, 0.045, 0.018), 0.15), ((0.25, 0.14, 0.028), 0.25)],
-    'poplar':  [((0.075, 0.090, 0.032), 0.45), ((0.21, 0.15, 0.035), 0.4), ((0.13, 0.11, 0.032), 0.15)],
-    'hickory': [((0.08, 0.09, 0.03), 0.4), ((0.24, 0.17, 0.035), 0.6)],
-    'dogwood': [((0.07, 0.085, 0.035), 0.35), ((0.20, 0.045, 0.030), 0.65)],
-    'sapling': [((0.07, 0.095, 0.032), 0.6), ((0.18, 0.12, 0.03), 0.25), ((0.20, 0.06, 0.02), 0.15)],
+    'oak':     [((0.058, 0.074, 0.026), 0.45), ((0.072, 0.078, 0.028), 0.25), ((0.15, 0.10, 0.030), 0.18), ((0.14, 0.062, 0.024), 0.12)],
+    'maple':   [((0.062, 0.078, 0.028), 0.42), ((0.25, 0.085, 0.020), 0.2), ((0.22, 0.045, 0.018), 0.13), ((0.24, 0.14, 0.028), 0.25)],
+    'poplar':  [((0.072, 0.088, 0.030), 0.55), ((0.20, 0.15, 0.035), 0.3), ((0.12, 0.105, 0.030), 0.15)],
+    'hickory': [((0.075, 0.088, 0.03), 0.5), ((0.23, 0.165, 0.035), 0.5)],
+    'dogwood': [((0.07, 0.085, 0.035), 0.4), ((0.19, 0.045, 0.030), 0.6)],
+    'sapling': [((0.068, 0.092, 0.030), 0.65), ((0.17, 0.115, 0.03), 0.22), ((0.19, 0.06, 0.02), 0.13)],
     'pine':    [((0.040, 0.066, 0.036), 0.6), ((0.050, 0.075, 0.040), 0.4)],
     'hemlock': [((0.030, 0.052, 0.032), 0.7), ((0.038, 0.058, 0.035), 0.3)],
     'rhodo':   [((0.035, 0.060, 0.030), 0.8), ((0.045, 0.068, 0.030), 0.2)],
-    'brush':   [((0.08, 0.09, 0.03), 0.4), ((0.20, 0.07, 0.025), 0.25), ((0.17, 0.12, 0.035), 0.35)],
+    'brush':   [((0.08, 0.09, 0.03), 0.45), ((0.19, 0.07, 0.025), 0.2), ((0.16, 0.115, 0.035), 0.35)],
     'snag':    [((0.1, 0.1, 0.1), 1.0)],
 }
 

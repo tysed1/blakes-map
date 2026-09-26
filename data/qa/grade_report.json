@@ -1,13 +1,56 @@
 {
  "grade_separations": [
   {
+   "upper": "TV_RD_3185",
+   "lower": "RR_TV_YARD",
+   "at": [
+    1864.14,
+    492.71
+   ],
+   "lower_z": 290.54,
+   "kind": "rail",
+   "angle_deg": 14.8
+  },
+  {
+   "upper": "TV_RD_3185",
+   "lower": "RR_TV_YARD",
+   "at": [
+    1958.32,
+    555.21
+   ],
+   "lower_z": 285.17,
+   "kind": "rail",
+   "angle_deg": 11.9
+  },
+  {
+   "upper": "TV_RD_3185",
+   "lower": "TV_RD_3187",
+   "at": [
+    1818.06,
+    342.87
+   ],
+   "lower_z": 290.98,
+   "kind": "road"
+  },
+  {
    "upper": "LC_RD_2700",
    "lower": "LC_RD_2701",
    "at": [
     307.47,
     415.33
    ],
-   "lower_z": 323.39
+   "lower_z": 325.89
+  },
+  {
+   "upper": "RU_RD_0248",
+   "lower": "RR_VALLEY",
+   "at": [
+    859.33,
+    384.27
+   ],
+   "lower_z": 353.8,
+   "kind": "rail",
+   "angle_deg": 18.4
   },
   {
    "upper": "TV_RD_3006",
@@ -16,7 +59,7 @@
     1881.66,
     153.17
    ],
-   "lower_z": 316.55
+   "lower_z": 317.29
   },
   {
    "upper": "LC_RD_2610",
@@ -25,7 +68,7 @@
     99.27,
     85.47
    ],
-   "lower_z": 331.87
+   "lower_z": 334.83
   },
   {
    "upper": "LC_RD_2610",
@@ -34,7 +77,7 @@
     98.74,
     68.93
    ],
-   "lower_z": 331.22
+   "lower_z": 333.64
   },
   {
    "upper": "LC_RD_2432",
@@ -43,16 +86,29 @@
     401.48,
     523.51
    ],
-   "lower_z": 314.87
+   "lower_z": 316.64
   },
   {
-   "upper": "TV_RD_2607",
-   "lower": "TV_RD_3001",
+   "upper": "TV_RD_3170",
+   "lower": "RR_TV_YARD",
    "at": [
-    1818.06,
-    342.87
+    1745.75,
+    422.06
    ],
-   "lower_z": 301.97
+   "lower_z": 296.64,
+   "kind": "rail",
+   "angle_deg": 47.5
+  },
+  {
+   "upper": "TV_RD_3164",
+   "lower": "RR_TV_YARD",
+   "at": [
+    1640.76,
+    379.2
+   ],
+   "lower_z": 300.89,
+   "kind": "rail",
+   "angle_deg": 81.3
   }
  ],
  "issues": [
@@ -60,71 +116,22 @@
    "kind": "earthwork",
    "id": "RU_RD_0654",
    "type": "rural",
-   "cut_m": 0.4,
-   "fill_m": 12.7
+   "cut_m": 0.0,
+   "fill_m": 12.4
   },
   {
    "kind": "grade",
    "id": "RU_RD_0421",
    "type": "gravel",
-   "max_grade_pct": 91.6,
+   "max_grade_pct": 63.7,
    "limit_pct": 15.0
   },
   {
    "kind": "earthwork",
-   "id": "TV_RD_2652",
-   "type": "residential",
-   "cut_m": 17.5,
-   "fill_m": 4.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2234",
-   "type": "residential",
-   "cut_m": 22.0,
-   "fill_m": 9.8
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_3142",
-   "type": "urban_street",
-   "cut_m": 16.6,
-   "fill_m": 2.4
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_3144",
-   "type": "urban_street",
-   "cut_m": 13.6,
-   "fill_m": 2.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2895",
+   "id": "TV_RD_3166",
    "type": "urban_street",
    "cut_m": 0.0,
-   "fill_m": 15.5
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2992",
-   "type": "ramp",
-   "cut_m": 0.0,
-   "fill_m": 17.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2993",
-   "type": "ramp",
-   "cut_m": 0.0,
-   "fill_m": 17.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2994",
-   "type": "freeway",
-   "cut_m": 0.0,
-   "fill_m": 17.2
+   "fill_m": 12.8
   }
  ]
 }

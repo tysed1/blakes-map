@@ -767,7 +767,7 @@ def render_settings(samples=48):
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
     sc.cycles.max_bounces = 4
-    sc.cycles.transparent_max_bounces = 12
+    sc.cycles.transparent_max_bounces = 48  # A3: stacked alpha leaf cards (12 -> sky speckle through crowns)
     sc.cycles.volume_bounces = 0
     sc.cycles.volume_step_rate = 8.0
     sc.render.resolution_x, sc.render.resolution_y = 1600, 900
@@ -791,6 +791,7 @@ def main():
     mats['leaf_cf'] = foliage_material('MAT_Foliage_Conifer', None)
     root = collection('WORLD')
     print('terrain...'); terr = build_terrain(collection('TERRAIN', root), mats['terrain'])
+    LM.add_terrain_attributes(terr)  # A3: ecology attributes (moisture, fields, canopy...) for materials + ground cover
     print('water...'); build_water(collection('WATER', root), mats['water'])
     print('roads...'); build_roads(collection('ROADS', root), mats, types)
     print('bridges...'); build_bridges(collection('BRIDGES', root), mats, types)
@@ -799,9 +800,10 @@ def main():
     if not OPT('--no-trees'):
         print('vegetation...')
         vc = collection('VEGETATION', root)
-        build_vegetation(vc, LT.build_prototypes(vc))
+        LT.build_vegetation(vc)  # A3: ecosystem scatter + species prototypes (lib_trees)
+        __import__('lib_props').build(vc)  # A3: rocks, logs, stumps, debris (lib_props)
     collection('BUILDINGS (deferred)', root)
-    setup_world()
+    __import__('lib_atmosphere').setup(ARG)  # A3: sky, sun, ambient, aerial perspective, grade (was setup_world())
     cams = setup_cameras()
     if not OPT('--no-groundcover'):
         print('ground cover...')

@@ -348,7 +348,7 @@
   },
   {
    "id": "LC_YARD_ST",
-   "name": "Yard Street Viaduct",
+   "name": "Yard Street",
    "type": "urban_street",
    "wp": [
     [
@@ -372,7 +372,8 @@
      394
     ]
    ],
-   "note": "Old Mill Road continues into the industrial district over the Laurel City yard on a short viaduct (the yard cuts the district in two)."
+   "note": "Old Mill Road continues into the industrial district across the Laurel City yard on a protected multi-track grade crossing (1974 industrial practice).",
+   "rail_crossing": "at_grade"
   }
  ]
 }

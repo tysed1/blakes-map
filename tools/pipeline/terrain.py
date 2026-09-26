@@ -325,7 +325,7 @@ def feather_field(spec, default):
 
 
 # ------------------------------------------------------------------ ridges
-def ridge_profile(t, p=1.6, q=1.9):
+def ridge_profile(t, p=2.0, q=2.1):
     """Cross profile 1 (crest) -> 0 (valley floor at t=1): rounded crest, steep mid-slope, concave foot."""
     t = np.clip(t, 0, 1)
     return (1 - t ** p) ** q
@@ -621,6 +621,37 @@ def stream_power(z, fixed, cell, K, m, dt, steps, diff):
     return z
 
 
+def evolve_landscape(relief, V, wmask, ev, seed=5):
+    """Landscape evolution on the designed layout: the designed relief is used as a tectonic uplift map
+    and the land is grown under uplift + implicit stream-power incision + hillslope diffusion (half res).
+    The result has real dendritic drainage (coves, branching hollows, spurs, divides along the designed
+    crests); it is then rescaled at the ~150 m scale back to the designed heights, so the art direction
+    (where ridges are and how high) is kept while the forms become erosional."""
+    h, w = H // 2, W // 2
+    r2 = cv2.resize(relief, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
+    V2 = cv2.resize(V, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
+    fixed = (cv2.resize(wmask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0) | (r2 < ev.get('fixed_below_m', 1.0))
+    # saturating uplift: the whole designed mountain footprint rises (so it keeps its extent), crests a bit more
+    U = np.clip(r2 / max(np.percentile(r2, 99.5), 1.0), 0, 1.2) ** ev.get('uplift_exp', 0.4) * ev.get('uplift', 1.0)
+    rng = np.random.default_rng(seed)
+    z = V2 + r2 * 0.05 + rng.normal(0, ev.get('noise_m', 0.5), (h, w))
+    outlet = fixed.copy()
+    outlet[0, :] = outlet[-1, :] = outlet[:, 0] = outlet[:, -1] = True
+    K, m, D = ev.get('K', 0.02), ev.get('m', 0.5), ev.get('diffusion', 1.5)
+    for _ in range(ev.get('steps', 150)):
+        z = z + U
+        zf, order, rec, dist, A = drainage(z, outlet, MPP * 2)
+        z = _spl(z, rec, dist, A, order, K, m, 1.0, fixed)
+        lap = cv2.Laplacian(z, cv2.CV_64F) / (MPP * 2) ** 2
+        z = np.where(fixed, V2, z + D * lap)
+    rs = np.maximum(z - V2, 0)
+    sg = ev.get('rescale_sigma_px', 12)
+    bd = cv2.GaussianBlur(r2, (0, 0), sg); bs = cv2.GaussianBlur(rs, (0, 0), sg)
+    ratio = np.clip(bd / np.maximum(bs, 1.0), 0.3, 3.0)
+    out = (rs * ratio).astype(np.float32)
+    return cv2.resize(out, (W, H), interpolation=cv2.INTER_CUBIC)
+
+
 def hydraulic_erosion(z, fixed, n=260000, batch=65536, steps=40, seed=3, inertia=0.12, capacity=3.0, deposit=0.2,
                       erode=0.25, evap=0.035, gravity=2.0, min_slope=0.01, cell=MPP, max_sed=1.2):
     """Vectorised droplet erosion: fine gullies and small alluvial fans; fixed cells untouched."""
@@ -896,6 +927,14 @@ def main():
     crag = (np.round(crag * 4) / 4) * 0.6 + crag * 0.4  # stepped ledges
     relief += dt['crag_m'] * crest * crag
 
+    # landscape evolution on the designed layout (dendritic drainage); low ground keeps the designed relief
+    ev = cfg.get('evolve')
+    if ev and ev.get('steps', 0) > 0:
+        rel_ev = evolve_landscape(relief, valley, wmask, ev)
+        wv = smoothstep(ev.get('blend_m', [15, 45])[0], ev.get('blend_m', [15, 45])[1], cv2.GaussianBlur(relief, (0, 0), 4))
+        relief = relief * (1 - wv) + np.maximum(rel_ev, 0) * wv
+        _dbg('relief_evolved', relief)
+
     # banks: relief -> 0 toward the water
     dws_s = cv2.GaussianBlur(dws, (0, 0), 1.5)
     bank = np.clip(dws_s / cfg['water']['relief_fade_px'], 0, 1) ** 1.2
@@ -930,7 +969,20 @@ def main():
         wr = np.clip((relief * bank - 12.0) / 35.0, 0, 1)
         elev = (elev + dz * cv2.GaussianBlur(wr.astype(np.float32), (0, 0), 3)).astype(np.float32)
     _dbg('elev_pre_thermal', elev)
+    if er.get('fine_steps', 0) > 0:
+        # second, fine-scale incision at full resolution: ravines and gullies inside the big hollows
+        ef = stream_power(elev, fixed, MPP, er['fine_K'], er.get('spl_m', 0.5), 1.0, er['fine_steps'], er.get('fine_diffusion', 1.0))
+        dz = (ef - elev).astype(np.float32)
+        dz[fixed] = 0
+        sculpt = np.clip((relief * bank - 8.0) / 25.0, 0, 1)
+        elev = (elev + np.maximum(dz, -er.get('fine_max_m', 12.0)) * cv2.GaussianBlur(sculpt.astype(np.float32), (0, 0), 2)).astype(np.float32)
     elev = thermal_erosion(elev, fixed, talus=er.get('talus', 0.9), iters=er.get('thermal_iters', 60), rate=0.9)
+    # crest rounding: Appalachian summits and spur tops are broad and rounded, never pyramids
+    rmask = cv2.GaussianBlur(np.clip((relief * bank - 10.0) / 30.0, 0, 1).astype(np.float32), (0, 0), 3) * ~fixed
+    for _ in range(er.get('round_iters', 0)):
+        b_ = cv2.GaussianBlur(elev, (0, 0), er.get('round_sigma', 3.0))
+        convex = np.clip((elev - b_) / er.get('round_thr_m', 1.5), 0, 1)
+        elev = (elev + (b_ - elev) * convex * rmask).astype(np.float32)
     elev = corridor_cap(elev, wmask, cfg)  # erosion must not re-block the gaps
 
     # ---- river channels and banks
