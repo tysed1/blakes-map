@@ -4,12 +4,12 @@
    "upper": "TV_RD_3185",
    "lower": "RR_TV_YARD",
    "at": [
-    1864.14,
-    492.71
+    1863.97,
+    492.55
    ],
    "lower_z": 290.49,
    "kind": "rail",
-   "angle_deg": 14.8
+   "angle_deg": 14.6
   },
   {
    "upper": "TV_RD_3185",
@@ -45,12 +45,12 @@
    "upper": "RU_RD_0248",
    "lower": "RR_VALLEY",
    "at": [
-    859.33,
+    859.32,
     384.27
    ],
    "lower_z": 353.52,
    "kind": "rail",
-   "angle_deg": 18.4
+   "angle_deg": 18.5
   },
   {
    "upper": "TV_RD_3006",
@@ -92,8 +92,8 @@
    "upper": "TV_RD_3170",
    "lower": "RR_TV_YARD",
    "at": [
-    1745.75,
-    422.06
+    1745.69,
+    422.08
    ],
    "lower_z": 296.01,
    "kind": "rail",
@@ -104,22 +104,11 @@
    "lower": "RR_TV_YARD",
    "at": [
     1640.76,
-    379.2
+    379.21
    ],
    "lower_z": 298.98,
    "kind": "rail",
    "angle_deg": 81.3
-  },
-  {
-   "upper": "RU_RD_0565",
-   "lower": "RR_VALLEY",
-   "at": [
-    1354.24,
-    560.41
-   ],
-   "lower_z": 358.04,
-   "kind": "rail",
-   "angle_deg": 74.4
   }
  ],
  "issues": [
@@ -134,15 +123,15 @@
    "kind": "grade",
    "id": "RU_RD_0421",
    "type": "gravel",
-   "max_grade_pct": 140.4,
+   "max_grade_pct": 68.9,
    "limit_pct": 15.0
   },
   {
-   "kind": "grade",
-   "id": "RU_RD_0565",
+   "kind": "earthwork",
+   "id": "RU_RD_0606",
    "type": "gravel",
-   "max_grade_pct": 140.4,
-   "limit_pct": 15.0
+   "cut_m": 18.5,
+   "fill_m": 3.1
   }
  ]
 }

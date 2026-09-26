@@ -343,6 +343,21 @@ def main():
     routes.sort(key=lambda r: r[0])
 
     nz = {}
+    # junctions right next to an at-grade railway crossing take the rail-head elevation up
+    # front (otherwise the crossing pin and the junction pin fight and create a step)
+    for i_, f_ in enumerate(roads):
+        t_ = f_['properties']['type']
+        if t_ in ('freeway', 'highway', 'ramp') or f_['properties'].get('virtual'):
+            continue
+        for rf, rg, Sr, XYr, zr_, ztr in rail_prof:
+            if rf['properties'].get('tracks', 1) >= 3 or not geoms[i_].intersects(rg):
+                continue
+            x = geoms[i_].intersection(rg)
+            for q in ([x] if x.geom_type == 'Point' else [q_ for q_ in getattr(x, 'geoms', []) if q_.geom_type == 'Point']):
+                zrail = float(zr_[min(int(round(rg.project(q))), len(zr_) - 1)])
+                for nd in (f_['properties']['from'], f_['properties']['to']):
+                    if nd in nodes and Point(nodes[nd]).distance(q) < 8.0:
+                        nz[nd] = zrail + 0.46
     profiles = {}
     seps = []
     nodes_xy = {f['properties']['id']: f['geometry']['coordinates'][:2] for f in load_json(path('data/roads/road_nodes.geojson'))['features']}
@@ -494,6 +509,15 @@ def main():
         for k in pins:
             pinned[k] = True
         z = enforce_grade_pinned(zs, g, zmin, pinned)
+        # a pinned junction too close to a raised deck makes the approach infeasible: lower
+        # the deck minimum towards the pin (a low-water bridge beats a 100 % ramp), max 2 tries
+        zmin0 = zmin.copy()
+        for _try in range(2):
+            gr_ = np.abs(np.diff(z)) / MPP
+            if len(gr_) == 0 or gr_.max() <= MAX_GRADE[t] * 1.05 or not (zmin > -1e8).any():
+                break
+            zmin = np.where(zmin > -1e8, np.maximum(zmin - min(2.0, (gr_.max() - MAX_GRADE[t]) * MPP * 4), zmin0 - 0.8), zmin)
+            z = enforce_grade_pinned(zs, g, zmin, pinned)
         if os.environ.get('DEBUG_ROUTE') and roads[order[0][0]]['properties'].get('def_id') == os.environ['DEBUG_ROUTE']:
             np.savez('/tmp/route_debug.npz', XY=XY, zt=zt, zs=zs, zmin=zmin, z=z, pinned=pinned)
         for nd, k in node_at.items():
