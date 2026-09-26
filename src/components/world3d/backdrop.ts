@@ -30,7 +30,7 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
     c.copy(cForest).lerp(cHigh, t * 0.6 + 0.2 * (n1 * 0.5 + 0.5));
     if (n2 > 0.55) c.lerp(new THREE.Color(0x8a6a34), (n2 - 0.55) * 1.2);
     if (n1 < -0.6) c.lerp(new THREE.Color(0x2c4630), 0.5);
-    c.lerp(cRock, THREE.MathUtils.clamp((sl / (step * meta.cell_px * 2.5) - 0.9), 0, 0.35));
+    c.lerp(cRock, THREE.MathUtils.clamp((sl / (step * meta.cell_px * 2.5) - 1.3), 0, 0.15));
     col[v * 3] = c.r; col[v * 3 + 1] = c.g; col[v * 3 + 2] = c.b;
   }
   const idx: number[] = [];
@@ -44,7 +44,7 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }));
+  const m = new THREE.Mesh(geo, forestCanopyMaterial());
   m.receiveShadow = false;
   m.userData.kind = 'backdrop';
   g.add(m);
@@ -71,20 +71,59 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
 }
 
 /**
+ * Distant forested ridges: procedural canopy (crown clumps ~8 m + stand patches ~40 m) modulating
+ * the vertex colour, with bump from the same noise, so far hills read as dense hardwood forest.
+ */
+function forestCanopyMaterial() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  m.onBeforeCompile = (s) => {
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vBW;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvBW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vBW;
+      float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+      float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+      float canopy(vec2 p) { return vn(p / 7.0) * 0.55 + vn(p / 19.0) * 0.3 + vn(p / 61.0) * 0.15; }
+      float cH;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float c = canopy(vBW.xz);
+          cH = c;
+          float stand = vn(vBW.xz / 140.0);
+          // crowns lit, gaps dark; stands shift between olive, deep green and autumn gold
+          diffuseColor.rgb *= 0.55 + 0.9 * smoothstep(0.25, 0.8, c);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.9, 1.35, 0.55), smoothstep(0.62, 0.9, stand) * 0.6);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.85, 0.8), smoothstep(0.35, 0.1, stand) * 0.5);
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          vec2 dH = vec2(dFdx(cH), dFdy(cH)) * 3.0;
+          vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
+          vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+          float det = dot(sx, r1);
+          normal = normalize(abs(det) * normal - sign(det) * (dH.x * r1 + dH.y * r2));
+        }`);
+  };
+  m.customProgramCacheKey = () => 'backdrop-canopy';
+  return m;
+}
+
+/**
  * Sky dome: the Blender scene's HDRI (kloppenheim_06_puresky, tone-mapped to sky.jpg) rotated so
  * its sun sits at the scene sun's azimuth, graded warm and melted into the haze at the horizon
  * (graphics ref: soft golden light, hazy layered ridges).
  */
-export function buildSky(sunDir: THREE.Vector3, tex: THREE.Texture | null, haze: THREE.Color) {
+export function buildSky(sunDir: THREE.Vector3, tex: THREE.Texture | null, haze: THREE.Color, sunHaze = new THREE.Color(1, 0.72, 0.45)) {
   const geo = new THREE.SphereGeometry(40000, 48, 24);
   const sd = sunDir.clone().normalize();
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { sunDir: { value: sd }, sky: { value: tex }, hasSky: { value: tex ? 1 : 0 }, haze: { value: haze },
+    uniforms: { sunDir: { value: sd }, sky: { value: tex }, hasSky: { value: tex ? 1 : 0 }, haze: { value: haze }, sunHaze: { value: sunHaze },
       // HDRI sun at u=0.612 (equirect); rotate so it lines up with the scene sun
       uOff: { value: 0.612 - Math.atan2(sd.z, sd.x) / (2 * Math.PI) } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w; }`,
-    fragmentShader: `varying vec3 vDir; uniform vec3 sunDir; uniform sampler2D sky; uniform float hasSky; uniform vec3 haze; uniform float uOff;
+    fragmentShader: `varying vec3 vDir; uniform vec3 sunDir; uniform sampler2D sky; uniform float hasSky; uniform vec3 haze; uniform vec3 sunHaze; uniform float uOff;
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
@@ -95,12 +134,16 @@ export function buildSky(sunDir: THREE.Vector3, tex: THREE.Texture | null, haze:
           float v = 0.5 + asin(clamp(max(h, 0.0) * 0.92 + 0.02, -1.0, 1.0)) / 3.1415927;
           c = texture2D(sky, vec2(u, v)).rgb;
           c = c * c; // texture is display-referred (sRGB-ish) -> approx linear
-          c *= vec3(1.14, 0.99, 0.82); // warm late-afternoon grade (render: --sky 0.6, warm haze)
+          c *= vec3(1.1, 0.98, 0.86); // warm late-afternoon grade
+          float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          c = max(mix(vec3(l), c, 1.45), 0.0) * mix(1.0, 0.8, smoothstep(0.1, 0.8, h)); // deeper blue zenith
         }
         float s = max(dot(d, sunDir), 0.0);
         c += vec3(1.0,0.72,0.45) * (pow(s, 6.0)*0.28 + pow(s, 300.0)*1.5);
-        // haze band: the sky melts into the fog colour toward and below the horizon
-        c = mix(c, haze, 1.0 - smoothstep(-0.02, 0.16, h));
+        // haze band: the sky melts into the same aerial-perspective colour as the terrain fog
+        float mu = max(dot(d, sunDir), 0.0);
+        vec3 fc = mix(haze * 2.1, sunHaze * 1.3, clamp(pow(mu, 6.0) * 0.85 + pow(mu, 1.5) * 0.18, 0.0, 1.0));
+        c = mix(c, fc, 1.0 - smoothstep(-0.02, 0.1, h));
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

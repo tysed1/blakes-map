@@ -13,16 +13,16 @@ page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
 await page.goto(get('--url', 'http://localhost:5173/#view=3d'));
 await page.waitForFunction(() => (window).w3d && document.querySelector('#loading')?.style.display === 'none', null, { timeout: 300000 });
 await page.waitForFunction(() => (window).w3d.backdropReady, null, { timeout: 300000 });
-await page.waitForFunction(() => (window).w3d.vegReady !== false, null, { timeout: 300000 });
+await page.waitForFunction(() => (window).w3d.vegReady !== false && (window).w3d.camsReady !== false, null, { timeout: 300000 });
 await page.waitForTimeout(4000); // textures
-const url = await page.evaluate(([x, y, dist, pitch, yaw, mode, ev]) => {
+const url = await page.evaluate(([x, y, dist, pitch, yaw, mode, ev, cam]) => {
   const w = (window).w3d; w.stop();
   if (mode) w.setMode(mode);
-  if (x < 0) w.heroView(); else w.setView(x, y, dist, pitch, yaw);
+  if (cam) w.setCam(cam); else if (x < 0) w.heroView(); else w.setView(x, y, dist, pitch, yaw);
   if (ev) eval(ev);
   w.updateCullingPublic?.();
   return w.snapshot();
-}, [x, y, dist, pitch, yaw, get('--mode', null), get('--eval', null)]);
+}, [x, y, dist, pitch, yaw, get('--mode', null), get('--eval', null), get('--cam', null)]);
 fs.writeFileSync(a[0], Buffer.from(url.split(',')[1], 'base64'));
-for (const l of logs.filter((l) => /error|warn/i.test(l)).slice(0, 15)) console.log(l);
+for (const l of logs.filter((l) => /error|warn|shader|program|GRADE/i.test(l)).slice(0, 25)) console.log(l.slice(0, 1500));
 await browser.close();

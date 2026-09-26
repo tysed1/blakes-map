@@ -14,6 +14,8 @@
       <div class="search"><input id="search" placeholder="Search roads, places, IDs…" autocomplete="off" /><div id="results"></div></div>
       <select id="region"></select>
       <div class="seg cam" id="camMode"><button data-m="orbit" title="Orbit camera">Orbit</button><button data-m="top" title="Top-down camera">Top</button><button data-m="free" class="on" title="Free fly: WASD, Q/E, drag to look, Shift = fast, wheel = speed">Fly</button></div>
+      <select id="shots" class="cam3d" title="Cinematic camera shots"><option value="">Shots…</option></select>
+      <select id="quality" class="cam3d" title="Graphics quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high" selected>High</option><option value="ultra">Ultra</option></select>
     </header>
     <aside id="panel">
       <section><h3>Layers</h3><div id="layers"></div></section>
@@ -32,7 +34,8 @@
       <div id="world3d" class="view"></div>
       <div id="loading"><div class="spin"></div><span id="loadmsg">loading world…</span></div>
       <div id="coords"></div>
-      <div id="help3d" class="hint"><b>Fly:</b> WASD / arrows move · drag to look · Q/E down/up · Shift fast · wheel speed <span id="speed"></span> · <b>H</b> hide panels</div>
+      <div id="help3d" class="hint"><b>Fly:</b> WASD / arrows move · drag to look · Q/E down/up · Shift fast · wheel speed <span id="speed"></span> · <b>H</b> hide panels · <b>P</b> stats</div>
+      <div id="perf" class="perf" hidden></div>
     </main>
     <aside id="inspector"><div class="empty">Click a road, bridge, river, junction, landmark or place to inspect it.</div></aside>
   </div>

@@ -28,7 +28,13 @@ n = np.asarray(Image.fromarray((rng.random((H // 8, W // 8)) * 255).astype(np.ui
 k = np.clip(canopy * 0.75 * (0.8 + 0.4 * n), 0, 0.8)[..., None]
 lin = lin * (1 - k) + crown * (0.7 + 0.6 * n[..., None]) * k
 r = np.clip(rock * 1.2, 0, 1)[..., None] * (1 - k)
-lin = lin * (1 - 0.5 * r) + np.array([0.30, 0.29, 0.26], np.float32) * 0.5 * r * (0.7 + 0.6 * lin.mean(2, keepdims=True) / 0.1).clip(0.5, 1.5)
+# crags: lichen grey-green rock with crevice / face definition from the terrain's TPI (convex faces
+# catch light, gullies go dark) and scrubby moss patches, instead of a flat dirt-coloured smear
+tpi = (up(6) - 135 / 255.0) * 4.0
+cav = np.clip(1.0 + tpi * 0.9, 0.55, 1.35)[..., None]
+moss = np.clip((n - 0.45) * 2.5, 0, 1)[..., None]
+rock_col = np.array([0.105, 0.108, 0.092], np.float32) * (1 - moss * 0.6) + np.array([0.055, 0.075, 0.03], np.float32) * moss * 0.6
+lin = lin * (1 - 0.75 * r) + rock_col * cav * (0.8 + 0.4 * n[..., None]) * 0.75 * r
 out = np.clip(lin, 0, 1) ** (1 / 2.2)
 Image.fromarray((out * 255).astype(np.uint8)).save(dst, quality=86)
 print('wrote', dst, W, H)

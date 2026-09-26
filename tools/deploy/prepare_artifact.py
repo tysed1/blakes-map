@@ -17,19 +17,19 @@ keep = [l for l in head.splitlines() if re.search(r'<title>|<script|<link rel="s
 page = '\n'.join(k.strip() for k in keep) + '\n<style>:root{color-scheme:dark}html,body{height:100%}</style>\n' + body.strip() + '\n'
 open(os.path.join(D, 'artifact.html'), 'w').write(page)
 files, tot = {}, 0
+SKIP = {'eco_u8.bin'}
 for sub in ('assets', 'world'):
-    for f in sorted(os.listdir(os.path.join(D, sub))):
-        if f == 'eco_u8.bin':
-            continue
-        p = f'{sub}/{f}'
-        if f.endswith('.bin'):
-            src = os.path.join(D, p)
-            p += '.gz.b64.txt'
-            open(os.path.join(D, p), 'wb').write(base64.b64encode(gzip.compress(open(src, 'rb').read(), 9)))
-        elif f.endswith('.gz.b64.txt'):
-            continue
-        files[p] = os.path.join(D, p)
-        tot += os.path.getsize(files[p])
+    for dirpath, _, names in os.walk(os.path.join(D, sub)):
+        for f in sorted(names):
+            if f in SKIP or f.endswith('.gz.b64.txt'):
+                continue
+            p = os.path.relpath(os.path.join(dirpath, f), D).replace(os.sep, '/')
+            if f.endswith('.bin'):
+                src = os.path.join(D, p)
+                p += '.gz.b64.txt'
+                open(os.path.join(D, p), 'wb').write(base64.b64encode(gzip.compress(open(src, 'rb').read(), 9)))
+            files[p] = os.path.join(D, p)
+            tot += os.path.getsize(files[p])
 json.dump(files, open(os.path.join(D, 'files.json'), 'w'), indent=1)
 print(len(files), 'files', round(tot / 1e6, 1), 'MB; largest',
       max(((os.path.getsize(v), k) for k, v in files.items()))[1])

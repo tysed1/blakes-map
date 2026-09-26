@@ -52,7 +52,9 @@ async function main() {
   $<HTMLInputElement>('#drape').onchange = (e) => w3d?.setDrape((e.target as HTMLInputElement).checked);
   document.body.classList.add('immersive');
   window.addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement || e.key.toLowerCase() !== 'h') return;
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key.toLowerCase() === 'p') { $('#perf').hidden = !$('#perf').hidden; return; }
+    if (e.key.toLowerCase() !== 'h') return;
     document.body.classList.toggle('immersive');
     requestAnimationFrame(() => { w3d?.resize(); map.invalidate(); });
   });
@@ -69,6 +71,18 @@ async function ensure3D() {
   const { World3D } = await import('./components/world3d/World3D');
   w3d = new World3D($('#world3d'), world);
   w3d.onSpeed = (v) => ($('#speed').textContent = `fly speed ×${v.toFixed(1)}`);
+  const perf = $('#perf');
+  w3d.onStats = (s) => { if (!perf.hidden) perf.textContent = `${s.fps} fps  ${s.ms.toFixed(1)} ms cpu\n${(s.tris / 1e6).toFixed(2)} M tris  ${s.calls} calls\n${s.trees.toLocaleString()} plants  res ×${s.scale.toFixed(2)}`; };
+  const qsel = $<HTMLSelectElement>('#quality');
+  let q0 = 'high';
+  try { q0 = localStorage.getItem('bm-quality') || 'high'; } catch { /* storage blocked */ }
+  qsel.value = q0; w3d.setQuality(q0 as any);
+  qsel.onchange = () => { w3d!.setQuality(qsel.value as any); try { localStorage.setItem('bm-quality', qsel.value); } catch { /* ignore */ } };
+  const shots = $<HTMLSelectElement>('#shots');
+  const nice = (n: string) => n.replace(/^(CAM|TC)_/, '').replace(/_/g, ' ');
+  const fill = () => { shots.innerHTML = '<option value="">Shots…</option>' + Object.keys(w3d!.cams).map((k) => `<option value="${k}">${nice(k)}</option>`).join(''); };
+  const poll = setInterval(() => { if (w3d!.camsReady) { clearInterval(poll); fill(); } }, 300);
+  shots.onchange = () => { if (shots.value) { w3d!.setCam(shots.value); document.querySelectorAll('#camMode button').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.m === 'free')); } shots.value = ''; };
   for (const l of LAYERS) if (l.in3d) w3d.setLayer(l.in3d, ($(`#lay-${l.key}`) as HTMLInputElement).checked || l.key === 'terrain');
   $('#loading').style.display = 'none';
   (window as any).w3d = w3d;
