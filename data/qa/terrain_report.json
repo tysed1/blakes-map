@@ -12,11 +12,11 @@
    "ridge_crossing": 0,
    "spike_raw": 5,
    "spike_graded": 19,
-   "zone_slope": 7,
-   "backdrop_rim": 1
+   "zone_slope": 7
   },
   "info": {
    "pit_graded": 30,
+   "backdrop_rim": 0,
    "road_corridor": 0
   }
  },
@@ -623,10 +623,10 @@
    ]
   },
   "backdrop_rim": {
-   "severity": "warn",
-   "count": 1,
-   "max_abs_m": 8.76,
-   "p95_abs_m": 3.19,
+   "severity": "info",
+   "count": 0,
+   "max_abs_m": 0.48,
+   "p95_abs_m": 0.11,
    "items": []
   },
   "seam": {

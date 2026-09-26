@@ -4,12 +4,12 @@
    "upper": "TV_RD_3185",
    "lower": "RR_TV_YARD",
    "at": [
-    1863.97,
-    492.55
+    1864.14,
+    492.71
    ],
    "lower_z": 290.49,
    "kind": "rail",
-   "angle_deg": 14.6
+   "angle_deg": 14.8
   },
   {
    "upper": "TV_RD_3185",
@@ -45,12 +45,12 @@
    "upper": "RU_RD_0248",
    "lower": "RR_VALLEY",
    "at": [
-    859.32,
+    859.33,
     384.27
    ],
    "lower_z": 353.41,
    "kind": "rail",
-   "angle_deg": 18.5
+   "angle_deg": 18.4
   },
   {
    "upper": "TV_RD_3006",
@@ -92,8 +92,8 @@
    "upper": "TV_RD_3170",
    "lower": "RR_TV_YARD",
    "at": [
-    1745.69,
-    422.08
+    1745.75,
+    422.06
    ],
    "lower_z": 296.01,
    "kind": "rail",
@@ -104,7 +104,7 @@
    "lower": "RR_TV_YARD",
    "at": [
     1640.76,
-    379.21
+    379.2
    ],
    "lower_z": 298.98,
    "kind": "rail",
