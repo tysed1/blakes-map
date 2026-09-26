@@ -42,6 +42,16 @@ telemetry disabled). Claude Code loads MCP servers at session start, so start
 Blender first, then start/restart Claude Code in this repo and approve the
 project server when prompted.
 
+Extra Blender windows (any OS), one MCP port each (9877 is reserved on the project machines and refused):
+
+```bash
+python tools/blender/launch_mcp_blender.py --check 9876 9878 9879 9880   # status
+python tools/blender/launch_mcp_blender.py --port 9878                   # launch + wait for "MCP OK"
+```
+
+`.mcp.json` registers `blender` (9876), `blender2` (9878), `blender3` (9879), `blender4` (9880); the
+servers connect lazily, so Blender windows launched mid-session work without restarting Claude Code.
+
 Notes
 
 * The add-on's socket server needs Blender's event loop, so it cannot run in
