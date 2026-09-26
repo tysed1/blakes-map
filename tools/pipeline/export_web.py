@@ -124,7 +124,8 @@ def scatter_trees(T, cls, cell=1.6, seed=7):
     y = gy + rng.random(gy.shape) * cell
     x, y = x.ravel(), y.ravel()
     xi, yi = np.clip(x.astype(int), 0, W - 1), np.clip(y.astype(int), 0, H - 1)
-    keep = (rng.random(len(x)) < td[yi, xi] ** 1.3) & (block[yi, xi] == 0)
+    rockish = (cls[yi, xi] == 6)
+    keep = (rng.random(len(x)) < np.where(rockish, 0.35, td[yi, xi] ** 1.3)) & (block[yi, xi] == 0)
     x, y, xi, yi = x[keep], y[keep], xi[keep], yi[keep]
     kind = (rng.random(len(x)) < cr[yi, xi]).astype(np.float32)
     scale = 0.75 + 0.5 * rng.random(len(x))

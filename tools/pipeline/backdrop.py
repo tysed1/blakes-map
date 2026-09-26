@@ -50,10 +50,10 @@ def main():
     base = float(np.median(small))
     proc = (0.55 * ridged((hh, ww), 60, 1) + 0.3 * ridged((hh, ww), 25, 2, 40) + 0.15 * ridged((hh, ww), 10, 3, 30))
     proc = cv2.GaussianBlur(proc, (0, 0), 1.2)
-    rise = np.clip(d / (pad * 0.9), 0, 1)
-    amp = 120 + 520 * rise ** 1.3                      # ridges grow toward the horizon
-    procH = base - 30 + amp * (proc - 0.35) + 260 * rise ** 1.6
-    blend = np.clip((d - 20) / 130, 0, 1) ** 1.5       # mirror for ~200 m, blend over ~1.3 km
+    rise = np.clip(d / (pad * 0.55), 0, 1)
+    amp = 180 + 520 * rise ** 0.9                      # ridges grow toward the horizon
+    procH = base - 10 + amp * (proc - 0.3) + 420 * rise ** 1.1
+    blend = np.clip((d - 15) / 90, 0, 1) ** 1.3       # mirror for ~200 m, blend over ~1.3 km
     blend = cv2.GaussianBlur(blend, (0, 0), 8)
     out = mir * (1 - blend) + procH * blend
     water = (mwet > 0.5) & (blend < 0.35)

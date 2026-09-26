@@ -220,6 +220,89 @@ def sfs_detail(decay_px=35.0, light_deg=135.0):
     return back / (np.percentile(np.abs(back), 99) + 1e-6)
 
 
+def hydraulic_erosion(z, fixed, n=260000, batch=65536, steps=40, seed=3, inertia=0.12, capacity=3.0, deposit=0.2,
+                      erode=0.25, evap=0.035, gravity=2.0, min_slope=0.01, radius=1, max_sed=1.2):
+    """Vectorised particle (droplet) hydraulic erosion on the heightfield (metres, 2.5 m cells).
+    Carves dendritic gullies/ravines and deposits alluvial fans; fixed cells (rivers) untouched."""
+    rng = np.random.default_rng(seed)
+    z = z.astype(np.float64).copy()
+    Hh, Ww = z.shape
+    zs = z / MPP  # work in cell units so slopes are unitless
+    def grad(px, py):
+        x0 = np.clip(px.astype(int), 0, Ww - 2); y0 = np.clip(py.astype(int), 0, Hh - 2)
+        fx = px - x0; fy = py - y0
+        h00 = zs[y0, x0]; h10 = zs[y0, x0 + 1]; h01 = zs[y0 + 1, x0]; h11 = zs[y0 + 1, x0 + 1]
+        gx = (h10 - h00) * (1 - fy) + (h11 - h01) * fy
+        gy = (h01 - h00) * (1 - fx) + (h11 - h10) * fx
+        h = h00 * (1 - fx) * (1 - fy) + h10 * fx * (1 - fy) + h01 * (1 - fx) * fy + h11 * fx * fy
+        return gx, gy, h, x0, y0, fx, fy
+    done = 0
+    while done < n:
+        m = min(batch, n - done); done += m
+        px = rng.uniform(1, Ww - 2, m); py = rng.uniform(1, Hh - 2, m)
+        dx = np.zeros(m); dy = np.zeros(m); sp = np.ones(m); wat = np.ones(m); sed = np.zeros(m)
+        alive = ~fixed[py.astype(int), px.astype(int)]
+        for _ in range(steps):
+            gx, gy, h, x0, y0, fx, fy = grad(px, py)
+            dx = dx * inertia - gx * (1 - inertia); dy = dy * inertia - gy * (1 - inertia)
+            l = np.hypot(dx, dy); l[l == 0] = 1
+            dx /= l; dy /= l
+            nx = px + dx; ny = py + dy
+            alive &= (nx > 1) & (nx < Ww - 2) & (ny > 1) & (ny < Hh - 2)
+            nx = np.clip(nx, 1, Ww - 2.001); ny = np.clip(ny, 1, Hh - 2.001)
+            alive &= ~fixed[ny.astype(int), nx.astype(int)]
+            _, _, nh, *_ = grad(nx, ny)
+            dh = nh - h
+            cap = np.maximum(-dh, min_slope) * sp * wat * capacity
+            dep = np.where((sed > cap) | (dh > 0), np.where(dh > 0, np.minimum(dh, sed), (sed - cap) * deposit), 0.0)
+            ero = np.where((sed <= cap) & (dh <= 0), np.minimum((cap - sed) * erode, -dh * 0.35), 0.0)
+            amt = (dep - ero) * alive
+            sed = np.minimum(sed - amt, max_sed)
+            # 3x3 brush (smooth gullies, no single-cell pits/spikes)
+            for oy in (-1, 0, 1):
+                for ox in (-1, 0, 1):
+                    w = (0.25 if oy == 0 and ox == 0 else (0.125 if oy == 0 or ox == 0 else 0.0625))
+                    np.add.at(zs, (np.clip(y0 + oy, 0, Hh - 1), np.clip(x0 + ox, 0, Ww - 1)), amt * w)
+            sp = np.minimum(np.sqrt(np.maximum(sp * sp - dh * gravity, 0.0)), 6.0)
+            wat *= (1 - evap)
+            px, py = nx, ny
+            if not alive.any():
+                break
+    out = zs * MPP
+    out = z + np.clip(out - z, -18.0, 8.0)  # safety bound (numerical pits/spikes)
+    out[fixed] = z[fixed]
+    # light smoothing of pitting
+    return (0.7 * out + 0.3 * cv2.GaussianBlur(out, (0, 0), 0.8)).astype(np.float32)
+
+
+def thermal_erosion(z, fixed, talus=0.85, iters=60, rate=0.35):
+    """Relax slopes steeper than `talus` (rise/run) by moving material downhill to the
+    steepest neighbour (8-connected). Water cells stay fixed. Natural talus aprons,
+    rounded ridge crests, no vertical walls."""
+    z = z.astype(np.float64).copy()
+    lim = talus * MPP
+    offs = [(-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0), (-1, -1, 1.414), (-1, 1, 1.414), (1, -1, 1.414), (1, 1, 1.414)]
+    free = ~fixed
+    for _ in range(iters):
+        delta = np.zeros_like(z)
+        pad = np.pad(z, 1, mode='edge')
+        best = np.zeros_like(z); bdx = np.zeros(z.shape, np.int8); bdy = np.zeros(z.shape, np.int8)
+        for dy, dx, dist in offs:
+            nb = pad[1 + dy:1 + dy + z.shape[0], 1 + dx:1 + dx + z.shape[1]]
+            ex = (z - nb) / dist - lim
+            sel = ex > best
+            best = np.where(sel, ex, best); bdx = np.where(sel, dx, bdx); bdy = np.where(sel, dy, bdy)
+        mv = best * rate * 0.5 * free
+        delta -= mv
+        for dy, dx, _ in offs:
+            m = (bdx == dx) & (bdy == dy)
+            add = np.zeros_like(z)
+            add[max(0, dy):z.shape[0] + min(0, dy), max(0, dx):z.shape[1] + min(0, dx)] = (mv * m)[max(0, -dy):z.shape[0] - max(0, dy), max(0, -dx):z.shape[1] - max(0, dx)]
+            delta += add * free
+        z += delta
+    return z.astype(np.float32)
+
+
 def main():
     cfg = load_json(path('data/manual/terrain.json'))
     wmask = np.load(path('tools/.cache/water_mask.npy'))
@@ -239,7 +322,7 @@ def main():
     rel = cfg['relief']
     Aeff = A + rel['rock_amplitude_bonus_m'] * rk * (A / 200)
     s0 = rel['base_slope_m_per_px'] + rel['rock_slope_bonus'] * rk
-    relief = Aeff * (1 - np.exp(-d * s0 / np.maximum(Aeff, 1)))
+    relief = Aeff * (1 - np.exp(-(d * s0 / np.maximum(Aeff, 1)) ** 0.8))
     # round off apexes (distance fields make conical tops): scale-aware smoothing
     r1 = cv2.GaussianBlur(relief, (0, 0), 4)
     r2 = cv2.GaussianBlur(relief, (0, 0), 10)
@@ -278,6 +361,20 @@ def main():
     depth = np.clip(0.6 + 0.35 * wdt, 0.6, 4.5)
     elev = np.where(wmask, surf - depth, elev)
     elev = elev.astype(np.float32)
+
+    fixed = wmask | (cv2.dilate(wmask.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+    # erode at 5 m cells (broader gullies), apply the upsampled change at full res
+    lo = cv2.resize(elev, (W // 2, H // 2), interpolation=cv2.INTER_AREA)
+    flo = cv2.resize(fixed.astype(np.uint8), (W // 2, H // 2), interpolation=cv2.INTER_NEAREST) > 0
+    MPP_SAVE = globals()['MPP']; globals()['MPP'] = MPP_SAVE * 2
+    elo = hydraulic_erosion(lo, flo, n=cfg['relief'].get('droplets', 180000))
+    globals()['MPP'] = MPP_SAVE
+    dz = cv2.resize((elo - lo).astype(np.float32), (W, H), interpolation=cv2.INTER_CUBIC)
+    dz = cv2.GaussianBlur(dz, (0, 0), 1.0)
+    dz[fixed] = 0
+    wr = np.clip((relief * bank - 12.0) / 35.0, 0, 1)  # only sculpt real slopes, not valley floors
+    elev = (elev + dz * cv2.GaussianBlur(wr.astype(np.float32), (0, 0), 3)).astype(np.float32)
+    elev = thermal_erosion(elev, fixed, talus=cfg['relief'].get('talus', 0.9), iters=cfg['relief'].get('erosion_iters', 120), rate=0.9)
 
     # hydrology guarantee: along every channel the bed never rises downstream
     for k, L in lines.items():

@@ -12,6 +12,9 @@ Object naming = world IDs, so primitives can be swapped for real assets one by o
 """
 import bpy, bmesh, json, math, os, sys
 import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lib_trees as LT
+import lib_materials as LM
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -91,7 +94,38 @@ def mesh_obj(name, verts, faces, coll, uvs=None, mat=None, smooth=False, attrs=N
 
 
 # ------------------------------------------------------------------ terrain
+def _blur(a, r):
+    # separable box blur x3 ~ gaussian (numpy only; Blender python has no scipy)
+    for _ in range(3):
+        k = 2 * r + 1
+        c = np.cumsum(np.pad(a, ((0, 0), (r + 1, r)), mode='edge'), 1); a = (c[:, k:] - c[:, :-k]) / k
+        c = np.cumsum(np.pad(a, ((r + 1, r), (0, 0)), mode='edge'), 0); a = (c[k:] - c[:-k]) / k
+    return a
+
+
+def landuse_weights():
+    lu = np.fromfile(P('public/world/landuse_u8.bin'), np.uint8).reshape(H, W)
+    rm = np.zeros((H, W), np.float32)
+    for f in load('data/roads/roads.geojson')['features']:
+        c = np.asarray(f['geometry']['coordinates'])[:, :2]
+        for a, b in zip(c[:-1], c[1:]):
+            n = int(max(2, np.hypot(*(b - a)) * 2))
+            xs = np.clip(np.linspace(a[0], b[0], n).astype(int), 0, W - 1); ys = np.clip(np.linspace(a[1], b[1], n).astype(int), 0, H - 1)
+            rm[ys, xs] = 1
+    wet = (lu == 1).astype(np.float32)
+    layers = [np.isin(lu, [4]), np.isin(lu, [5]), np.isin(lu, [7, 8, 9, 10, 11]), np.isin(lu, [6]), np.isin(lu, [2, 3])]
+    out = [_blur(l.astype(np.float32), 1) for l in layers]
+    out.append(np.clip(_blur(wet, 2) * 2.2, 0, 1) * (1 - wet))
+    out.append(np.clip(_blur(rm, 1) * 1.6, 0, 1))
+    return np.stack(out).astype(np.float32)
+
+
+LUW = None
+
+
 def build_terrain(coll, mat):
+    global LUW
+    LUW = landuse_weights()
     objs = []
     for cy in range(0, math.ceil(H / CHUNK)):
         for cx in range(0, math.ceil(W / CHUNK)):
@@ -109,7 +143,12 @@ def build_terrain(coll, mat):
             a = (jj * nx + ii).ravel()
             faces = np.stack([a, a + nx, a + nx + 1, a + 1], 1)
             uvs = np.stack([gx.ravel() / W, 1 - gy.ravel() / H], 1)
-            ob = mesh_obj(f'TERRAIN_C{cx:02d}_{cy:02d}', verts, faces, coll, uvs=uvs, mat=mat, smooth=True)
+            xi = np.clip(gx.ravel().astype(int), 0, W - 1); yi = np.clip(gy.ravel().astype(int), 0, H - 1)
+            A = LUW[:, yi, xi].T  # field, meadow, developed, rock, forest, bank, shoulder
+            lu_a = np.c_[A[:, 0], A[:, 1], A[:, 2], A[:, 3]]
+            lu_b = np.c_[A[:, 4], A[:, 5], A[:, 6], np.ones(len(A))]
+            ob = mesh_obj(f'TERRAIN_C{cx:02d}_{cy:02d}', verts, faces, coll, uvs=uvs, mat=mat, smooth=True,
+                          attrs={'lu_a': ('POINT', 'FLOAT_COLOR', lu_a), 'lu_b': ('POINT', 'FLOAT_COLOR', lu_b)})
             objs.append(ob)
     return objs
 
@@ -502,11 +541,11 @@ def foliage_material(name, base):
 
 def make_materials():
     return {
-        'hwy': simple('MAT_Road_Asphalt_Hwy', (0.055, 0.056, 0.06), 0.8, var=0.25, noise_scale=6, bump=0.05),
-        'city': simple('MAT_Road_Asphalt_City', (0.07, 0.07, 0.072), 0.85, var=0.25, noise_scale=6, bump=0.05),
-        'local': simple('MAT_Road_Asphalt_Local', (0.085, 0.083, 0.078), 0.9, var=0.3, noise_scale=5, bump=0.05),
-        'chip': simple('MAT_Road_Chipseal', (0.13, 0.12, 0.1), 0.95, var=0.3, noise_scale=8, bump=0.1),
-        'gravel': simple('MAT_Road_Gravel', (0.3, 0.27, 0.21), 1.0, var=0.4, noise_scale=12, bump=0.2),
+        'hwy': LM.pbr('MAT_Road_Asphalt_Hwy', 'asphalt_02', 5.0, (0.24, 0.24, 0.25, 1), 0.8),
+        'city': LM.pbr('MAT_Road_Asphalt_City', 'asphalt_02', 5.0, (0.27, 0.27, 0.27, 1), 0.85),
+        'local': LM.pbr('MAT_Road_Asphalt_Local', 'asphalt_02', 5.0, (0.3, 0.29, 0.28, 1), 0.9),
+        'chip': LM.pbr('MAT_Road_Chipseal', 'asphalt_02', 4.0, (0.36, 0.33, 0.29, 1), 0.95),
+        'gravel': LM.pbr('MAT_Road_Gravel', 'gravel_road', 4.0, (1, 0.95, 0.85, 1), 1.0),
         'dirt': simple('MAT_Road_RedClay', (0.33, 0.17, 0.09), 1.0, var=0.35, noise_scale=6, bump=0.2),
         'yellow': simple('MAT_Marking_Yellow', (0.75, 0.52, 0.08), 0.6, var=0.1),
         'white': simple('MAT_Marking_White', (0.78, 0.77, 0.72), 0.6, var=0.1),
@@ -515,7 +554,7 @@ def make_materials():
         'ballast': simple('MAT_Rail_Ballast', (0.2, 0.18, 0.16), 1.0, var=0.4, noise_scale=20, bump=0.3),
         'tie': simple('MAT_Rail_Ties', (0.1, 0.07, 0.05), 0.95, var=0.2),
         'rail': simple('MAT_Rail_Steel', (0.35, 0.34, 0.33), 0.35, metal=0.9, var=0.05),
-        'terrain': terrain_material(),
+        'terrain': LM.terrain_material(P('data/terrain/albedo_2x.jpg')),
         'water': water_material(),
         'backdrop': simple('MAT_Backdrop', (0.025, 0.045, 0.022), 1.0, var=0.5, noise_scale=0.01, bump=0.4),
     }
@@ -600,35 +639,55 @@ def srgb2lin(c):
     return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
 
 
+# early-autumn Blue Ridge palette (linear tints; foliage cards are neutral olive)
+PAL = {  # graphics ref: deep olive greens, ~35% warm ochre/amber/rust accents in the hardwoods
+    'oak':    [((0.07, 0.085, 0.035), 0.45), ((0.09, 0.09, 0.035), 0.2), ((0.19, 0.11, 0.03), 0.2), ((0.2, 0.07, 0.025), 0.15)],
+    'maple':  [((0.075, 0.085, 0.035), 0.3), ((0.28, 0.1, 0.02), 0.3), ((0.27, 0.055, 0.02), 0.2), ((0.26, 0.15, 0.03), 0.2)],
+    'poplar': [((0.085, 0.095, 0.035), 0.45), ((0.22, 0.15, 0.035), 0.4), ((0.14, 0.115, 0.035), 0.15)],
+    'dogwood': [((0.08, 0.1, 0.04), 0.4), ((0.26, 0.05, 0.03), 0.6)],
+    'pine':   [((0.05, 0.08, 0.045), 0.6), ((0.06, 0.09, 0.045), 0.4)],
+    'hemlock': [((0.04, 0.068, 0.042), 0.7), ((0.05, 0.075, 0.045), 0.3)],
+}
+FAMILY = {'A': 'oak', 'B': 'maple', 'C': 'poplar', 'D': 'dogwood', 'E': 'pine', 'F': 'hemlock'}
+
+
 def build_vegetation(coll, protos):
     tr = np.fromfile(P('public/world/trees.bin'), '<f4').reshape(-1, 5)
     rng = np.random.default_rng(5)
     bx, by, _ = px2b(tr[:, 0], tr[:, 1], 0)
-    z = tr[:, 2] - 0.4
+    z = tr[:, 2] - 0.3
     kind = tr[:, 4].astype(np.int32)
-    # prototype id: hardwoods -> oak/poplar/maple, conifers -> white pine/hemlock
-    proto = np.where(kind == 1, 3 + rng.integers(0, 2, len(tr)), rng.choice(3, len(tr), p=[0.4, 0.3, 0.3])).astype(np.int32)
-    hw = srgb2lin(HARDWOOD); cf = srgb2lin(CONIFER)
-    pick_h = rng.choice(len(HARDWOOD), len(tr), p=np.asarray(HARD_W) / sum(HARD_W))
-    pick_c = rng.integers(0, len(CONIFER), len(tr))
-    col = np.where(kind[:, None] == 1, cf[pick_c], hw[pick_h])
-    col = np.c_[col * (0.55 + 0.25 * rng.random((len(tr), 1))), np.ones(len(tr))]
-    scale = tr[:, 3] * np.where(kind == 1, 1.25, 1.2)
+    names = [p.name for p in protos]  # alphabetical == Collection Info child order
+    hw = [i for i, n in enumerate(names) if n[0] in 'ABC']
+    hw_w = np.array([{'A': 0.42, 'B': 0.33, 'C': 0.25}[names[i][0]] / sum(1 for j in hw if names[j][0] == names[i][0]) for i in hw])
+    cf = [i for i, n in enumerate(names) if n[0] in 'EF']
+    dg = [i for i, n in enumerate(names) if n[0] == 'D']
+    proto = np.where(kind == 1, rng.choice(cf, len(tr)), rng.choice(hw, len(tr), p=hw_w / hw_w.sum()))
+    under = (kind == 0) & (rng.random(len(tr)) < 0.06)
+    proto[under] = rng.choice(dg, under.sum())
+    col = np.zeros((len(tr), 4), np.float32); col[:, 3] = 1
+    for i, n in enumerate(names):
+        sel = proto == i
+        if not sel.any():
+            continue
+        pal = PAL[FAMILY[n[0]]]
+        cols = np.array([c for c, _ in pal]); w = np.array([w for _, w in pal])
+        pick = rng.choice(len(pal), sel.sum(), p=w / w.sum())
+        col[sel, :3] = cols[pick] * (0.82 + 0.36 * rng.random((sel.sum(), 1)))
+    scale = tr[:, 3] * (0.85 + 0.3 * rng.random(len(tr)))
     me = bpy.data.meshes.new('VEG_points')
     me.vertices.add(len(tr))
     me.vertices.foreach_set('co', np.stack([bx, by, z], 1).astype(np.float32).ravel())
     for n, typ, data in (('kind', 'INT', proto), ('scale', 'FLOAT', scale), ('rot', 'FLOAT', rng.random(len(tr)) * 6.283)):
         a = me.attributes.new(n, typ, 'POINT'); a.data.foreach_set('value', np.asarray(data, np.int32 if typ == 'INT' else np.float32))
-    a = me.attributes.new('tint', 'FLOAT_COLOR', 'POINT'); a.data.foreach_set('color', col.astype(np.float32).ravel())
+    a = me.attributes.new('tint', 'FLOAT_COLOR', 'POINT'); a.data.foreach_set('color', col.ravel())
     ob = bpy.data.objects.new('VEG_points', me); coll.objects.link(ob)
-    # geometry nodes: instance prototypes by kind with scale + rotation
     pc = collection('VEG_prototypes', coll)
     for p in protos:
         for c in list(p.users_collection):
             c.objects.unlink(p)
         pc.objects.link(p)
         p.location = (0, 0, 0)
-    pc.hide_render = False
     ng = bpy.data.node_groups.new('GN_TreeScatter', 'GeometryNodeTree')
     ng.interface.new_socket('Geometry', in_out='INPUT', socket_type='NodeSocketGeometry')
     ng.interface.new_socket('Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
@@ -652,6 +711,11 @@ def build_vegetation(coll, protos):
 # ------------------------------------------------------------------ lighting / world / cameras
 def setup_world():
     sc = bpy.context.scene
+    _setup_world_base(sc)
+    LM.hdri_world(P('assets/external/polyhaven/kloppenheim_06_puresky/kloppenheim_06_puresky_4k.hdr'), float(ARG('--sky', 0.8)), float(ARG('--skyrot', 0)))
+
+
+def _setup_world_base(sc):
     world = bpy.data.worlds.get('World') or bpy.data.worlds.new('World')
     sc.world = world
     world.use_nodes = True
@@ -665,18 +729,30 @@ def setup_world():
     out = nt.nodes.new('ShaderNodeOutputWorld')
     nt.links.new(sky.outputs[0], bg.inputs[0]); nt.links.new(bg.outputs[0], out.inputs['Surface'])
     # atmospheric perspective via mist pass (compositor) - cheaper and more controllable than a world volume
-    world.mist_settings.start = 250; world.mist_settings.depth = 9000; world.mist_settings.falloff = 'QUADRATIC'
+    world.mist_settings.start = 1100; world.mist_settings.depth = 9000; world.mist_settings.falloff = 'LINEAR'
     sc.view_layers[0].use_pass_mist = True
+    sc.view_layers[0].use_pass_z = True
     sc.use_nodes = True
     ct = sc.node_tree
     for n in list(ct.nodes):
         ct.nodes.remove(n)
     rl = ct.nodes.new('CompositorNodeRLayers'); comp = ct.nodes.new('CompositorNodeComposite')
-    mix = ct.nodes.new('CompositorNodeMixRGB'); mix.blend_type = 'MIX'; mix.inputs[2].default_value = (0.62, 0.70, 0.80, 1)
-    mul = ct.nodes.new('CompositorNodeMath'); mul.operation = 'MULTIPLY'; mul.inputs[1].default_value = 0.72
-    ct.links.new(rl.outputs['Mist'], mul.inputs[0]); ct.links.new(mul.outputs[0], mix.inputs[0])
-    ct.links.new(rl.outputs['Image'], mix.inputs[1]); ct.links.new(mix.outputs[0], comp.inputs[0])
-    sun = bpy.data.lights.new('SUN', 'SUN'); sun.energy = 2.4; sun.angle = math.radians(1.2); sun.color = (1.0, 0.82, 0.62)
+    mix = ct.nodes.new('CompositorNodeMixRGB'); mix.blend_type = 'MIX'; mix.inputs[2].default_value = (0.5, 0.6, 0.78, 1)
+    mul = ct.nodes.new('CompositorNodeMath'); mul.operation = 'MULTIPLY'; mul.inputs[1].default_value = 0.8
+    # mist only on geometry (the sky is at infinite depth and keeps its own colour)
+    geo_mask = ct.nodes.new('CompositorNodeMath'); geo_mask.operation = 'LESS_THAN'; geo_mask.inputs[1].default_value = 30000
+    ct.links.new(rl.outputs['Depth'], geo_mask.inputs[0])
+    mm = ct.nodes.new('CompositorNodeMath'); mm.operation = 'MULTIPLY'
+    ct.links.new(rl.outputs['Mist'], mul.inputs[0]); ct.links.new(mul.outputs[0], mm.inputs[0]); ct.links.new(geo_mask.outputs[0], mm.inputs[1])
+    ct.links.new(mm.outputs[0], mix.inputs[0])
+    ct.links.new(rl.outputs['Image'], mix.inputs[1])
+    # cinematic grade (graphics ref: warm highlights, cool shadows, rich saturation)
+    cb = ct.nodes.new('CompositorNodeColorBalance'); cb.correction_method = 'LIFT_GAMMA_GAIN'
+    cb.lift = (0.97, 0.99, 1.04); cb.gamma = (1.02, 1.0, 0.97); cb.gain = (1.08, 1.02, 0.9)
+    hs = ct.nodes.new('CompositorNodeHueSat'); hs.inputs['Saturation'].default_value = 1.18
+    ct.links.new(mix.outputs[0], cb.inputs[1]); ct.links.new(cb.outputs[0], hs.inputs['Image'])
+    ct.links.new(hs.outputs[0], comp.inputs[0])
+    sun = bpy.data.lights.new('SUN', 'SUN'); sun.energy = 6.0; sun.angle = math.radians(0.8); sun.color = (1.0, 0.7, 0.44)
     so = bpy.data.objects.new('SUN', sun); sc.collection.objects.link(so)
     so.rotation_euler = (math.radians(90 - 13), 0, math.radians(250 + 90))
 
@@ -699,6 +775,7 @@ def setup_cameras():
     c = collection('CAMERAS')
     cams = {
         # hero: from the ridge south-west of Hollow Ridge looking up the valley (graphics ref composition)
+        'CAM_Ref_Match': cam('CAM_Ref_Match', (858, 286, 45), (1300, 380, 90), 27, c),
         'CAM_HollowRidge_Overlook': cam('CAM_HollowRidge_Overlook', (1190, 470, 120), (1060, 360, 10), 26, c),
         'CAM_HollowRidge_Valley': cam('CAM_HollowRidge_Valley', (930, 480, 140), (1060, 350, 0), 26, c),
         'CAM_Tannersville': cam('CAM_Tannersville', (1520, 330, 140), (1720, 250, 0), 28, c),
@@ -722,13 +799,14 @@ def render_settings(samples=48):
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
     sc.cycles.max_bounces = 4
+    sc.cycles.transparent_max_bounces = 12
     sc.cycles.volume_bounces = 0
     sc.cycles.volume_step_rate = 8.0
     sc.render.resolution_x, sc.render.resolution_y = 1600, 900
     sc.view_settings.view_transform = 'AgX'
     sc.view_settings.exposure = -0.4
     try:
-        sc.view_settings.look = 'AgX - Medium High Contrast'
+        sc.view_settings.look = 'AgX - Punchy'
     except TypeError:
         pass
     sc.render.image_settings.file_format = 'JPEG'
@@ -753,7 +831,7 @@ def main():
     if not OPT('--no-trees'):
         print('vegetation...')
         vc = collection('VEGETATION', root)
-        build_vegetation(vc, tree_prototypes(vc, mats))
+        build_vegetation(vc, LT.build_prototypes(vc))
     collection('BUILDINGS (deferred)', root)
     setup_world()
     cams = setup_cameras()
@@ -769,7 +847,7 @@ def main():
         # instance data (public/world/trees.bin) since 245k GPU instances bloat glTF viewers
         bpy.ops.object.select_all(action='DESELECT')
         for o in bpy.data.objects:
-            if not o.name.startswith(('VEG_', 'P0_', 'P1_', 'P2_', 'P3_', 'P4_', 'BACKDROP')) and o.type in ('MESH', 'CAMERA'):
+            if not (o.name.startswith(('VEG_', 'BACKDROP')) or o.name[:2] in ('A_', 'B_', 'C_', 'D_', 'E_', 'F_')) and o.type in ('MESH', 'CAMERA'):
                 o.select_set(True)
         bpy.ops.export_scene.gltf(filepath=glb, export_format='GLB', use_selection=True, export_apply=True,
                                   export_extras=True, export_cameras=True, export_draco_mesh_compression_enable=True)

@@ -16,6 +16,43 @@ sc.render.threads_mode = 'AUTO'
 outdir = os.path.join(ROOT, ARG('--outdir', 'exports/renders'))
 os.makedirs(outdir, exist_ok=True)
 cams = ARG('--cams', 'CAM_HollowRidge_Overlook').split(',')
+import math
+from mathutils import Vector
+HDRI_SUN_MATH_DEG = 139.8  # measured: kloppenheim_06 sun direction in HDRI space (atan2(y, x)), elev 4.6 deg
+HDRI_MIRROR = 325.0  # empirical: equirect azimuth is mirrored relative to world compass
+
+
+def set_sun(az_compass, el):
+    th = math.radians(90 - az_compass)
+    d = Vector((math.cos(th) * math.cos(math.radians(el)), math.sin(th) * math.cos(math.radians(el)), math.sin(math.radians(el))))
+    so = bpy.data.objects.get('SUN')
+    if so:
+        so.rotation_euler = (-d).to_track_quat('-Z', 'Y').to_euler()
+    for n in sc.world.node_tree.nodes:
+        if n.type == 'MAPPING':
+            n.inputs['Rotation'].default_value[2] = math.radians(HDRI_SUN_MATH_DEG - (90 - (HDRI_MIRROR - az_compass)))
+
+
+if ARG('--sun'):
+    az, el = map(float, ARG('--sun').split(','))
+    set_sun(az, el)
+if ARG('--sun-energy'):
+    bpy.data.lights['SUN'].energy = float(ARG('--sun-energy'))
+if ARG('--exposure'):
+    sc.view_settings.exposure = float(ARG('--exposure'))
+if ARG('--sky'):
+    for n in sc.world.node_tree.nodes:
+        if n.type == 'BACKGROUND':
+            n.inputs['Strength'].default_value = float(ARG('--sky'))
+if ARG('--mist'):
+    for n in sc.node_tree.nodes:
+        if n.type == 'MATH':
+            n.inputs[1].default_value = float(ARG('--mist'))
+if ARG('--hide'):
+    for pre in ARG('--hide').split(','):
+        for o in bpy.data.objects:
+            if o.name.startswith(pre):
+                o.hide_render = True
 for c in cams:
     ob = bpy.data.objects[c]
     sc.camera = ob

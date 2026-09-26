@@ -5,3 +5,4 @@ __pycache__/
 public/world/
 tools/qa/dbg.mjs
 exports/
+assets/external/
