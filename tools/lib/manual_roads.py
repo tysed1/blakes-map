@@ -46,7 +46,7 @@ def traced(r):
     mode = r.get('mode') or ('center' if r['type'] in CENTER_TYPES else 'livewire')
     width = r.get('width_px', WIDTH_PX.get(r['type'], 5.0))
     smooth = r.get('smooth', SMOOTH.get(r['type'], 5.0))
-    key = hashlib.sha1(json.dumps([r['wp'], kind, sigma, snap, mode, width, smooth, 6], sort_keys=True).encode()).hexdigest()[:12]
+    key = hashlib.sha1(json.dumps([r['wp'], kind, sigma, snap, mode, width, smooth, 7], sort_keys=True).encode()).hexdigest()[:12]
     cp = os.path.join(CACHE, f"{r['id']}_{key}.json")
     if os.path.exists(cp):
         return np.array(load_json(cp))

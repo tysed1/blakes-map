@@ -1,10 +1,11 @@
 {
  "_doc": "Engineered freeway interchanges, generated parametrically by tools/lib/interchange.py. kind 'diamond': 4 one-way ramps (exit before / entrance after the crossroad, per direction), crossroad carried OVER the freeway. ramp_offset_px = freeway distance from crossing to the ramp gore; terminal_offset_px = distance along the crossroad from the freeway centreline to each ramp terminal. 1 px = 2.5 m.",
  "defaults": {
-  "ramp_offset_px": 72,
-  "terminal_offset_px": 16,
-  "taper_px": 22,
-  "clearance_m": 7.5
+  "ramp_offset_px": 100,
+  "terminal_offset_px": 26,
+  "taper_px": 24,
+  "clearance_m": 7.5,
+  "terminal_lean": 0.35
  },
  "interchanges": [
   {
@@ -24,7 +25,15 @@
    "crossroad": [
     "HWY_US76"
    ],
-   "ramp_offset_px": 55
+   "ramp_offset_px": 80,
+   "ramp_offset_by": {
+    "entrance_southbound": 54,
+    "exit_northbound": 50
+   },
+   "note": "Compressed diamond: the south-side ramps are short because SR 60 crosses the Tanner immediately south; the NB exit crosses the creek inlet on a short structure.",
+   "terminal_offset_px": 22,
+   "taper_px": 12,
+   "curve_k": 0.42
   },
   {
    "id": "IC_TV_SR60_RIVERFRONT",

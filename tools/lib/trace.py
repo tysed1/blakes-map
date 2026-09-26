@@ -242,8 +242,26 @@ def _center_pass(curve, width, R, smooth, pin_ends):
         best = median_filter(best, size=9, mode='nearest')
         best = gaussian_filter1d(best, smooth, mode='nearest')
         if pin_ends:
-            ramp = np.minimum(1, np.minimum(np.arange(len(best)), np.arange(len(best))[::-1]) / 6.0)
-            best *= ramp
+            # taper the correction to zero over a length proportional to the road width
+            # (a 6-sample ramp produced S-hooks at every junction); ends on the map border
+            # are free (the road continues off-map).
+            n = len(best)
+            Lt = max(18.0, 2.5 * width)
+            i = np.arange(n, dtype=float)
+            r0 = np.clip(i / Lt, 0, 1); r1 = np.clip((n - 1 - i) / Lt, 0, 1)
+            sm = lambda r: r * r * (3 - 2 * r)
+            edge = lambda p: min(p[0], p[1], W - p[0], H - p[1]) < 2.0
+            if edge(curve[0]):
+                r0 = np.ones(n)
+            if edge(curve[-1]):
+                r1 = np.ones(n)
+            best *= sm(r0) * sm(r1)
+        e0, e1 = curve[0].copy(), curve[-1].copy()
         curve = curve + nrm * best[:, None]
+        for k, e in ((0, e0), (-1, e1)):  # border ends stay on the border
+            if e[0] < 2.0 or e[0] > W - 2.0:
+                curve[k, 0] = e[0]
+            if e[1] < 2.0 or e[1] > H - 2.0:
+                curve[k, 1] = e[1]
         curve = resample(curve, 1.0)
     return curve

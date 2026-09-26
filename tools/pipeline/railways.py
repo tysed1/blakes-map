@@ -12,7 +12,8 @@ from tools.lib.geom import geojson_line, fc, polyline_length
 wb = load_json(path('data/water/water_bodies.geojson'))
 water = unary_union([shape(f['geometry']) for f in wb['features']])
 feats = []
-for r, pts in all_traced():
+from tools.lib.engineer import design_alignments
+for r, pts in design_alignments(all_traced()):
     if r['type'] != 'rail':
         continue
     simp = rdp(pts, 0.25)

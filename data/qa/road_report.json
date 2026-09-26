@@ -1,223 +1,71 @@
 {
  "summary": {
-  "duplicate:error": 1,
-  "radius:warn": 59,
-  "sharp_angle:error": 2,
-  "short_edge:warn": 6
+  "radius:warn": 20,
+  "short_edge:warn": 3
  },
  "components": 1,
- "edges": 1597,
- "nodes": 1157,
+ "edges": 1387,
+ "nodes": 1038,
  "issues": [
   {
-   "kind": "sharp_angle",
-   "severity": "error",
+   "kind": "radius",
+   "severity": "warn",
    "at": [
-    668.1,
-    93.5
+    96.2,
+    488.1
    ],
-   "msg": "legs meet at 14 deg (driveway, gravel)",
-   "ref": "RU_JCT_0401"
-  },
-  {
-   "kind": "sharp_angle",
-   "severity": "error",
-   "at": [
-    1978.8,
-    241.5
-   ],
-   "msg": "legs meet at 5 deg (collector)",
-   "ref": "TV_JCT_1146"
+   "msg": "LC_RD_2609 (residential) curve radius 9 m < 12 m",
+   "ref": "LC_RD_2609"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    22.4,
-    208.5
+    109.7,
+    215.2
    ],
-   "msg": "LC_RD_1581 (collector) curve radius 26 m < 35 m",
-   "ref": "LC_RD_1581"
+   "msg": "LC_RD_2679 (residential) curve radius 8 m < 12 m",
+   "ref": "LC_RD_2679"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    13.2,
-    60.3
+    199.3,
+    49.3
    ],
-   "msg": "LC_RD_0047 (freeway) curve radius 280 m < 350 m",
-   "ref": "LC_RD_0047"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    102.6,
-    80.8
-   ],
-   "msg": "LC_RD_0080 (freeway) curve radius 71 m < 350 m",
-   "ref": "LC_RD_0080"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    84.9,
-    451.4
-   ],
-   "msg": "LC_RD_2255 (urban_street) curve radius 9 m < 12 m",
-   "ref": "LC_RD_2255"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    92.9,
-    54.0
-   ],
-   "msg": "LC_RD_1649 (arterial) curve radius 48 m < 60 m",
-   "ref": "LC_RD_1649"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    101.6,
-    20.0
-   ],
-   "msg": "LC_RD_1653 (arterial) curve radius 50 m < 60 m",
-   "ref": "LC_RD_1653"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    12.5,
-    357.7
-   ],
-   "msg": "LC_RD_2546 (freeway) curve radius 172 m < 350 m",
-   "ref": "LC_RD_2546"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    134.0,
-    653.9
-   ],
-   "msg": "LC_RD_0228 (highway) curve radius 118 m < 150 m",
-   "ref": "LC_RD_0228"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    161.8,
-    355.9
-   ],
-   "msg": "LC_RD_2277 (urban_street) curve radius 10 m < 12 m",
-   "ref": "LC_RD_2277"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    123.2,
-    96.8
-   ],
-   "msg": "LC_RD_2363 (freeway) curve radius 193 m < 350 m",
-   "ref": "LC_RD_2363"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    176.8,
-    375.2
-   ],
-   "msg": "LC_RD_2460 (urban_street) curve radius 10 m < 12 m",
-   "ref": "LC_RD_2460"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    197.6,
-    377.9
-   ],
-   "msg": "LC_RD_2469 (urban_street) curve radius 8 m < 12 m",
-   "ref": "LC_RD_2469"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    200.5,
-    48.8
-   ],
-   "msg": "LC_RD_0553 (residential) curve radius 9 m < 12 m",
+   "msg": "LC_RD_0553 (residential) curve radius 10 m < 12 m",
    "ref": "LC_RD_0553"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    220.0,
-    132.6
+    222.7,
+    334.5
    ],
-   "msg": "LC_RD_2471 (residential) curve radius 10 m < 12 m",
-   "ref": "LC_RD_2471"
+   "msg": "LC_RD_2773 (residential) curve radius 10 m < 12 m",
+   "ref": "LC_RD_2773"
+  },
+  {
+   "kind": "short_edge",
+   "severity": "warn",
+   "at": [
+    234.5,
+    347.5
+   ],
+   "msg": "LC_RD_2692 only 3.1 m between junctions",
+   "ref": "LC_RD_2692"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    226.8,
-    475.5
+    247.7,
+    514.7
    ],
-   "msg": "LC_RD_2474 (highway) curve radius 109 m < 150 m",
-   "ref": "LC_RD_2474"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    224.4,
-    203.6
-   ],
-   "msg": "LC_RD_1858 (residential) curve radius 9 m < 12 m",
-   "ref": "LC_RD_1858"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    253.4,
-    211.5
-   ],
-   "msg": "LC_RD_2379 (arterial) curve radius 46 m < 60 m",
-   "ref": "LC_RD_2379"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    273.2,
-    434.9
-   ],
-   "msg": "LC_RD_2492 (highway) curve radius 70 m < 150 m",
-   "ref": "LC_RD_2492"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    272.5,
-    185.6
-   ],
-   "msg": "LC_RD_2496 (arterial) curve radius 42 m < 60 m",
-   "ref": "LC_RD_2496"
+   "msg": "LC_RD_2740 (residential) curve radius 7 m < 12 m",
+   "ref": "LC_RD_2740"
   },
   {
    "kind": "radius",
@@ -233,111 +81,61 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    328.6,
-    460.1
+    351.6,
+    344.2
    ],
-   "msg": "LC_RD_2558 (freeway) curve radius 292 m < 350 m",
-   "ref": "LC_RD_2558"
+   "msg": "LC_RD_2705 (urban_street) curve radius 9 m < 12 m",
+   "ref": "LC_RD_2705"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    309.5,
-    418.7
-   ],
-   "msg": "LC_RD_2392 (highway) curve radius 57 m < 150 m",
-   "ref": "LC_RD_2392"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    335.7,
-    79.6
+    336.2,
+    79.4
    ],
    "msg": "LC_RD_2229 (residential) curve radius 10 m < 12 m",
    "ref": "LC_RD_2229"
   },
   {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    332.0,
-    393.5
-   ],
-   "msg": "LC_RD_2178 (highway) curve radius 50 m < 150 m",
-   "ref": "LC_RD_2178"
-  },
-  {
    "kind": "short_edge",
    "severity": "warn",
    "at": [
-    337.6,
-    478.3
+    362.2,
+    496.8
    ],
-   "msg": "LC_RD_2567 only 1.5 m between junctions",
-   "ref": "LC_RD_2567"
+   "msg": "LC_RD_2716 only 3.1 m between junctions",
+   "ref": "LC_RD_2716"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    338.1,
-    615.5
+    367.2,
+    226.4
    ],
-   "msg": "LC_RD_2401 (arterial) curve radius 45 m < 60 m",
-   "ref": "LC_RD_2401"
+   "msg": "LC_RD_2181 (residential) curve radius 9 m < 12 m",
+   "ref": "LC_RD_2181"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    364.1,
-    368.4
+    426.2,
+    497.9
    ],
-   "msg": "LC_RD_2592 (arterial) curve radius 47 m < 60 m",
-   "ref": "LC_RD_2592"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    385.6,
-    382.6
-   ],
-   "msg": "LC_RD_2529 (arterial) curve radius 13 m < 60 m",
-   "ref": "LC_RD_2529"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    426.3,
-    498.9
-   ],
-   "msg": "LC_RD_2536 (residential) curve radius 8 m < 12 m",
+   "msg": "LC_RD_2536 (residential) curve radius 9 m < 12 m",
    "ref": "LC_RD_2536"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    542.8,
-    654.9
+    455.9,
+    432.5
    ],
-   "msg": "LC_RD_2570 (freeway) curve radius 96 m < 350 m",
-   "ref": "LC_RD_2570"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    506.8,
-    370.5
-   ],
-   "msg": "LC_RD_2210 (residential) curve radius 10 m < 12 m",
-   "ref": "LC_RD_2210"
+   "msg": "LC_RD_2744 (residential) curve radius 7 m < 12 m",
+   "ref": "LC_RD_2744"
   },
   {
    "kind": "radius",
@@ -348,56 +146,6 @@
    ],
    "msg": "LC_RD_1521 (residential) curve radius 9 m < 12 m",
    "ref": "LC_RD_1521"
-  },
-  {
-   "kind": "short_edge",
-   "severity": "warn",
-   "at": [
-    668.1,
-    93.5
-   ],
-   "msg": "RU_RD_0484 only 0.0 m between junctions",
-   "ref": "RU_RD_0484"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    975.0,
-    398.0
-   ],
-   "msg": "HR_RD_0318 (collector) curve radius 25 m < 35 m",
-   "ref": "HR_RD_0318"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1024.8,
-    454.6
-   ],
-   "msg": "RU_RD_0556 (rural) curve radius 17 m < 20 m",
-   "ref": "RU_RD_0556"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1044.4,
-    323.4
-   ],
-   "msg": "HR_RD_0561 (collector) curve radius 25 m < 35 m",
-   "ref": "HR_RD_0561"
-  },
-  {
-   "kind": "short_edge",
-   "severity": "warn",
-   "at": [
-    1047.2,
-    305.6
-   ],
-   "msg": "HR_RD_0563 only 6.7 m between junctions",
-   "ref": "HR_RD_0563"
   },
   {
    "kind": "radius",
@@ -413,121 +161,21 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    1379.7,
-    14.9
+    1358.1,
+    217.6
    ],
-   "msg": "TV_RD_1426 (collector) curve radius 27 m < 35 m",
-   "ref": "TV_RD_1426"
-  },
-  {
-   "kind": "duplicate",
-   "severity": "error",
-   "at": [
-    1444.3,
-    294.0
-   ],
-   "msg": "TV_RD_2821 runs on top of TV_RD_2815",
-   "ref": "TV_RD_2821"
+   "msg": "TV_RD_2852 (residential) curve radius 9 m < 12 m",
+   "ref": "TV_RD_2852"
   },
   {
    "kind": "radius",
    "severity": "warn",
    "at": [
-    1495.9,
-    403.2
+    1597.0,
+    412.9
    ],
-   "msg": "TV_RD_2822 (collector) curve radius 23 m < 35 m",
-   "ref": "TV_RD_2822"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1570.7,
-    449.3
-   ],
-   "msg": "TV_RD_2825 (collector) curve radius 28 m < 35 m",
-   "ref": "TV_RD_2825"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1611.1,
-    164.1
-   ],
-   "msg": "TV_RD_2826 (collector) curve radius 24 m < 35 m",
-   "ref": "TV_RD_2826"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1613.6,
-    398.2
-   ],
-   "msg": "TV_RD_2267 (urban_street) curve radius 9 m < 12 m",
-   "ref": "TV_RD_2267"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1624.5,
-    462.4
-   ],
-   "msg": "TV_RD_2658 (collector) curve radius 29 m < 35 m",
-   "ref": "TV_RD_2658"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1640.0,
-    518.9
-   ],
-   "msg": "TV_RD_2667 (residential) curve radius 10 m < 12 m",
-   "ref": "TV_RD_2667"
-  },
-  {
-   "kind": "short_edge",
-   "severity": "warn",
-   "at": [
-    1651.8,
-    401.0
-   ],
-   "msg": "TV_RD_2308 only 4.6 m between junctions",
-   "ref": "TV_RD_2308"
-  },
-  {
-   "kind": "short_edge",
-   "severity": "warn",
-   "at": [
-    1667.1,
-    133.6
-   ],
-   "msg": "TV_RD_0512 only 7.3 m between junctions",
-   "ref": "TV_RD_0512"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1683.8,
-    570.1
-   ],
-   "msg": "TV_RD_1688 (collector) curve radius 27 m < 35 m",
-   "ref": "TV_RD_1688"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1676.8,
-    474.9
-   ],
-   "msg": "TV_RD_0567 (collector) curve radius 22 m < 35 m",
-   "ref": "TV_RD_0567"
+   "msg": "TV_RD_3158 (urban_street) curve radius 9 m < 12 m",
+   "ref": "TV_RD_3158"
   },
   {
    "kind": "radius",
@@ -543,16 +191,6 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    1718.9,
-    341.4
-   ],
-   "msg": "TV_RD_2838 (arterial) curve radius 50 m < 60 m",
-   "ref": "TV_RD_2838"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
     1742.8,
     178.8
    ],
@@ -563,131 +201,41 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    1759.9,
-    15.3
+    1808.6,
+    221.8
    ],
-   "msg": "TV_RD_0861 (highway) curve radius 115 m < 150 m",
-   "ref": "TV_RD_0861"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1799.2,
-    393.1
-   ],
-   "msg": "TV_RD_2516 (urban_street) curve radius 8 m < 12 m",
-   "ref": "TV_RD_2516"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1820.5,
-    431.2
-   ],
-   "msg": "TV_RD_2701 (urban_street) curve radius 9 m < 12 m",
-   "ref": "TV_RD_2701"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1989.2,
-    569.1
-   ],
-   "msg": "TV_RD_2848 (freeway) curve radius 175 m < 350 m",
-   "ref": "TV_RD_2848"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1843.0,
-    210.9
-   ],
-   "msg": "TV_RD_2770 (freeway) curve radius 38 m < 350 m",
-   "ref": "TV_RD_2770"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1869.8,
-    361.4
-   ],
-   "msg": "TV_RD_1185 (residential) curve radius 10 m < 12 m",
-   "ref": "TV_RD_1185"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1870.9,
-    333.9
-   ],
-   "msg": "TV_RD_2841 (collector) curve radius 30 m < 35 m",
-   "ref": "TV_RD_2841"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1903.8,
-    119.9
-   ],
-   "msg": "TV_RD_2095 (freeway) curve radius 202 m < 350 m",
-   "ref": "TV_RD_2095"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1905.1,
-    245.9
-   ],
-   "msg": "TV_RD_2850 (residential) curve radius 8 m < 12 m",
-   "ref": "TV_RD_2850"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1988.0,
-    24.3
-   ],
-   "msg": "TV_RD_2784 (freeway) curve radius 79 m < 350 m",
-   "ref": "TV_RD_2784"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1987.7,
-    383.5
-   ],
-   "msg": "TV_RD_2131 (arterial) curve radius 47 m < 60 m",
-   "ref": "TV_RD_2131"
-  },
-  {
-   "kind": "radius",
-   "severity": "warn",
-   "at": [
-    1984.3,
-    185.6
-   ],
-   "msg": "TV_RD_1406 (highway) curve radius 110 m < 150 m",
-   "ref": "TV_RD_1406"
+   "msg": "TV_RD_2949 (urban_street) curve radius 10 m < 12 m",
+   "ref": "TV_RD_2949"
   },
   {
    "kind": "short_edge",
    "severity": "warn",
    "at": [
-    1978.9,
-    241.5
+    1830.2,
+    289.3
    ],
-   "msg": "TV_RD_2842 only 0.9 m between junctions",
-   "ref": "TV_RD_2842"
+   "msg": "TV_RD_2994 only 3.8 m between junctions",
+   "ref": "TV_RD_2994"
+  },
+  {
+   "kind": "radius",
+   "severity": "warn",
+   "at": [
+    1875.0,
+    245.1
+   ],
+   "msg": "TV_RD_3051 (residential) curve radius 9 m < 12 m",
+   "ref": "TV_RD_3051"
+  },
+  {
+   "kind": "radius",
+   "severity": "warn",
+   "at": [
+    1875.7,
+    311.9
+   ],
+   "msg": "TV_RD_2080 (residential) curve radius 10 m < 12 m",
+   "ref": "TV_RD_2080"
   }
  ]
 }

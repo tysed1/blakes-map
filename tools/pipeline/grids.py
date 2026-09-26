@@ -24,8 +24,8 @@ from tools.lib.features import road_prob, hsv, water_mask
 from tools.lib.geom import rasterize_polys, mask_to_polygons
 from shapely.ops import unary_union
 
-GRID_KINDS = {'downtown': 'urban_street'}
-DEFAULTS = {'downtown': {'min_sep': 11, 'thr': 0.30}, 'town_center': {'min_sep': 15, 'thr': 0.36}}
+GRID_KINDS = {'downtown': 'urban_street', 'industrial': 'urban_street'}
+DEFAULTS = {'downtown': {'min_sep': 11, 'thr': 0.30}, 'town_center': {'min_sep': 15, 'thr': 0.36}, 'industrial': {'min_sep': 16, 'thr': 0.36}}
 
 
 def field():

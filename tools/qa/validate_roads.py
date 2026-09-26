@@ -48,6 +48,10 @@ def main():
         f['geometry']['coordinates'] = [c[:2] for c in f['geometry']['coordinates']]
     nodes = {f['properties']['id']: f for f in load_json(path('data/roads/road_nodes.geojson'))['features']}
     water = unary_union([shape(f['geometry']) for f in load_json(path('data/water/water_bodies.geojson'))['features']])
+    # barriers a street may legitimately dead-end against (a link across them is not a 'near miss')
+    rail_cor = unary_union([LineString(np.asarray(f['geometry']['coordinates'])[:, :2]).buffer(f['properties']['width_m'] / 2.5 / 2 + 1.0)
+                            for f in load_json(path('data/railways/railways.geojson'))['features']])
+    barrier = water.union(rail_cor)
     G = nx.MultiGraph()
     geoms = []
     for i, f in enumerate(roads):
@@ -79,7 +83,7 @@ def main():
             p = Point(xy)
             own = next(d['idx'] for _, _, d in G.edges(n, data=True))
             near = [j for j in tree.query(p.buffer(6)) if j != own and geoms[j].distance(p) < 6 and roads[j]['properties']['type'] not in ('freeway', 'ramp')]
-            near = [j for j in near if not LineString([xy, geoms[j].interpolate(geoms[j].project(p)).coords[0]]).intersects(water)]
+            near = [j for j in near if not LineString([xy, geoms[j].interpolate(geoms[j].project(p)).coords[0]]).intersects(barrier)]
             if near:
                 add('near_miss', xy, f"{f['properties']['id']} ({t}) ends {min(geoms[j].distance(p) for j in near) * 2.5:.1f} m from {roads[near[0]]['properties']['id']}", 'error', f['properties']['id'])
             elif xy[0] < 1.6 or xy[0] > W - 1.6 or xy[1] < 1.6 or xy[1] > H - 1.6:

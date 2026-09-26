@@ -88,6 +88,8 @@ def connect_near_misses(G, tol=7.0, water=None, log=None, tol_by_rank={3: 16.0, 
             uu, vv, kk, dd = items[j]
             if (uu, vv, kk) == (u, v, k) or dd['attrs']['type'] in NO_TOUCH:
                 continue
+            if (v if u == n else u) in (uu, vv):
+                continue  # would close a tiny loop back onto the spur's own junction
             g = geoms[j]
             dist = g.distance(p)
             if dist >= tol or dist < 1e-6:
@@ -137,8 +139,10 @@ def contract_short(G, max_len=3.0):
                 continue
             if d['attrs']['type'] in NO_TOUCH:
                 continue
-            # merge v into u at the higher-ranked side's position
-            keep, drop = (u, v)
+            # merge into the junction carrying the higher-ranked (authored) roads
+            ru = max(rank(dd) for *_, dd in G.edges(u, keys=True, data=True))
+            rv = max(rank(dd) for *_, dd in G.edges(v, keys=True, data=True))
+            keep, drop = (u, v) if ru >= rv else (v, u)
             mid = np.asarray(G.nodes[keep]['xy'])
             G.remove_edge(u, v, k)
             for a, b, kk, dd in list(G.edges(drop, keys=True, data=True)):
@@ -287,8 +291,224 @@ def prune_dead_ends(G, min_len=6.0, min_len_driveway=12.0):
         xy = G.nodes[n]['xy']
         if xy[0] < 1.5 or xy[1] < 1.5 or xy[0] > 1998.5 or xy[1] > 665.5:
             continue
-        if length(d['pts']) < (min_len_driveway if d['attrs']['type'] in ('driveway',) else min_len):
+        other = v if u == n else u
+        hairpin = any(LineString(dd['pts']).distance(Point(xy)) < 6.5
+                      for a, b, kk, dd in G.edges(other, keys=True, data=True) if (a, b, kk) != (u, v, k) and {a, b} != {u, v})
+        if hairpin or length(d['pts']) < (min_len_driveway if d['attrs']['type'] in ('driveway',) else min_len):
             G.remove_edge(u, v, k)
             G.remove_node(n)
             fixed += 1
+    return fixed
+
+
+def fix_loops(G, min_area_ratio=1.5):
+    """Self-loop edges (a street leaving a junction and returning to it).
+    * zero-length / tiny loops (snapping artefacts) are removed;
+    * degenerate out-and-back loops (thin: area small relative to length) become a
+      single dead-end spur to the loop's farthest point (or are removed if short);
+    * real loop streets (P-loops, cul-de-sac rings) are kept."""
+    from shapely.geometry import Polygon
+    fixed = 0
+    for u, v, k, d in list(G.edges(keys=True, data=True)):
+        if u != v or not G.has_edge(u, v, k):
+            continue
+        p = np.asarray(d['pts'])
+        L = length(p)
+        if L < 6.0:
+            G.remove_edge(u, v, k)
+            fixed += 1
+            continue
+        try:
+            area = abs(Polygon(p).area) if len(p) >= 4 else 0.0
+        except Exception:
+            area = 0.0
+        # a real loop encloses roughly (L/4)^2 (square) .. (L/2pi)^2*pi (circle)
+        if area > min_area_ratio * L:
+            continue
+        G.remove_edge(u, v, k)
+        fixed += 1
+        if d['attrs']['type'] in NO_TOUCH:
+            continue
+        xy = np.asarray(G.nodes[u]['xy'])
+        far = int(np.argmax(np.hypot(*(p - xy).T)))
+        spur = p[:far + 1]
+        near_own = any(LineString(dd['pts']).distance(Point(spur[-1])) < 7.0
+                       for *_, dd in G.edges(u, keys=True, data=True))
+        if length(spur) >= 8.0 and not near_own:
+            n = new_node(G, spur[-1])
+            G.add_edge(u, n, pts=spur, attrs=d['attrs'], zone=d.get('zone'))
+    G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0])
+    return fixed
+
+
+MIN_RADIUS_M = {'freeway': 350, 'highway': 150, 'ramp': 40, 'arterial': 60, 'main_street': 40, 'collector': 35,
+                'urban_street': 12, 'residential': 12, 'rural': 20, 'gravel': 12, 'dirt': 8, 'driveway': 5, 'rail': 160}
+
+
+def radii_px(P, h=3):
+    """3-point circumradius at every sample (P uniformly spaced); ends = inf."""
+    n = len(P)
+    R = np.full(n, np.inf)
+    if n < 2 * h + 1:
+        return R
+    a, b, c = P[:-2 * h], P[h:-h], P[2 * h:]
+    ab = np.hypot(*(b - a).T); bc = np.hypot(*(c - b).T); ca = np.hypot(*(a - c).T)
+    area2 = np.abs((b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0]))
+    R[h:-h] = ab * bc * ca / np.maximum(2 * area2, 1e-9)
+    return R
+
+
+def limit_curvature(pts, r_min_px, max_dev_px, pin_px=4.0, iters=60, step=2.0):
+    """Geometric design of a traced alignment: a Whittaker (penalised least squares)
+    smoother whose curvature penalty is raised locally, iteratively, wherever the
+    radius is below the class minimum. Kink-free by construction; the trace is kept
+    where it is already drivable. Ends (junction approaches) are pinned. Stops early
+    (keeping the best result) if the deviation from the trace would exceed max_dev_px."""
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    from scipy.ndimage import gaussian_filter1d
+    P0 = resample(np.asarray(pts, float), step)
+    n = len(P0)
+    if n < 10:
+        return resample(P0, 1.0)
+    w = np.ones(n)
+    k = max(1, int(round(pin_px / step)))
+    w[0] = 1e6; w[-1] = 1e6  # positions pinned, tangents free (a pinned tangent forces a kink)
+    D = sp.diags([np.ones(n - 2), -2 * np.ones(n - 2), np.ones(n - 2)], [0, 1, 2], shape=(n - 2, n))
+    lam = np.full(n - 2, 0.05)
+    best = P0
+    Rmin = lambda Q: np.minimum(radii_px(Q, max(1, int(3 / step * 2))), radii_px(Q, max(2, int(6 / step * 2))))
+    for it in range(iters):
+        A = sp.diags(w) + D.T @ sp.diags(lam) @ D
+        P = np.stack([spsolve(A.tocsc(), w * P0[:, 0]), spsolve(A.tocsc(), w * P0[:, 1])], 1)
+        dev = np.hypot(*(P - P0).T).max()
+        if dev > max_dev_px:
+            break
+        best = P
+        R = Rmin(P)
+        R[:k + 2] = np.inf; R[-k - 2:] = np.inf
+        bad = R < r_min_px
+        if not bad.any():
+            break
+        f = gaussian_filter1d(bad.astype(float), 4.0)[1:-1]
+        lam = lam * (1.0 + 4.0 * np.clip(f * 3, 0, 1))
+        # stiffness must vary slowly along the road, else the curvature just
+        # concentrates where stiff and soft sections meet
+        lam = np.exp(gaussian_filter1d(np.log(lam), max(3.0, 0.6 * r_min_px / step), mode='nearest'))
+    return resample(best, 1.0)
+
+
+DESIGN_DEV_PX = {'freeway': 16, 'highway': 8, 'ramp': 3, 'arterial': 4, 'main_street': 2.5, 'collector': 5, 'rural': 4,
+                 'gravel': 3, 'dirt': 2, 'driveway': 2, 'urban_street': 2, 'residential': 2, 'rail': 12}
+DESIGN_ORDER = ['freeway', 'highway', 'rail', 'arterial', 'main_street', 'collector', 'rural', 'urban_street',
+                'residential', 'gravel', 'dirt', 'driveway']
+
+
+def _shift_end(P, end, dxy, taper=25.0):
+    P = P.copy()
+    s = np.r_[0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
+    d = s if end == 0 else s[-1] - s
+    w = np.clip(1 - d / taper, 0, 1)
+    w = w * w * (3 - 2 * w)
+    return P + w[:, None] * np.asarray(dxy)[None]
+
+
+def design_alignments(items):
+    """items: list of (def, pts). Returns the same list with horizontally designed
+    alignments (limit_curvature per class). Roads are designed in importance order;
+    an end that joined another road in the trace is re-attached (with a smooth taper)
+    to that road's designed alignment before the road itself is designed."""
+    from shapely.geometry import LineString, Point
+    orig = [np.asarray(p, float) for _, p in items]
+    out = [None] * len(items)
+    order = sorted(range(len(items)), key=lambda i: DESIGN_ORDER.index(items[i][0]['type']) if items[i][0]['type'] in DESIGN_ORDER else 99)
+    done = []
+    for i in order:
+        r, _ = items[i]
+        P = resample(orig[i], 1.0)
+        t = r['type']
+        for end in (0, -1):
+            e = P[end]
+            best = None
+            for j in done:
+                if (items[j][0]['type'] == 'rail') != (t == 'rail'):
+                    continue
+                g0 = LineString(orig[j])
+                dd = g0.distance(Point(e))
+                if dd < 2.0 and (best is None or dd < best[0]):
+                    best = (dd, j)
+            if best is not None:
+                j = best[1]
+                g1 = LineString(out[j])
+                # corresponding point on the designed host: same station as on the trace
+                s0 = LineString(orig[j]).project(Point(e), normalized=True)
+                q = np.asarray(g1.interpolate(s0, normalized=True).coords[0])
+                q = np.asarray(g1.interpolate(g1.project(Point(q))).coords[0])
+                if np.hypot(*(q - e)) > 0.05:
+                    P = _shift_end(P, 0 if end == 0 else -1, q - e)
+        if r.get('design', True) and t in MIN_RADIUS_M:
+            rm = r.get('min_radius_m', MIN_RADIUS_M[t]) / 2.5
+            P = limit_curvature(P, rm, r.get('max_dev_px', DESIGN_DEV_PX.get(t, 3)))
+        out[i] = P
+        done.append(i)
+    return [(items[i][0], out[i]) for i in range(len(items))]
+
+
+def connect_components(G, barriers=None, max_link=25.0, drop_len=160.0):
+    """Every piece of the network must connect. For each component other than the
+    main one: add the shortest believable link (<= max_link px, from one of its
+    nodes to a surface road of the main network, not crossing barriers such as water,
+    rail yards or freeways); failing that, drop it if it holds no authored road."""
+    fixed = 0
+    comps = sorted(nx.connected_components(G), key=lambda c: -sum(length(d['pts']) for *_, d in G.subgraph(c).edges(data=True)))
+    if len(comps) < 2:
+        return 0
+    main = comps[0]
+    items = [(u, v, k, d) for u, v, k, d in G.edges(keys=True, data=True) if u in main and d['attrs']['type'] not in NO_TOUCH and not d['attrs'].get('virtual')]
+    geoms = [LineString(d['pts']) for *_, d in items]
+    tree = STRtree(geoms)
+    for c in comps[1:]:
+        sub = G.subgraph(c)
+        best = None
+        for n in c:
+            xy = np.asarray(G.nodes[n]['xy'])
+            p = Point(xy)
+            w = 3.0 if G.degree(n) == 1 else 1.0  # prefer extending a dead end
+            for j in tree.query(p.buffer(max_link)):
+                g = geoms[j]
+                dist = g.distance(p)
+                if dist > max_link or dist < 1e-6:
+                    continue
+                q = np.asarray(g.interpolate(g.project(p)).coords[0])
+                link = LineString([xy, q])
+                if barriers is not None and link.intersects(barriers):
+                    continue
+                score = dist / w
+                if best is None or score < best[0]:
+                    best = (score, n, j, q)
+        if best is not None:
+            _, n, j, q = best
+            u, v, k, d = items[j]
+            if not G.has_edge(u, v, k):
+                continue
+            tgt = None
+            for cand in (u, v):
+                if np.hypot(*(np.asarray(G.nodes[cand]['xy']) - q)) < 2.0:
+                    tgt = cand
+            if tgt is None:
+                tgt = split_edge(G, u, v, k, q)
+            e = next(iter(sub.edges(n, data=True)), None)
+            attrs = dict(e[2]['attrs']) if e else {'src': 'auto_gap', 'type': 'urban_street'}
+            attrs['src'] = 'auto_gap'
+            G.add_edge(n, tgt, pts=resample(np.array([G.nodes[n]['xy'], G.nodes[tgt]['xy']]), 1.0), attrs=attrs, zone=e[2].get('zone') if e else None)
+            fixed += 1
+            # the new edges changed the main-network index
+            items = [(a, b, kk, dd) for a, b, kk, dd in G.edges(keys=True, data=True) if (a in main or a in c) and dd['attrs']['type'] not in NO_TOUCH and not dd['attrs'].get('virtual')]
+            main = main | set(c) | {tgt}
+            geoms = [LineString(dd['pts']) for *_, dd in items]
+            tree = STRtree(geoms)
+        else:
+            if not any(rank(d) == 3 for *_, d in sub.edges(data=True)) and sum(length(d['pts']) for *_, d in sub.edges(data=True)) < drop_len:
+                G.remove_nodes_from(list(c))
+                fixed += 1
     return fixed

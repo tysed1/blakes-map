@@ -78,7 +78,7 @@ def auto_lines(edits, zones):
         rk = float(field_at(R, s).mean())
         mid = s[len(s) // 2]
         z = zone_of(mid, zones)
-        if z is not None and z['kind'] in ('town_center', 'downtown'):
+        if z is not None and z['kind'] in ('town_center', 'downtown', 'industrial'):
             continue  # cores are hand-authored / grid-detected
         if z is None and rk > 0.22 and mp < 0.5:
             continue  # rocky-slope texture, not a road
@@ -361,6 +361,46 @@ def clear_freeway_corridors(autos, fw):
     return out
 
 
+def clip_rail_corridors(lines, rails, zones):
+    """Local streets never run through rail yards. A street crossing a multi-track
+    yard, or crossing any rail at a shallow angle, or crossing inside an industrial
+    zone, is cut back to the corridor edge (it becomes a dead end at the yard fence).
+    Single-track mainline crossings at a clean angle stay (at-grade crossings)."""
+    if not rails:
+        return lines
+    out = []
+    cor = []
+    for r, pts in rails:
+        tr = r.get('tracks', 1)
+        cor.append((LineString(pts), tr, LineString(pts).buffer((4.5 + 4.0 * (tr - 1)) / 5.0 + 1.5)))
+    for l in lines:
+        g = LineString(l['pts'])
+        cut = None
+        for rl, tr, poly in cor:
+            if not g.intersects(poly):
+                continue
+            x = g.intersection(rl)
+            ok = False
+            if tr == 1 and not x.is_empty and x.geom_type == 'Point':
+                z = zone_of((x.x, x.y), zones)
+                sr = rl.project(x); sg = g.project(x)
+                a = np.asarray(rl.interpolate(sr + 3).coords[0]) - np.asarray(rl.interpolate(sr - 3).coords[0])
+                b = np.asarray(g.interpolate(sg + 3).coords[0]) - np.asarray(g.interpolate(sg - 3).coords[0])
+                ang = math.degrees(math.acos(min(1, abs(np.dot(a, b)) / max(np.hypot(*a) * np.hypot(*b), 1e-9))))
+                ok = ang > 55 and not (z and z['kind'] == 'industrial')
+            if not ok:
+                cut = poly if cut is None else cut.union(poly)
+        if cut is None:
+            out.append(l)
+            continue
+        rest = g.difference(cut)
+        parts = [rest] if rest.geom_type == 'LineString' else [q for q in getattr(rest, 'geoms', []) if q.geom_type == 'LineString']
+        for q in parts:
+            if q.length >= 8:
+                out.append(dict(l, pts=resample(np.asarray(q.coords), 1.0)))
+    return out
+
+
 def interchange_ramps(manual):
     from tools.lib.interchange import diamond
     spec = load_json(path('data/manual/interchanges.json'))
@@ -416,7 +456,8 @@ def classify_auto(l, P, mask_dt):
 def main():
     zones = load_zones()
     edits = load_json(path('data/manual/road_edits.json')) if os.path.exists(path('data/manual/road_edits.json')) else {}
-    manual = [(r, pts) for r, pts in all_traced() if r['type'] != 'rail']
+    from tools.lib.engineer import design_alignments
+    manual = [(r, pts) for r, pts in design_alignments(all_traced()) if r['type'] != 'rail']
     mlines = []
     for r, pts in manual:
         mlines.append({'pts': np.asarray(pts, float), 'src': 'manual', 'type': r['type'], 'name': r.get('name'),
@@ -432,13 +473,16 @@ def main():
     autos = clear_freeway_corridors(autos, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
     grid = suppress_covered(grid, manual)
     grid = clear_freeway_corridors(grid, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
+    rails = [(r, pts) for r, pts in design_alignments(all_traced()) if r['type'] == 'rail']
+    grid = clip_rail_corridors(grid, rails, zones)
+    autos = clip_rail_corridors(autos, rails, zones)
     for l in grid:
         l['src'] = 'grid'
     # smooth / regularise auto geometry
     for l in autos:
         s = robust_smooth(l['pts'], 2.8 if polyline_length(l['pts']) > 12 else 1.5, iters=3)
         z = l['zone']
-        eps = 0.7 if (z and z['kind'] in ('city', 'downtown', 'industrial', 'town_center')) else 0.35
+        eps = {'industrial': 1.8, 'downtown': 1.2, 'city': 0.9, 'town_center': 0.9}.get(z['kind'] if z else None, 0.35)
         s2 = rdp(s, eps)
         s2[0], s2[-1] = l['pts'][0], l['pts'][-1]
         l['pts'] = s2
@@ -564,12 +608,21 @@ def link_ramp_gores(G):
 
 def engineer_pass(G, rounds=4):
     from tools.lib import engineer as E
+    from tools.lib.engineer import design_alignments
     wb = load_json(path('data/water/water_bodies.geojson'))
     water = unary_union([shape(f['geometry']) for f in wb['features']])
+    bar = [water]
+    for rr, pts in design_alignments(all_traced()):
+        if rr['type'] == 'rail':
+            bar.append(LineString(pts).buffer((4.5 + 4.0 * (rr.get('tracks', 1) - 1)) / 5.0 + 1.0))
+        elif rr['type'] == 'freeway':
+            bar.append(LineString(pts).buffer(wpx('freeway') / 2 + 1.0))
+    barriers = unary_union(bar)
     for r in range(rounds):
-        st = dict(near=E.connect_near_misses(G, water=water), short=E.contract_short(G),
+        st = dict(loops=E.fix_loops(G), near=E.connect_near_misses(G, water=barriers), short=E.contract_short(G, max_len=4.2),
                   sharp=E.fix_sharp_angles(G), dup=E.remove_duplicates(G), dead=E.prune_dead_ends(G),
                   comp=E.prune_components(G))
+        st['conn'] = E.connect_components(G, barriers=barriers)
         merge_chains(G)
         print('  engineer pass', r + 1, st)
         if not any(st.values()):

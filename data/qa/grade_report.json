@@ -1,620 +1,130 @@
 {
  "grade_separations": [
   {
-   "upper": "LC_RD_2392",
-   "lower": "LC_RD_2558",
+   "upper": "LC_RD_2700",
+   "lower": "LC_RD_2701",
    "at": [
-    312.83,
-    417.6
+    307.47,
+    415.33
    ],
-   "lower_z": 324.85
+   "lower_z": 323.39
   },
   {
-   "upper": "TV_RD_2614",
-   "lower": "TV_RD_2095",
+   "upper": "TV_RD_3006",
+   "lower": "TV_RD_3009",
    "at": [
-    1890.93,
-    155.69
+    1881.66,
+    153.17
    ],
-   "lower_z": 316.01
+   "lower_z": 316.55
   },
   {
-   "upper": "LC_RD_1649",
+   "upper": "LC_RD_2610",
    "lower": "LC_RD_0047",
    "at": [
-    99.09,
-    85.59
+    99.27,
+    85.47
    ],
-   "lower_z": 330.44
+   "lower_z": 331.87
   },
   {
-   "upper": "LC_RD_1649",
+   "upper": "LC_RD_2610",
    "lower": "LC_RD_0080",
    "at": [
-    94.78,
-    59.76
+    98.74,
+    68.93
    ],
-   "lower_z": 330.56
+   "lower_z": 331.22
   },
   {
    "upper": "LC_RD_2432",
-   "lower": "LC_RD_2570",
+   "lower": "LC_RD_2724",
    "at": [
-    401.47,
-    523.81
+    401.48,
+    523.51
    ],
-   "lower_z": 316.13
+   "lower_z": 314.87
   },
   {
    "upper": "TV_RD_2607",
-   "lower": "TV_RD_2848",
+   "lower": "TV_RD_3001",
    "at": [
-    1816.13,
-    343.23
+    1818.06,
+    342.87
    ],
-   "lower_z": 300.99
+   "lower_z": 301.97
   }
  ],
  "issues": [
   {
    "kind": "earthwork",
-   "id": "LC_RD_0221",
-   "type": "residential",
-   "cut_m": 15.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2454",
-   "type": "residential",
-   "cut_m": 17.0,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0252",
-   "type": "residential",
-   "cut_m": 15.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0443",
-   "type": "residential",
-   "cut_m": 18.0,
-   "fill_m": 1.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2143",
-   "type": "residential",
-   "cut_m": 15.7,
-   "fill_m": 2.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0516",
-   "type": "residential",
-   "cut_m": 18.0,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0531",
-   "type": "residential",
-   "cut_m": 15.7,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0543",
-   "type": "residential",
-   "cut_m": 13.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2295",
-   "type": "residential",
-   "cut_m": 18.0,
-   "fill_m": 4.7
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0549",
-   "type": "residential",
-   "cut_m": 13.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2159",
-   "type": "residential",
-   "cut_m": 16.0,
-   "fill_m": 3.8
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_0812",
-   "type": "residential",
-   "cut_m": 12.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2484",
-   "type": "residential",
-   "cut_m": 13.4,
-   "fill_m": 13.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2169",
-   "type": "residential",
-   "cut_m": 12.9,
+   "id": "RU_RD_0654",
+   "type": "rural",
+   "cut_m": 0.4,
    "fill_m": 12.7
   },
   {
-   "kind": "earthwork",
-   "id": "LC_RD_0994",
-   "type": "residential",
-   "cut_m": 12.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_1029",
-   "type": "residential",
-   "cut_m": 0.0,
-   "fill_m": 12.7
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_1006",
-   "type": "residential",
-   "cut_m": 12.1,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2171",
-   "type": "residential",
-   "cut_m": 0.0,
-   "fill_m": 12.7
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2601",
-   "type": "residential",
-   "cut_m": 14.1,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_1091",
-   "type": "residential",
-   "cut_m": 1.7,
-   "fill_m": 12.8
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2504",
-   "type": "residential",
-   "cut_m": 13.0,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0004",
-   "type": "driveway",
-   "cut_m": 13.2,
-   "fill_m": 0.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2186",
-   "type": "residential",
-   "cut_m": 12.8,
-   "fill_m": 1.1
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2243",
-   "type": "residential",
-   "cut_m": 14.1,
-   "fill_m": 0.3
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_1472",
-   "type": "residential",
-   "cut_m": 14.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "LC_RD_2207",
-   "type": "residential",
-   "cut_m": 14.4,
-   "fill_m": 0.1
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0041",
-   "type": "driveway",
-   "cut_m": 15.6,
-   "fill_m": 0.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0510",
-   "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 13.4
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0192",
-   "type": "driveway",
-   "cut_m": 23.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0290",
-   "type": "gravel",
-   "cut_m": 46.9,
-   "fill_m": 0.1
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0316",
-   "type": "driveway",
-   "cut_m": 12.1,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0661",
-   "type": "gravel",
-   "cut_m": 28.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0603",
-   "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 14.7
-  },
-  {
-   "kind": "earthwork",
+   "kind": "grade",
    "id": "RU_RD_0421",
    "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 22.7
+   "max_grade_pct": 91.6,
+   "limit_pct": 15.0
   },
   {
    "kind": "earthwork",
-   "id": "RU_RD_0564",
-   "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 22.7
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2140",
+   "id": "TV_RD_2652",
    "type": "residential",
-   "cut_m": 19.4,
-   "fill_m": 0.3
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0425",
-   "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 24.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0565",
-   "type": "gravel",
-   "cut_m": 0.0,
-   "fill_m": 24.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0606",
-   "type": "gravel",
-   "cut_m": 72.7,
-   "fill_m": 24.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2751",
-   "type": "urban_street",
-   "cut_m": 0.1,
-   "fill_m": 13.8
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_0924",
-   "type": "residential",
-   "cut_m": 25.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2803",
-   "type": "urban_street",
-   "cut_m": 0.0,
-   "fill_m": 14.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2196",
-   "type": "residential",
-   "cut_m": 13.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1080",
-   "type": "residential",
-   "cut_m": 12.8,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1087",
-   "type": "residential",
-   "cut_m": 12.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2197",
-   "type": "residential",
-   "cut_m": 25.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1120",
-   "type": "residential",
-   "cut_m": 22.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1130",
-   "type": "residential",
-   "cut_m": 32.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1131",
-   "type": "residential",
-   "cut_m": 31.8,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1132",
-   "type": "residential",
-   "cut_m": 31.8,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1141",
-   "type": "residential",
-   "cut_m": 12.2,
-   "fill_m": 8.2
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2708",
-   "type": "residential",
-   "cut_m": 58.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2709",
-   "type": "residential",
-   "cut_m": 30.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2710",
-   "type": "residential",
-   "cut_m": 13.6,
-   "fill_m": 5.8
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2711",
-   "type": "residential",
-   "cut_m": 54.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1157",
-   "type": "residential",
-   "cut_m": 30.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2621",
-   "type": "residential",
-   "cut_m": 13.6,
-   "fill_m": 3.7
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1173",
-   "type": "residential",
-   "cut_m": 42.7,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1175",
-   "type": "residential",
-   "cut_m": 47.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1176",
-   "type": "residential",
-   "cut_m": 47.3,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2203",
-   "type": "residential",
-   "cut_m": 54.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2237",
-   "type": "residential",
-   "cut_m": 15.1,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2238",
-   "type": "residential",
-   "cut_m": 42.7,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2715",
-   "type": "residential",
-   "cut_m": 54.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2212",
-   "type": "residential",
-   "cut_m": 15.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2850",
-   "type": "residential",
-   "cut_m": 16.7,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2215",
-   "type": "residential",
-   "cut_m": 13.9,
-   "fill_m": 8.6
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2718",
-   "type": "residential",
-   "cut_m": 26.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2719",
-   "type": "residential",
-   "cut_m": 25.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1358",
-   "type": "residential",
-   "cut_m": 36.2,
-   "fill_m": 3.5
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1354",
-   "type": "residential",
-   "cut_m": 26.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1359",
-   "type": "residential",
-   "cut_m": 36.2,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1370",
-   "type": "residential",
-   "cut_m": 26.5,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2721",
-   "type": "residential",
-   "cut_m": 13.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2219",
-   "type": "residential",
-   "cut_m": 39.4,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2221",
-   "type": "residential",
-   "cut_m": 39.0,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_2222",
-   "type": "residential",
-   "cut_m": 37.9,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1393",
-   "type": "residential",
-   "cut_m": 20.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1404",
-   "type": "residential",
-   "cut_m": 20.6,
-   "fill_m": 0.0
-  },
-  {
-   "kind": "earthwork",
-   "id": "TV_RD_1405",
-   "type": "residential",
-   "cut_m": 27.8,
+   "cut_m": 17.5,
    "fill_m": 4.2
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_2234",
+   "type": "residential",
+   "cut_m": 22.0,
+   "fill_m": 9.8
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_3142",
+   "type": "urban_street",
+   "cut_m": 16.6,
+   "fill_m": 2.4
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_3144",
+   "type": "urban_street",
+   "cut_m": 13.6,
+   "fill_m": 2.6
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_2895",
+   "type": "urban_street",
+   "cut_m": 0.0,
+   "fill_m": 15.5
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_2992",
+   "type": "ramp",
+   "cut_m": 0.0,
+   "fill_m": 17.2
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_2993",
+   "type": "ramp",
+   "cut_m": 0.0,
+   "fill_m": 17.2
+  },
+  {
+   "kind": "earthwork",
+   "id": "TV_RD_2994",
+   "type": "freeway",
+   "cut_m": 0.0,
+   "fill_m": 17.2
   }
  ]
 }
