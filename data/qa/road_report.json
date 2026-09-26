@@ -4,8 +4,8 @@
   "short_edge:warn": 2
  },
  "components": 1,
- "edges": 1380,
- "nodes": 1030,
+ "edges": 1366,
+ "nodes": 1019,
  "issues": [
   {
    "kind": "radius",
@@ -31,11 +31,11 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    199.3,
+    199.2,
     49.3
    ],
-   "msg": "LC_RD_0553 (residential) curve radius 10 m < 12 m",
-   "ref": "LC_RD_0553"
+   "msg": "LC_RD_2809 (residential) curve radius 10 m < 12 m",
+   "ref": "LC_RD_2809"
   },
   {
    "kind": "radius",

@@ -4,12 +4,12 @@
    "upper": "TV_RD_3185",
    "lower": "RR_TV_YARD",
    "at": [
-    1863.97,
-    492.55
+    1864.14,
+    492.71
    ],
    "lower_z": 290.49,
    "kind": "rail",
-   "angle_deg": 14.6
+   "angle_deg": 14.8
   },
   {
    "upper": "TV_RD_3185",
@@ -45,12 +45,12 @@
    "upper": "RU_RD_0248",
    "lower": "RR_VALLEY",
    "at": [
-    859.32,
+    859.33,
     384.27
    ],
-   "lower_z": 353.52,
+   "lower_z": 353.41,
    "kind": "rail",
-   "angle_deg": 18.5
+   "angle_deg": 18.4
   },
   {
    "upper": "TV_RD_3006",
@@ -59,7 +59,7 @@
     1881.66,
     153.17
    ],
-   "lower_z": 317.34
+   "lower_z": 317.35
   },
   {
    "upper": "LC_RD_2610",
@@ -68,7 +68,7 @@
     99.27,
     85.47
    ],
-   "lower_z": 335.27
+   "lower_z": 335.34
   },
   {
    "upper": "LC_RD_2610",
@@ -77,7 +77,7 @@
     98.74,
     68.93
    ],
-   "lower_z": 334.68
+   "lower_z": 334.75
   },
   {
    "upper": "LC_RD_2432",
@@ -92,8 +92,8 @@
    "upper": "TV_RD_3170",
    "lower": "RR_TV_YARD",
    "at": [
-    1745.69,
-    422.08
+    1745.75,
+    422.06
    ],
    "lower_z": 296.01,
    "kind": "rail",
@@ -104,7 +104,7 @@
    "lower": "RR_TV_YARD",
    "at": [
     1640.76,
-    379.21
+    379.2
    ],
    "lower_z": 298.98,
    "kind": "rail",
@@ -112,13 +112,6 @@
   }
  ],
  "issues": [
-  {
-   "kind": "earthwork",
-   "id": "RU_RD_0192",
-   "type": "driveway",
-   "cut_m": 14.6,
-   "fill_m": 3.5
-  },
   {
    "kind": "grade",
    "id": "RU_RD_0421",

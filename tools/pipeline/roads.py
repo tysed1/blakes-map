@@ -553,6 +553,24 @@ def build_outputs(lines, pieces, zones):
     clean_faces(G)
     engineer_pass(G)
     link_ramp_gores(G)
+    prune_steep_spurs(G)
+    from tools.lib import engineer as E
+    merge_chains(G)
+    E.remove_duplicates(G)
+    for u, v in {(min(a, b), max(a, b)) for a, b in G.edges() if G.number_of_edges(a, b) > 1}:
+        es = sorted(G.get_edge_data(u, v).items(), key=lambda kv: polyline_length(kv[1]['pts']))
+        short = LineString(es[0][1]['pts'])
+        if short.hausdorff_distance(LineString(es[1][1]['pts'])) < 8.0 or short.buffer(4).contains(LineString(es[1][1]['pts'])) \
+                or LineString(es[1][1]['pts']).buffer(4).intersection(short).length > 0.6 * short.length:
+            if es[0][1]['attrs']['src'] != 'manual':
+                G.remove_edge(u, v, es[0][0])
+    E.prune_dead_ends(G)
+    merge_chains(G)
+    for _ in range(3):
+        if not E.remove_duplicates(G):
+            break
+        E.prune_dead_ends(G)
+        merge_chains(G)
     classify_rural(G)
     write(G, zones)
 
@@ -696,6 +714,31 @@ def clean_faces(G, min_area=110.0, spur=9.0, rounds=6):
         if all(d['attrs']['src'] not in ('manual', 'grid') for _, _, d in sub.edges(data=True)):
             if sum(polyline_length(d['pts']) for _, _, d in sub.edges(data=True)) < 40:
                 G.remove_nodes_from(list(comp))
+
+
+def prune_steep_spurs(G, max_grade=0.22):
+    """Dead-end driveways / tracks that would climb straight up a slope (a real
+    driveway follows the contour) are dropped. Uses the current terrain if present."""
+    p = path('data/terrain/height_f32.bin')
+    if not os.path.exists(p):
+        return 0
+    T = np.fromfile(p, np.float32).reshape(H, W)
+    n = 0
+    for u, v, k, d in list(G.edges(keys=True, data=True)):
+        a = d['attrs']
+        if a['src'] == 'manual' or d['zone'] is not None or not (G.degree(u) == 1 or G.degree(v) == 1):
+            continue
+        pts = resample(np.asarray(d['pts']), 1.0)
+        L = polyline_length(pts)
+        if L < 4:
+            continue
+        z = field_at(T, pts)
+        if abs(float(z[-1] - z[0])) / (L * 2.5) > max_grade or (np.abs(np.diff(z)) / 2.5).mean() > max_grade:
+            G.remove_edge(u, v, k)
+            n += 1
+    G.remove_nodes_from([q for q in list(G.nodes) if G.degree(q) == 0])
+    print('  steep dead-end spurs removed:', n)
+    return n
 
 
 def classify_rural(G):

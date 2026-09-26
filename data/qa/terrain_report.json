@@ -10,13 +10,13 @@
    "perched_river": 9,
    "surface_step": 0,
    "ridge_crossing": 0,
-   "spike_raw": 3,
-   "spike_graded": 18,
-   "zone_slope": 7
+   "spike_raw": 5,
+   "spike_graded": 19,
+   "zone_slope": 7,
+   "backdrop_rim": 1
   },
   "info": {
    "pit_graded": 30,
-   "backdrop_rim": 0,
    "road_corridor": 0
   }
  },
@@ -65,7 +65,7 @@
     {
      "id": "WTR_R05",
      "samples": 1,
-     "worst_m": -1.12,
+     "worst_m": -1.15,
      "at": [
       844.5,
       394.8
@@ -109,8 +109,8 @@
     },
     {
      "id": "WTR_C06",
-     "samples": 17,
-     "worst_m": -6.34,
+     "samples": 13,
+     "worst_m": -5.63,
      "at": [
       827.5,
       42.0
@@ -143,31 +143,31 @@
    "count": 30,
    "items": [
     {
-     "px": 10583,
+     "px": 10590,
      "at": [
       224.9,
       457.2
      ]
     },
     {
-     "px": 2014,
+     "px": 2011,
      "at": [
       268.7,
       134.9
      ]
     },
     {
-     "px": 1769,
+     "px": 1758,
      "at": [
-      340.6,
+      340.5,
       306.2
      ]
     },
     {
-     "px": 1364,
+     "px": 1418,
      "at": [
-      1006.1,
-      439.7
+      1005.7,
+      439.9
      ]
     },
     {
@@ -192,20 +192,6 @@
      ]
     },
     {
-     "px": 552,
-     "at": [
-      1011.6,
-      466.0
-     ]
-    },
-    {
-     "px": 544,
-     "at": [
-      1329.6,
-      527.6
-     ]
-    },
-    {
      "px": 544,
      "at": [
       39.5,
@@ -220,6 +206,20 @@
      ]
     },
     {
+     "px": 509,
+     "at": [
+      1331.2,
+      529.1
+     ]
+    },
+    {
+     "px": 403,
+     "at": [
+      677.8,
+      90.3
+     ]
+    },
+    {
      "px": 264,
      "at": [
       1868.9,
@@ -231,13 +231,6 @@
      "at": [
       1480.9,
       254.8
-     ]
-    },
-    {
-     "px": 249,
-     "at": [
-      668.0,
-      93.0
      ]
     },
     {
@@ -269,10 +262,17 @@
      ]
     },
     {
-     "px": 187,
+     "px": 188,
      "at": [
-      137.3,
+      137.4,
       116.3
+     ]
+    },
+    {
+     "px": 178,
+     "at": [
+      1376.0,
+      582.2
      ]
     },
     {
@@ -320,14 +320,14 @@
     {
      "px": 153,
      "at": [
-      1377.5,
-      584.3
+      1005.4,
+      463.4
      ]
     },
     {
-     "px": 138,
+     "px": 139,
      "at": [
-      1474.2,
+      1474.1,
       271.6
      ]
     },
@@ -346,21 +346,28 @@
      ]
     },
     {
-     "px": 124,
+     "px": 125,
      "at": [
-      1435.1,
+      1435.0,
       301.2
      ]
     }
    ],
-   "clusters": 502,
-   "pit_px": 31398,
+   "clusters": 511,
+   "pit_px": 31266,
    "max_depth_m": 4.95
   },
   "spike_raw": {
    "severity": "warn",
-   "count": 3,
+   "count": 5,
    "items": [
+    {
+     "px": 2,
+     "at": [
+      1279.5,
+      316.0
+     ]
+    },
     {
      "px": 1,
      "at": [
@@ -371,23 +378,30 @@
     {
      "px": 1,
      "at": [
-      1278.0,
+      1276.0,
       314.0
      ]
     },
     {
      "px": 1,
      "at": [
-      609.0,
-      135.0
+      759.0,
+      267.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      637.0,
+      102.0
      ]
     }
    ],
-   "clusters": 3
+   "clusters": 5
   },
   "spike_graded": {
    "severity": "warn",
-   "count": 18,
+   "count": 19,
    "items": [
     {
      "px": 4,
@@ -504,8 +518,15 @@
     {
      "px": 1,
      "at": [
-      609.0,
-      135.0
+      759.0,
+      267.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      637.0,
+      102.0
      ]
     },
     {
@@ -516,7 +537,7 @@
      ]
     }
    ],
-   "clusters": 18
+   "clusters": 19
   },
   "zone_slope": {
    "severity": "warn",
@@ -559,22 +580,22 @@
      "zone": "town_center",
      "kind": "town_center",
      "limit": 0.1,
-     "frac_over": 0.096,
+     "frac_over": 0.091,
      "p95_slope": 0.118,
      "at": [
-      1073.2,
-      360.0
+      1076.9,
+      361.1
      ]
     },
     {
      "zone": "town",
      "kind": "town",
      "limit": 0.18,
-     "frac_over": 0.044,
-     "p95_slope": 0.172,
+     "frac_over": 0.043,
+     "p95_slope": 0.171,
      "at": [
-      1087.1,
-      312.6
+      1088.5,
+      312.8
      ]
     },
     {
@@ -582,10 +603,10 @@
      "kind": "city",
      "limit": 0.25,
      "frac_over": 0.314,
-     "p95_slope": 0.549,
+     "p95_slope": 0.548,
      "at": [
       167.9,
-      405.6
+      405.7
      ]
     },
     {
@@ -602,10 +623,10 @@
    ]
   },
   "backdrop_rim": {
-   "severity": "info",
-   "count": 0,
-   "max_abs_m": 0.49,
-   "p95_abs_m": 0.11,
+   "severity": "warn",
+   "count": 1,
+   "max_abs_m": 8.76,
+   "p95_abs_m": 3.19,
    "items": []
   },
   "seam": {
@@ -617,13 +638,13 @@
    "severity": "info",
    "count": 0,
    "items": [],
-   "mean_abs_m": 0.98,
-   "p95_abs_m": 3.85,
-   "max_abs_m": 18.34,
+   "mean_abs_m": 0.97,
+   "p95_abs_m": 3.77,
+   "max_abs_m": 21.4,
    "by_type": {
     "residential": {
      "mean_abs_m": 0.78,
-     "p95_abs_m": 2.55
+     "p95_abs_m": 2.56
     },
     "urban_street": {
      "mean_abs_m": 0.53,
@@ -634,12 +655,12 @@
      "p95_abs_m": 3.13
     },
     "freeway": {
-     "mean_abs_m": 1.82,
+     "mean_abs_m": 1.83,
      "p95_abs_m": 6.53
     },
     "arterial": {
-     "mean_abs_m": 1.47,
-     "p95_abs_m": 4.69
+     "mean_abs_m": 1.48,
+     "p95_abs_m": 4.71
     },
     "highway": {
      "mean_abs_m": 2.14,
@@ -650,16 +671,16 @@
      "p95_abs_m": 6.53
     },
     "gravel": {
-     "mean_abs_m": 0.96,
-     "p95_abs_m": 3.98
+     "mean_abs_m": 0.84,
+     "p95_abs_m": 2.51
     },
     "driveway": {
-     "mean_abs_m": 0.72,
-     "p95_abs_m": 2.46
+     "mean_abs_m": 0.43,
+     "p95_abs_m": 1.37
     },
     "rural": {
-     "mean_abs_m": 1.24,
-     "p95_abs_m": 4.03
+     "mean_abs_m": 1.22,
+     "p95_abs_m": 4.0
     },
     "dirt": {
      "mean_abs_m": 0.83,
@@ -667,12 +688,12 @@
     },
     "main_street": {
      "mean_abs_m": 0.33,
-     "p95_abs_m": 0.71
+     "p95_abs_m": 0.7
     }
    },
    "grading_issues": {
-    "earthwork": 1,
-    "grade": 2
+    "grade": 1,
+    "earthwork": 1
    }
   }
  }
