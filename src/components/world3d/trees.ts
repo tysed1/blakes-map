@@ -100,14 +100,29 @@ function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u:
 }
 
 /** Core masses behind the cards: MAT_Foliage_Core (tint x AO, soft voronoi-ish breakup). */
-function coreMaterial(u: FoliageUniforms) {
+function coreMaterial(u: FoliageUniforms, leafTex: THREE.Texture) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0, envMapIntensity: 0.5 });
+  m.alphaToCoverage = true;
   m.onBeforeCompile = (s) => {
     patchCommon(s, u, false);
-    s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-        vec3 q = vObj * 1.5;
-        float br = 0.7 + 0.45 * (0.5 + 0.5 * sin(q.x * 2.1 + sin(q.y * 1.7)) * sin(q.z * 2.3 + sin(q.x * 1.3)));
-        diffuseColor.rgb *= vTint * vAL.x * br * uGain;`);
+    s.uniforms.tLeaf = { value: leafTex };
+    s.fragmentShader = s.fragmentShader
+      .replace('uniform vec3 uSunDir;', 'uniform vec3 uSunDir; uniform sampler2D tLeaf;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          // dense crown interior: leaf-card pattern projected on the core (dark gaps between leaf clusters)
+          vec3 q = vObj / 1.35;
+          vec3 w = abs(normalize(cross(dFdx(vObj), dFdy(vObj)))); w = pow(w, vec3(3.0)); w /= dot(w, vec3(1.0));
+          vec4 lx = texture2D(tLeaf, q.zy), ly = texture2D(tLeaf, q.xz), lz = texture2D(tLeaf, q.xy);
+          vec4 lf = lx * w.x + ly * w.y + lz * w.z;
+          float lum = dot(lf.rgb, vec3(0.3, 0.55, 0.15)) * 1.9;
+          float br = mix(0.28, 1.0, lf.a) * mix(1.0, clamp(lum, 0.6, 1.4), lf.a);
+          diffuseColor.rgb *= vTint * vAL.x * br * uGain;
+          // dissolve the core's silhouette into leaf clusters (no smooth 'balloon' outline)
+          vec3 vn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
+          float rim = 1.0 - abs(dot(vn, normalize(vViewPosition)));
+          if (rim > 0.35 && lf.a < smoothstep(0.35, 0.9, rim)) discard;
+        }`);
   };
   m.customProgramCacheKey = () => 'core';
   return m;
@@ -160,7 +175,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   };
   const leafMats = new Map<string, THREE.Material>(), barkMats = new Map<string, THREE.Material>();
   const barkTex: Record<string, THREE.Texture> = { brown: tex('bark_brown.jpg', true), pine: tex('bark_pine.jpg', true) };
-  const core = coreMaterial(uniforms);
+  const core = coreMaterial(uniforms, tex('card_oak.png', true));
   const depthMats = new Map<string, THREE.Material>();
   const leaf = (card: string) => {
     if (!leafMats.has(card)) {

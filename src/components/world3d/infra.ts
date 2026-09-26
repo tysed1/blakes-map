@@ -353,7 +353,8 @@ float sH = 0.5, sBump = 0.0;
     vec3 c = vor3(P / 0.55);
     vec3 st = mix(vec3(0.11, 0.105, 0.1), vec3(0.24, 0.23, 0.21), c.z);
     st = mix(st, vec3(0.06, 0.08, 0.035), 0.6 * sstep(0.55, 0.8, bn(fbm2(P * 0.3))));
-    col = mix(st, vec3(0.03, 0.028, 0.024), 0.85 * (1.0 - smoothstep(0.015, 0.05, c.y)));
+    col = mix(st, vec3(0.03, 0.028, 0.024), 0.8 * (1.0 - smoothstep(0.015, 0.05, c.y)));
+    col = mix(col, vec3(0.13, 0.11, 0.08), 0.3 * sstep(0.4, 0.7, fbm2(P * 1.3)));   // soil / silt washed between the stones
     sH = sstep(0.0, 0.2, c.y); sBump = 1.2;
   } else if (mode == 6) {     // river boulders: granite / gneiss, lichen + moss on dry tops, dark and glossy when wet
     float n = bn(fbm4(P * 0.9));
@@ -434,19 +435,19 @@ float bH = 0.5, bBump = 0.0;
 
 // ------------------------------------------------------------------ water surface
 function waterMaterial(time: { value: number }) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, transparent: true, depthWrite: true, envMapIntensity: 1.0 });
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, transparent: true, depthWrite: true, envMapIntensity: 0.75 });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { uTime: time });
-    patchVertexWorld(sh, 'attribute vec4 wA; attribute vec4 wF; varying vec4 vWA; varying vec2 vFl;', 'vWA = wA; vFl = wF.xy;');
+    patchVertexWorld(sh, 'attribute vec4 wA; attribute vec4 wF; varying vec4 vWA; varying vec3 vFl;', 'vWA = wA; vFl = wF.xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vWp; varying vec4 vWA; varying vec2 vFl; uniform float uTime;
+varying vec3 vWp; varying vec4 vWA; varying vec3 vFl; uniform float uTime;
 ${NOISE}
-float wFoam = 0.0; vec2 wGrad = vec2(0.0);`)
+float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 {
   float depth = vWA.x / 255.0 * 6.0, foam = vWA.y / 255.0, wake = vWA.z / 255.0, shore = vWA.w / 255.0 * 6.0;
-  vec2 fl = vFl / 127.0; float fll = length(fl); fl = fll > 1e-3 ? fl / fll : vec2(1.0, 0.0);
+  vec2 fl = vFl.xy / 127.0; wBnd = clamp(vFl.z / 127.0, 0.0, 1.0); float fll = length(fl); fl = fll > 1e-3 ? fl / fll : vec2(1.0, 0.0);
   vec2 p = vWp.xz;
   float along = dot(p, fl), across = fl.x * p.y - fl.y * p.x;
   float famt = max(foam, wake * 0.9);
@@ -460,7 +461,7 @@ float wFoam = 0.0; vec2 wGrad = vec2(0.0);`)
   float hx = RH(q + vec2(e * 0.18, 0.0), q2 + vec2(e * 0.8, 0.0));
   float hy = RH(q + vec2(0.0, e * 0.9), q2 + vec2(0.0, e * 3.2));
   vec2 g = vec2(hx - h0, hy - h0) / e;               // d/d(along), d/d(across)
-  float amp = 0.035 + 0.16 * max(foam, wake);
+  float amp = (0.035 + 0.16 * max(foam, wake)) / (1.0 + length(vViewPosition) / 90.0);   // fade ripples (aliasing) with distance
   wGrad = (fl * g.x + vec2(-fl.y, fl.x) * g.y) * amp;
   // whitewater lace (flow-aligned streaks + cells), only where lib_water marks it
   vec2 fc2 = vec2(along * 0.6 - uTime * speed * 0.6, across * 2.4);
@@ -473,7 +474,7 @@ float wFoam = 0.0; vec2 wGrad = vec2(0.0);`)
   float dfac = (1.0 - exp(-depth / 1.1)) * mrange(shore, 0.0, 2.5, 0.35, 0.92);
   vec3 body = mix(vec3(0.16, 0.2, 0.17), vec3(0.010, 0.030, 0.028), sstep(0.0, 1.0, dfac));
   float alpha = mix(0.18, 0.93, dfac);
-  diffuseColor = vec4(mix(body, vec3(0.82, 0.85, 0.84), wFoam), mix(alpha, 0.96, wFoam));
+  diffuseColor = vec4(mix(body, vec3(0.82, 0.85, 0.84), wFoam), mix(alpha, 0.96, wFoam) * (1.0 - wBnd));
   roughnessFactor = mix(0.04, 0.55, wFoam);
   metalnessFactor = 0.0;
 }`)
@@ -484,7 +485,7 @@ float wFoam = 0.0; vec2 wGrad = vec2(0.0);`)
   vec3 nonPerturbedNormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);`)
       .replace('#include <opaque_fragment>', `
   { vec3 V = normalize(vViewPosition); float F = 0.02 + 0.98 * pow(1.0 - clamp(dot(normal, V), 0.0, 1.0), 5.0);
-    diffuseColor.a = clamp(diffuseColor.a + F * (1.0 - diffuseColor.a), 0.0, 1.0); }
+    diffuseColor.a = clamp(diffuseColor.a + F * (1.0 - diffuseColor.a), 0.0, 1.0) * (1.0 - wBnd); }
 #include <opaque_fragment>`);
   };
   m.customProgramCacheKey = () => 'infra-water-1';

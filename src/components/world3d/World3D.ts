@@ -488,7 +488,7 @@ export class World3D {
   }
 
   /** Render a still for QA / screenshots. */
-  updateCullingPublic() { this.orbit.update(); this.updateCulling(); }
+  updateCullingPublic() { if (this.mode === 'orbit') this.orbit.update(); this.updateCulling(); }
   snapshot(): string { this.updateCulling(); this.cine.prepare(this.scene); this.cine.render(); return this.renderer.domElement.toDataURL('image/png'); }
 }
 

@@ -89,7 +89,9 @@ OPT = lambda k: k in ARGS
 def ARG(k, d=None):
     return ARGS[ARGS.index(k) + 1] if k in ARGS else d
 
-CHUNK_M = 500.0          # web chunk size (m)
+CHUNK_M = 500.0          # web chunk size (m) for the pavement group
+CHUNK_BIG = 1000.0       # all other groups (fewer draw calls; they are cheap or distance culled)
+GROUP_CHUNK = {'ground': CHUNK_M}
 X0, Z0 = -2500.0, -833.75  # world min corner (px 0,0)
 
 
@@ -304,6 +306,13 @@ def mesh_arrays(ob):
         else:
             continue
         attrs[a.name] = d[uk[:, 0]]
+    # open-boundary vertices (edges used by one face): alpha-edged films fade to 0 there
+    le = np.empty(len(me.loops), np.int32); me.loops.foreach_get('edge_index', le)
+    ecount = np.bincount(le, minlength=len(me.edges))
+    ev = np.empty(len(me.edges) * 2, np.int32); me.edges.foreach_get('vertices', ev)
+    bnd = np.zeros(len(me.vertices), np.float32)
+    bnd[ev.reshape(-1, 2)[ecount == 1].ravel()] = 1.0
+    attrs['_bnd'] = bnd[uk[:, 0]]
     mats = [m.name if m else 'MAT_Unknown' for m in me.materials] or ['MAT_Unknown']
     n = uk[:, 1:4].astype(np.float32) / 127.0
     n /= np.maximum(np.linalg.norm(n, axis=1), 1e-6)[:, None]
@@ -336,11 +345,11 @@ def g_attrs(group, A, sub):
         return {
             'wA': np.stack([u8(get('depth') / 6 * 255), u8(get('foam') * 255), u8(get('wake') * 255), u8(get('shore') / 6 * 255)], 1),
             'wF': np.stack([np.clip(np.round(fl[:, 0] * 127), -127, 127), np.clip(np.round(-fl[:, 1] * 127), -127, 127),
-                            np.zeros(n), np.zeros(n)], 1).astype(np.int8),
+                            np.round(get('_bnd') * 127), np.zeros(n)], 1).astype(np.int8),
         }
     if group == 'bed':
         kind = np.array([BED_MATS.get(m, 0) for m in mname], np.float32)
-        e = np.where(kind > 0, get('wet'), get('edge'))
+        e = np.where(kind > 0, get('wet'), get('edge')) * (1.0 - get('_bnd'))
         return {'bA': np.stack([u8(kind), u8((get('depth') + 2) / 8 * 255), u8((get('bank') + 1) / 2 * 255), u8(e * 255)], 1)}
     pid = np.array([PAL_ID.get(m, PAL_ID['MAT_Unknown']) for m in mname], np.float32)
     return {'sA': np.stack([u8(pid), u8(get('wet') * 255), np.zeros(n, np.uint8), np.zeros(n, np.uint8)], 1)}
@@ -368,9 +377,9 @@ def quant_pos(P):
     return q, lo, ext
 
 
-def chunk_of(xz):
-    cx = np.clip(((xz[:, 0] - X0) // CHUNK_M).astype(int), 0, 9)
-    cz = np.clip(((xz[:, 1] - Z0) // CHUNK_M).astype(int), 0, 3)
+def chunk_of(xz, size=CHUNK_M):
+    cx = np.clip(((xz[:, 0] - X0) // size).astype(int), 0, int(5000 // size) - 1 + (5000 % size > 0))
+    cz = np.clip(((xz[:, 1] - Z0) // size).astype(int), 0, int(1667.5 // size))
     return cx, cz
 
 
@@ -392,7 +401,7 @@ def export():
             for sp in cu.splines:
                 co = np.empty(len(sp.points) * 4, np.float32); sp.points.foreach_get('co', co)
                 P = web(co.reshape(-1, 4)[:, :3])
-                cx, cz = chunk_of(P[:1, [0, 2]])
+                cx, cz = chunk_of(P[:1, [0, 2]], CHUNK_BIG)
                 wires.setdefault((int(cx[0]), int(cz[0])), []).append((P, cu.bevel_depth, kind))
             continue
         if ob.type != 'MESH':
@@ -424,9 +433,9 @@ def export():
         tmn = np.asarray(A['mats'])[np.minimum(A['tmat'], len(A['mats']) - 1)]
         grp = np.array([group_of(ob.name, m) for m in A['mats']] + ['detail'])[np.minimum(A['tmat'], len(A['mats']))]
         cen = A['P'][A['I']].mean(1)
-        cx, cz = chunk_of(cen[:, [0, 2]])
-        key = cx * 100 + cz * 10
         for gname in np.unique(grp):
+            cx, cz = chunk_of(cen[:, [0, 2]], GROUP_CHUNK.get(str(gname), CHUNK_BIG))
+            key = cx * 100 + cz * 10
             for kk in np.unique(key[grp == gname]):
                 sel = (grp == gname) & (key == kk)
                 I = A['I'][sel]
@@ -440,7 +449,7 @@ def export():
     print(f'extracted in {time.time() - t0:.0f}s', flush=True)
     BINS = {k: Bin(f'infra_{k}.bin') for k in ('roads', 'water', 'struct')}
     BIN_OF = {'ground': 'roads', 'verge': 'roads', 'water': 'water', 'bed': 'water', 'struct': 'struct', 'detail': 'struct'}
-    meta = {'version': 1, 'chunk_m': CHUNK_M, 'origin': [X0, Z0], 'palette': [], 'ground_kinds': GROUND,
+    meta = {'version': 2, 'chunk_m': {'ground': CHUNK_M, 'other': CHUNK_BIG}, 'origin': [X0, Z0], 'palette': [], 'ground_kinds': GROUND,
             'textures': {k: f'{k}.jpg' for k in TEXTURES}, 'chunks': [], 'protos': {}, 'instances': [], 'wires': []}
     for name, col, rough, metal, mode, rust in PALETTE:
         meta['palette'].append({'name': name, 'color': col, 'rough': rough, 'metal': metal, 'mode': MODES[mode], 'rust': rust})

@@ -60,8 +60,14 @@ export function buildTerrain(hf: Heightfield, material: THREE.Material): THREE.G
   for (let cy = 0; cy * CHUNK < IMG_H; cy++) for (let cx = 0; cx * CHUNK < IMG_W; cx++) {
     const lod = new THREE.LOD();
     lod.name = `C${String(cx).padStart(2, '0')}_${String(cy).padStart(2, '0')}`;
+    // LOD distance is measured to the object position: put each chunk at its own centre
+    const [ccx, , ccz] = pxToWorld(Math.min(IMG_W, cx * CHUNK + CHUNK / 2), Math.min(IMG_H, cy * CHUNK + CHUNK / 2));
+    const ccy = hf.at(Math.min(IMG_W - 1, cx * CHUNK + CHUNK / 2), Math.min(IMG_H - 1, cy * CHUNK + CHUNK / 2));
+    lod.position.set(ccx, ccy, ccz);
     LOD_STEPS.forEach((s, k) => {
-      const m = new THREE.Mesh(chunkGeometry(hf, cx, cy, s), material);
+      const g = chunkGeometry(hf, cx, cy, s);
+      g.translate(-ccx, -ccy, -ccz);
+      const m = new THREE.Mesh(g, material);
       m.receiveShadow = true;
       m.userData.kind = 'terrain';
       lod.addLevel(m, LOD_DIST[k]);

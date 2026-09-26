@@ -461,7 +461,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         w *= smooth(1.2, 2.5, road) * smooth(1.5, 3, rail) * smooth(0.8, 1.8, water);
         const y = groundAt(px, py);
         const sl = Math.hypot(groundAt(px + 0.4, py) - groundAt(px - 0.4, py), groundAt(px, py + 0.4) - groundAt(px, py - 0.4)) / (0.8 * MPP);
-        w *= smooth(0.72, 0.9, 1 / Math.sqrt(1 + sl * sl));
+        w *= layer === 'fern' ? smooth(0.45, 0.7, 1 / Math.sqrt(1 + sl * sl)) : smooth(0.72, 0.9, 1 / Math.sqrt(1 + sl * sl)); // ferns hold steep forest slopes
         if (r >= w) continue;
         let proto: number, s: number, col: [number, number, number];
         if (layer === 'flowers') {
@@ -642,7 +642,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         const dx = pPos[k * 3] - cp.x, dy = pPos[k * 3 + 1] - cp.y, dz = pPos[k * 3 + 2] - cp.z;
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 > far * far) continue;
-        const li = d2 < (far * 0.22) ** 2 ? 0 : 1;
+        const li = P.kind.far <= 160 || d2 < (far * 0.22) ** 2 ? 0 : 1; // small debris: one LOD (saves draw calls)
         const im = P.lods[li], o = pc[pr][li];
         (im.instanceMatrix.array as Float32Array).set(pMats.subarray(k * 16, k * 16 + 16), o * 16);
         (im.instanceColor!.array as Float32Array).set(pCols.subarray(k * 3, k * 3 + 3), o * 3);
