@@ -266,14 +266,14 @@ def water_material():
     # boulders; always broken into flow-aligned lace (streaks + clumps), never a sheet
     wake = _attr(nt, 'wake')
     famt = _math(nt, 'MAXIMUM', foam, _math(nt, 'MULTIPLY', wake, 0.9))
-    fc2 = _flow_coords(nt, stretch=(0.35, 2.2))
+    fc2 = _flow_coords(nt, stretch=(0.6, 2.4))
     fn = nt.nodes.new('ShaderNodeTexNoise'); fn.inputs['Scale'].default_value = 1.1; fn.inputs['Detail'].default_value = 12
     fn.inputs['Roughness'].default_value = 0.72; fn.inputs['Distortion'].default_value = 0.6
     nt.links.new(fc2, fn.inputs['Vector'])
     fv = nt.nodes.new('ShaderNodeTexVoronoi'); fv.feature = 'DISTANCE_TO_EDGE'; fv.inputs['Scale'].default_value = 1.4
     nt.links.new(fc2, fv.inputs['Vector'])
     lace = _math(nt, 'ADD', _math(nt, 'MULTIPLY', fn.outputs['Fac'], 0.75), _math(nt, 'MULTIPLY', _math(nt, 'SUBTRACT', 0.25, fv.outputs['Distance']), 0.9))
-    thr = _math(nt, 'SUBTRACT', 1.05, _math(nt, 'MULTIPLY', famt, 0.75))
+    thr = _math(nt, 'SUBTRACT', 1.12, _math(nt, 'MULTIPLY', famt, 0.42))  # even full whitewater stays lace (<~45% cover)
     fmask = _maprange(nt, _math(nt, 'SUBTRACT', lace, thr), 0.0, 0.12)
     fmask = _math(nt, 'MULTIPLY', fmask, _maprange(nt, famt, 0.08, 0.35))
     white = nt.nodes.new('ShaderNodeBsdfPrincipled')
