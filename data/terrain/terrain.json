@@ -1,0 +1,90 @@
+{
+ "grid": {
+  "width": 2000,
+  "height": 667,
+  "spacing_m": 2.5,
+  "origin": "sample (i,j) is at source px (i+0.5, j+0.5)"
+ },
+ "files": {
+  "height_f32": "data/terrain/height_f32.bin",
+  "height_u16": "data/terrain/height_u16.png",
+  "water_level_f32": "data/terrain/water_level_f32.bin"
+ },
+ "u16_decode": {
+  "min_m": 276.0,
+  "max_m": 600.0,
+  "formula": "h = min + v/65535*(max-min)"
+ },
+ "stats": {
+  "min_m": 276.6,
+  "max_m": 599.8,
+  "mean_m": 365.4
+ },
+ "river_profiles_m": {
+  "WTR_R05": [
+   368.0,
+   322.0
+  ],
+  "WTR_C02": [
+   346.0,
+   318.0
+  ],
+  "WTR_R06": [
+   304.0,
+   284.0
+  ],
+  "WTR_C05": [
+   345.0,
+   300.0
+  ],
+  "WTR_R01": [
+   332.0,
+   300.0
+  ],
+  "WTR_R06D": [
+   300.0,
+   284.9
+  ],
+  "WTR_C03": [
+   352.0,
+   304.6
+  ],
+  "WTR_R08": [
+   300.0,
+   281.0
+  ],
+  "WTR_R07": [
+   318.0,
+   303.5
+  ],
+  "WTR_R06C": [
+   284.8,
+   281.0
+  ],
+  "WTR_C01": [
+   306.8,
+   306.8
+  ],
+  "WTR_R06B": [
+   295.0,
+   295.0
+  ],
+  "WTR_C04": [
+   326.0,
+   297.6
+  ],
+  "WTR_R04": [
+   415.0,
+   361.9
+  ],
+  "WTR_R03": [
+   505.0,
+   402.3
+  ],
+  "WTR_C06": [
+   560.0,
+   480.4
+  ]
+ },
+ "note": "Reconstructed from the map geography (not survey data). Rebuild with tools/pipeline/terrain.py; roads grade/terrain cut-fill is applied by tools/pipeline/grading.py."
+}

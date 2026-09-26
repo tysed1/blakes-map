@@ -119,7 +119,7 @@ def main():
         props = {
             'id': r['id'], 'name': r['name'], 'class': r['class'],
             'flows_into': r.get('flows_into'), 'outlet': r.get('outlet'), 'source': r.get('source'),
-            'backwater': bool(r.get('backwater', False)),
+            'backwater': bool(r.get('backwater', False)), 'elev_spec_m': r.get('elev_m'),
             'length_px': rnd(polyline_length(simp)), 'hidden_fraction': rnd(hidden_frac, 3),
             'width_px': [rnd(x, 1) for x in w_s],
             'direction': 'coordinates ordered downstream',

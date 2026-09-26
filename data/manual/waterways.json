@@ -156,6 +156,10 @@
      662,
      666
     ]
+   ],
+   "elev_m": [
+    332,
+    300
    ]
   },
   {
@@ -180,6 +184,10 @@
      601,
      421
     ]
+   ],
+   "elev_m": [
+    null,
+    null
    ]
   },
   {
@@ -188,7 +196,7 @@
    "class": "creek",
    "flows_into": null,
    "outlet": "map_edge_left",
-   "source": "culvert under downtown West Hollow",
+   "source": "springs above Laurel City (culverted under downtown)",
    "wp": [
     [
      180,
@@ -238,6 +246,10 @@
      1,
      183
     ]
+   ],
+   "elev_m": [
+    346,
+    318
    ]
   },
   {
@@ -350,6 +362,10 @@
    "inferred_after": [
     1232,
     440
+   ],
+   "elev_m": [
+    505,
+    null
    ]
   },
   {
@@ -459,6 +475,10 @@
      882,
      403
     ]
+   ],
+   "elev_m": [
+    415,
+    null
    ]
   },
   {
@@ -533,6 +553,10 @@
      1046,
      666
     ]
+   ],
+   "elev_m": [
+    368,
+    322
    ]
   },
   {
@@ -541,8 +565,16 @@
    "class": "river",
    "flows_into": null,
    "outlet": "map_edge_right",
-   "source": "culvert from North Branch (inferred)",
+   "source": "off-map (north)",
    "wp": [
+    [
+     1575,
+     0.5
+    ],
+    [
+     1562,
+     25
+    ],
     [
      1552,
      59
@@ -651,6 +683,10 @@
      1999,
      428
     ]
+   ],
+   "elev_m": [
+    304,
+    284
    ]
   },
   {
@@ -688,6 +724,10 @@
      1470,
      170
     ]
+   ],
+   "elev_m": [
+    null,
+    null
    ]
   },
   {
@@ -717,15 +757,19 @@
      1999,
      535
     ]
+   ],
+   "elev_m": [
+    null,
+    281
    ]
   },
   {
    "id": "WTR_R07",
    "name": "North Branch",
    "class": "river",
-   "flows_into": null,
-   "outlet": "map_edge_top",
-   "source": "off-map (north-east), hidden under highway",
+   "flows_into": "WTR_R06",
+   "outlet": null,
+   "source": "off-map (north-east)",
    "wp": [
     [
      1962,
@@ -812,13 +856,17 @@
      10
     ],
     [
-     1595,
-     5
+     1600,
+     8
     ],
     [
-     1562,
-     1
+     1570,
+     14
     ]
+   ],
+   "elev_m": [
+    318,
+    null
    ]
   },
   {
@@ -856,6 +904,10 @@
      1999,
      648
     ]
+   ],
+   "elev_m": [
+    300,
+    281
    ]
   },
   {
@@ -893,43 +945,67 @@
      1906,
      392
     ]
+   ],
+   "elev_m": [
+    300,
+    null
    ]
   },
   {
    "id": "WTR_C03",
    "name": "Quarry Run",
    "class": "creek",
-   "flows_into": null,
-   "outlet": "storm culvert (Southside)",
+   "flows_into": "WTR_C05",
+   "outlet": null,
    "wp": [
     [
-     1646,
-     592
-    ],
-    [
-     1628,
-     573
-    ],
-    [
-     1610,
-     556
+     1589,
+     513
     ],
     [
      1598,
      536
     ],
     [
-     1589,
-     513
+     1610,
+     556
+    ],
+    [
+     1628,
+     573
+    ],
+    [
+     1646,
+     592
+    ],
+    [
+     1668,
+     612
+    ],
+    [
+     1690,
+     628
+    ],
+    [
+     1712,
+     640
+    ],
+    [
+     1721,
+     648
     ]
+   ],
+   "elev_m": [
+    352,
+    null
    ]
   },
   {
    "id": "WTR_C04",
    "name": "Depot Branch",
    "class": "creek",
-   "flows_into": null,
-   "outlet": "culvert under rail yard",
+   "flows_into": "WTR_R08",
+   "outlet": null,
    "wp": [
     [
      1763,
@@ -946,7 +1022,23 @@
     [
      1800,
      566
+    ],
+    [
+     1815,
+     574
+    ],
+    [
+     1830,
+     560
+    ],
+    [
+     1845,
+     540
     ]
+   ],
+   "elev_m": [
+    326,
+    null
    ]
   },
   {
@@ -954,7 +1046,7 @@
    "name": "Hemlock Spring",
    "class": "creek",
    "flows_into": null,
-   "outlet": "sinks into forest",
+   "outlet": "map_edge_bottom",
    "wp": [
     [
      1746,
@@ -971,15 +1063,27 @@
     [
      1726,
      632
+    ],
+    [
+     1722,
+     650
+    ],
+    [
+     1720,
+     666.5
     ]
+   ],
+   "elev_m": [
+    345,
+    300
    ]
   },
   {
    "id": "WTR_C06",
    "name": "Laurel Branch",
    "class": "creek",
-   "flows_into": null,
-   "outlet": "continues under canopy",
+   "flows_into": "WTR_R03",
+   "outlet": null,
    "wp": [
     [
      828,
@@ -1000,8 +1104,33 @@
     [
      893,
      64
+    ],
+    [
+     930,
+     76
+    ],
+    [
+     965,
+     86
+    ],
+    [
+     995,
+     92
+    ],
+    [
+     1030,
+     90
+    ],
+    [
+     1055,
+     96
     ]
+   ],
+   "elev_m": [
+    560,
+    null
    ]
   }
- ]
+ ],
+ "_elev_doc": "elev_m = [source, mouth] water-surface elevation (m); null = inherit from the parent channel at the junction. Profiles are monotonic downstream."
 }

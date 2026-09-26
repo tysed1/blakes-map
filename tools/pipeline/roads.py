@@ -78,6 +78,8 @@ def auto_lines(edits, zones):
         rk = float(field_at(R, s).mean())
         mid = s[len(s) // 2]
         z = zone_of(mid, zones)
+        if z is not None and z['kind'] in ('town_center', 'downtown'):
+            continue  # cores are hand-authored / grid-detected
         if z is None and rk > 0.22 and mp < 0.5:
             continue  # rocky-slope texture, not a road
         if z is None and mp < 0.28 and L < 25:
@@ -235,6 +237,63 @@ def snap_endpoints(lines, tol_auto=4.5, tol_manual=3.5):
     return lines
 
 
+def regularize_t_junctions(lines, min_deg=40.0):
+    """A road ending on another road should meet it at a real junction angle,
+    not slide tangentially onto it. Back the approach off and come in straight."""
+    geoms = [LineString(l['pts']) for l in lines]
+    tree = STRtree(geoms)
+    fixed = 0
+    for i, l in enumerate(lines):
+        if l['type'] in GRADE_SEP:
+            continue
+        for end in (0, -1):
+            pts = l['pts'] if end == -1 else l['pts'][::-1]
+            e = Point(pts[-1])
+            host = None
+            for j in tree.query(e.buffer(0.2)):
+                if j == i or lines[j]['type'] in GRADE_SEP:
+                    continue
+                g = geoms[j]
+                if g.distance(e) < 0.1:
+                    s = g.project(e)
+                    if 1.0 < s < g.length - 1.0:
+                        host = j
+            if host is None:
+                continue
+            g = geoms[host]
+            s = resample(pts, 1.0)
+            if len(s) < 12:
+                continue
+            def angle_at(tail_pt, q):
+                v = np.asarray(q) - np.asarray(tail_pt)
+                sq = g.project(Point(q))
+                a = np.asarray(g.interpolate(max(0, sq - 2)).coords[0]); b = np.asarray(g.interpolate(min(g.length, sq + 2)).coords[0])
+                t = b - a
+                c = abs(np.dot(v, t)) / max(np.hypot(*v) * np.hypot(*t), 1e-9)
+                return math.degrees(math.acos(min(1, c)))
+            if angle_at(s[-8], s[-1]) >= min_deg:
+                continue
+            best = None
+            for back in range(6, min(30, len(s) - 3)):
+                b = s[-1 - back]
+                q = np.asarray(g.interpolate(g.project(Point(b))).coords[0])
+                if np.hypot(*(q - b)) < 2.5:
+                    continue
+                ang = angle_at(b, q)
+                if ang >= min_deg:
+                    best = (back, q)
+                    break
+            if best is None:
+                continue
+            back, q = best
+            nt = resample(np.vstack([s[-1 - back], q]), 1.0)
+            new = np.vstack([s[:-1 - back], nt])
+            l['pts'] = new if end == -1 else new[::-1]
+            geoms[i] = LineString(l['pts'])
+            fixed += 1
+    print('  T-junctions regularised:', fixed)
+
+
 def node_network(lines):
     """Split lines at shared endpoints and at surface-surface crossings."""
     geoms = [LineString(l['pts']) for l in lines]
@@ -274,6 +333,68 @@ def node_network(lines):
     return pieces
 
 
+def load_grid(zones):
+    p = path('tools/.cache/grid_streets.json')
+    if not os.path.exists(p):
+        return []
+    zmap = {d['id']: d for d, _ in zones}
+    out = []
+    for g in load_json(p):
+        pts = resample(np.asarray(g['pts'], float), 1.0)
+        out.append({'pts': pts, 'src': 'grid', 'zone': zmap.get(g['zone']), 'type': g['type']})
+    return out
+
+
+def clear_freeway_corridors(autos, fw):
+    """Local streets may pass under/over a freeway at a clean angle, but never
+    touch ramps or run inside the freeway right-of-way."""
+    ramps = unary_union([LineString(l['pts']).buffer(wpx('ramp') / 2 + 2.5) for l in fw if l['type'] == 'ramp'])
+    row = unary_union([LineString(l['pts']).buffer(wpx('freeway') / 2 + 3.0) for l in fw if l['type'] == 'freeway'])
+    out = []
+    for l in autos:
+        g = LineString(l['pts'])
+        if g.intersects(ramps):
+            continue
+        if g.intersection(row).length > 14:
+            continue
+        out.append(l)
+    return out
+
+
+def interchange_ramps(manual):
+    from tools.lib.interchange import diamond
+    spec = load_json(path('data/manual/interchanges.json'))
+    byid = {r['id']: (r, np.asarray(p)) for r, p in manual}
+    out, seps = [], []
+    for ic in spec['interchanges']:
+        f = byid[ic['freeway']][1]
+        xs = [byid[i][1] for i in ic['crossroad']]
+        x = xs[0]
+        for nxt in xs[1:]:
+            if np.hypot(*(x[-1] - nxt[0])) < 1:
+                x = np.vstack([x, nxt[1:]])
+            elif np.hypot(*(x[0] - nxt[-1])) < 1:
+                x = np.vstack([nxt, x[1:]])
+            elif np.hypot(*(x[0] - nxt[0])) < 1:
+                x = np.vstack([nxt[::-1], x[1:]])
+            else:
+                x = np.vstack([x, nxt[::-1][1:]])
+        ramps, sep = diamond(ic, f, x, wpx(byid[ic['freeway']][0]['type']) / 2, wpx('ramp') / 2, spec['defaults'])
+        sep.update(id=ic['id'], lower=ic['freeway'], upper_roads=ic['crossroad'])
+        seps.append(sep)
+        fname = byid[ic['freeway']][0].get('name', ic['freeway'])
+        xname = byid[ic['crossroad'][0]][0].get('name', '')
+        for k, r in enumerate(ramps):
+            nm = f"{fname} {r['direction']} {'exit to' if r['kind'] == 'exit' else 'entrance from'} {xname}"
+            out.append({'pts': r['pts'], 'src': 'manual', 'type': 'ramp', 'name': nm, 'route': None,
+                        'def_id': f"{ic['id']}_R{k + 1}", 'lanes': 1, 'layer': 0, 'zone': zone_of(r['pts'][len(r['pts']) // 2], load_zones()),
+                        'oneway': True, 'no_snap': True, 'interchange': ic['id'], 'min_radius_m': rnd(r['min_radius_px'] * 2.5, 1)})
+            if r['min_radius_px'] * 2.5 < 45:
+                print(f"  WARN {ic['id']} ramp {k + 1} min radius {r['min_radius_px'] * 2.5:.0f} m")
+    save_json(path('tools/.cache/grade_separations.json'), seps)
+    return out
+
+
 # ------------------------------------------------------------------ main
 def classify_auto(l, P, mask_dt):
     z = l['zone']
@@ -298,12 +419,20 @@ def main():
                        'route': r.get('route', r.get('name')), 'def_id': r['id'], 'lanes': r.get('lanes'),
                        'layer': r.get('layer', 0), 'zone': zone_of(pts[len(pts) // 2], zones),
                        'oneway': r.get('oneway', False), 'no_snap': r.get('no_snap', False)})
+    mlines += interchange_ramps(manual)
     autos = auto_lines(edits, zones)
     autos = bridge_gaps(autos)
-    autos = suppress_covered(autos, manual)
+    grid = load_grid(zones)
+    gridman = manual + [({'type': 'urban_street'}, l['pts']) for l in grid]
+    autos = suppress_covered(autos, gridman)
+    autos = clear_freeway_corridors(autos, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
+    grid = suppress_covered(grid, manual)
+    grid = clear_freeway_corridors(grid, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
+    for l in grid:
+        l['src'] = 'grid'
     # smooth / regularise auto geometry
     for l in autos:
-        s = robust_smooth(l['pts'], 1.6, iters=2)
+        s = robust_smooth(l['pts'], 2.8 if polyline_length(l['pts']) > 12 else 1.5, iters=3)
         z = l['zone']
         eps = 0.7 if (z and z['kind'] in ('city', 'downtown', 'industrial', 'town_center')) else 0.35
         s2 = rdp(s, eps)
@@ -314,10 +443,16 @@ def main():
     mask_dt = cv2.distanceTransform(rm.astype(np.uint8), cv2.DIST_L2, 5)
     for l in autos:
         l['type'] = classify_auto(l, P, mask_dt)
+    for l in grid:
+        l['pts'] = rdp(l['pts'], 0.3)
         l['name'] = None
         l['route'] = None
-    lines = mlines + autos
+    for l in grid:
+        l['name'] = None
+        l['route'] = None
+    lines = mlines + grid + autos
     lines = snap_endpoints(lines)
+    regularize_t_junctions(lines)
     pieces = node_network(lines)
     build_outputs(lines, pieces, zones)
 
@@ -346,7 +481,7 @@ def build_outputs(lines, pieces, zones):
         pts[0] = G.nodes[a]['xy']
         pts[-1] = G.nodes[b]['xy']
         l = lines[i]
-        G.add_edge(a, b, pts=pts, attrs={k: l.get(k) for k in ('src', 'type', 'name', 'route', 'def_id', 'lanes', 'layer', 'oneway')},
+        G.add_edge(a, b, pts=pts, attrs={k: l.get(k) for k in ('src', 'type', 'name', 'route', 'def_id', 'lanes', 'layer', 'oneway', 'interchange', 'min_radius_m', 'virtual')},
                    zone=l.get('zone'))
     # drop tiny auto stubs left by trimming/snapping
     for u, v, k, d in list(G.edges(keys=True, data=True)):
@@ -354,7 +489,119 @@ def build_outputs(lines, pieces, zones):
             G.remove_edge(u, v, k)
     G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0])
     merge_chains(G)
+    clean_faces(G)
+    engineer_pass(G)
+    link_ramp_gores(G)
+    classify_rural(G)
     write(G, zones)
+
+
+def link_ramp_gores(G):
+    """Connect each ramp gore (on the freeway edge) to the freeway centreline with a
+    short virtual merge link, so the network graph is connected through interchanges."""
+    from tools.lib import engineer as E
+    for n in list(G.nodes):
+        if G.degree(n) != 1:
+            continue
+        (u, v, k, d), = list(G.edges(n, keys=True, data=True))
+        if d['attrs']['type'] != 'ramp':
+            continue
+        xy = np.asarray(G.nodes[n]['xy'])
+        best = None
+        for a, b, kk, dd in G.edges(keys=True, data=True):
+            if dd['attrs']['type'] != 'freeway':
+                continue
+            g = LineString(dd['pts'])
+            dist = g.distance(Point(xy))
+            if dist < 8 and (best is None or dist < best[0]):
+                best = (dist, a, b, kk)
+        if best is None:
+            continue
+        _, a, b, kk = best
+        t = E.split_edge(G, a, b, kk, xy)
+        attrs = dict(d['attrs']); attrs['virtual'] = True; attrs['name'] = 'merge link'
+        G.add_edge(n, t, pts=np.array([xy, G.nodes[t]['xy']]), attrs=attrs, zone=d.get('zone'))
+
+
+def engineer_pass(G, rounds=4):
+    from tools.lib import engineer as E
+    wb = load_json(path('data/water/water_bodies.geojson'))
+    water = unary_union([shape(f['geometry']) for f in wb['features']])
+    for r in range(rounds):
+        st = dict(near=E.connect_near_misses(G, water=water), short=E.contract_short(G),
+                  sharp=E.fix_sharp_angles(G), dup=E.remove_duplicates(G), dead=E.prune_dead_ends(G),
+                  comp=E.prune_components(G))
+        merge_chains(G)
+        print('  engineer pass', r + 1, st)
+        if not any(st.values()):
+            break
+
+
+def edge_prob(pts, P):
+    s = resample(np.asarray(pts), 1.0)
+    return float(field_at(P, s).mean())
+
+
+def clean_faces(G, min_area=110.0, spur=9.0, rounds=6):
+    """Remove loops around yards/roofs (tiny faces) and short spurs from
+    auto-extracted streets; manual/grid edges are never removed."""
+    from shapely.ops import polygonize
+    P = road_prob()
+    for _ in range(rounds):
+        changed = 0
+        edges = list(G.edges(keys=True, data=True))
+        geoms = [LineString(d['pts']) for _, _, _, d in edges]
+        tree = STRtree(geoms)
+        faces = [f for f in polygonize(geoms) if f.area < min_area]
+        faces.sort(key=lambda f: f.area)
+        removed = set()
+        for f in faces:
+            bd = f.boundary.buffer(0.15)
+            cand = []
+            for j in tree.query(bd):
+                if j in removed:
+                    continue
+                u, v, k, d = edges[j]
+                if d['attrs']['src'] in ('manual', 'grid'):
+                    continue
+                if geoms[j].within(bd):
+                    cand.append(j)
+            if not cand:
+                continue
+            j = min(cand, key=lambda j: edge_prob(edges[j][3]['pts'], P) - 0.002 * geoms[j].length)
+            u, v, k, d = edges[j]
+            if G.has_edge(u, v, k):
+                G.remove_edge(u, v, k)
+                removed.add(j)
+                changed += 1
+        # short spurs
+        for u, v, k, d in list(G.edges(keys=True, data=True)):
+            if d['attrs']['src'] in ('manual', 'grid'):
+                continue
+            if (G.degree(u) == 1 or G.degree(v) == 1) and polyline_length(d['pts']) < spur:
+                G.remove_edge(u, v, k)
+                changed += 1
+        G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0])
+        merge_chains(G)
+        if not changed:
+            break
+    # drop small disconnected auto fragments
+    import networkx as nx
+    for comp in list(nx.connected_components(G)):
+        sub = G.subgraph(comp)
+        if all(d['attrs']['src'] not in ('manual', 'grid') for _, _, d in sub.edges(data=True)):
+            if sum(polyline_length(d['pts']) for _, _, d in sub.edges(data=True)) < 40:
+                G.remove_nodes_from(list(comp))
+
+
+def classify_rural(G):
+    for u, v, k, d in G.edges(keys=True, data=True):
+        a = d['attrs']
+        if a['src'] == 'manual' or d['zone'] is not None:
+            continue
+        L = polyline_length(d['pts'])
+        dead = G.degree(u) == 1 or G.degree(v) == 1
+        a['type'] = 'driveway' if (dead and L < 35) else 'gravel'
 
 
 def same(a, b):
@@ -500,12 +747,13 @@ def write(G, zones):
             'width_m': spec['width_m'], 'lanes': a.get('lanes') or spec['lanes'], 'surface': spec['surface'],
             'material': spec['material'], 'shoulder_m': spec['shoulder_m'], 'speed_mph': spec['speed_mph'],
             'oneway': bool(a.get('oneway')), 'layer': a.get('layer') or 0,
+            'interchange': a.get('interchange'), 'min_radius_m': a.get('min_radius_m'), 'virtual': bool(a.get('virtual')),
             'grade_separated': t in GRADE_SEP,
             'zone': z['id'] if z else None, 'settlement': z['settlement'] if z else None,
             'source': a['src'], 'def_id': a.get('def_id'),
             'length_m': rnd(L * 2.5, 1),
             'bridge_spans': br,
-            'status': 'traced' if a['src'] == 'manual' else ('extracted' if a['src'] == 'auto' else 'inferred_gap'),
+            'status': {'manual': 'traced', 'auto': 'extracted', 'grid': 'grid_detected'}.get(a['src'], 'inferred_gap'),
         }
         feats.append(geojson_line(pts, props))
         edge_ids[(u, v)] = rid

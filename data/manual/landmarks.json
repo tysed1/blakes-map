@@ -1,0 +1,189 @@
+{
+ "_doc": "Hand-placed landmark structures and POIs (source px). 'building' entries become custom-footprint buildings; others are POIs only.",
+ "landmarks": [
+  {
+   "id": "LM_LC_COLISEUM",
+   "name": "Laurel City Civic Coliseum",
+   "kind": "arena",
+   "settlement": "laurel_city",
+   "center": [
+    152.0,
+    229.0
+   ],
+   "radius_px": 14.0,
+   "building": true
+  },
+  {
+   "id": "LM_TV_ARENA",
+   "name": "Tannersville Memorial Arena",
+   "kind": "arena",
+   "settlement": "tannersville",
+   "center": [
+    1864.0,
+    302.0
+   ],
+   "radius_px": 14.0,
+   "building": true
+  },
+  {
+   "id": "LM_HR_CHURCH",
+   "name": "Hollow Ridge First Baptist Church",
+   "kind": "church",
+   "settlement": "hollow_ridge",
+   "center": [
+    1066.0,
+    360.0
+   ],
+   "size_px": [
+    8.0,
+    17.0
+   ],
+   "rotation_deg": -4.0,
+   "building": true
+  },
+  {
+   "id": "LM_HR_SCHOOL",
+   "name": "Hollow Ridge School",
+   "kind": "civic",
+   "settlement": "hollow_ridge",
+   "center": [
+    1076.0,
+    250.0
+   ],
+   "size_px": [
+    21.0,
+    13.0
+   ],
+   "rotation_deg": 22.0,
+   "building": true
+  },
+  {
+   "id": "LM_HR_DEPOT",
+   "name": "Hollow Ridge Depot",
+   "kind": "poi",
+   "settlement": "hollow_ridge",
+   "center": [
+    1060.0,
+    392.0
+   ]
+  },
+  {
+   "id": "LM_HR_FALLS",
+   "name": "Hollow Falls",
+   "kind": "waterfall",
+   "settlement": "hollow_ridge",
+   "center": [
+    1128.0,
+    262.0
+   ]
+  },
+  {
+   "id": "LM_FALLS_CREEK_CASCADES",
+   "name": "Falls Creek Cascades",
+   "kind": "waterfall",
+   "center": [
+    1043.0,
+    60.0
+   ]
+  },
+  {
+   "id": "LM_SOUTH_FORK_GORGE",
+   "name": "South Fork Gorge",
+   "kind": "natural",
+   "center": [
+    955.0,
+    540.0
+   ]
+  },
+  {
+   "id": "LM_PICKENS_FARM",
+   "name": "Pickens Farm",
+   "kind": "farm",
+   "center": [
+    790.0,
+    130.0
+   ]
+  },
+  {
+   "id": "LM_DOCKERY_FARM",
+   "name": "Dockery Farm",
+   "kind": "farm",
+   "center": [
+    945.0,
+    630.0
+   ]
+  },
+  {
+   "id": "LM_LAUREL_GAP",
+   "name": "Laurel Gap",
+   "kind": "pass",
+   "center": [
+    848.0,
+    380.0
+   ]
+  },
+  {
+   "id": "LM_STONY_KNOB",
+   "name": "Stony Knob",
+   "kind": "summit",
+   "center": [
+    1200.0,
+    110.0
+   ]
+  },
+  {
+   "id": "LM_BALD_RIDGE",
+   "name": "Bald Ridge",
+   "kind": "summit",
+   "center": [
+    820.0,
+    290.0
+   ]
+  },
+  {
+   "id": "LM_HEMLOCK_MTN",
+   "name": "Hemlock Mountain",
+   "kind": "summit",
+   "center": [
+    1450.0,
+    530.0
+   ]
+  },
+  {
+   "id": "LM_LC_YARD",
+   "name": "Laurel City Rail Yard",
+   "kind": "rail_yard",
+   "center": [
+    95.0,
+    410.0
+   ]
+  },
+  {
+   "id": "LM_TV_YARD",
+   "name": "Tannersville Rail Yard",
+   "kind": "rail_yard",
+   "center": [
+    1840.0,
+    480.0
+   ]
+  },
+  {
+   "id": "LM_SR400_INTERCHANGE",
+   "name": "SR 400 / US 19 Interchange",
+   "kind": "interchange",
+   "center": [
+    300.0,
+    395.0
+   ]
+  },
+  {
+   "id": "LM_US76_INTERCHANGE",
+   "name": "US 76 / SR 60 Interchange",
+   "kind": "interchange",
+   "center": [
+    1872.0,
+    158.0
+   ]
+  }
+ ]
+}

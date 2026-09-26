@@ -1,0 +1,41 @@
+{
+ "_doc": "Engineered freeway interchanges, generated parametrically by tools/lib/interchange.py. kind 'diamond': 4 one-way ramps (exit before / entrance after the crossroad, per direction), crossroad carried OVER the freeway. ramp_offset_px = freeway distance from crossing to the ramp gore; terminal_offset_px = distance along the crossroad from the freeway centreline to each ramp terminal. 1 px = 2.5 m.",
+ "defaults": {
+  "ramp_offset_px": 72,
+  "terminal_offset_px": 16,
+  "taper_px": 22,
+  "clearance_m": 7.5
+ },
+ "interchanges": [
+  {
+   "id": "IC_LC_SR400_US19",
+   "name": "SR 400 / US 19 Interchange",
+   "kind": "diamond",
+   "freeway": "HWY_SR400",
+   "crossroad": [
+    "HWY_US19"
+   ]
+  },
+  {
+   "id": "IC_TV_SR60_US76",
+   "name": "SR 60 / US 76 Interchange",
+   "kind": "diamond",
+   "freeway": "HWY_SR60",
+   "crossroad": [
+    "HWY_US76"
+   ],
+   "ramp_offset_px": 55
+  },
+  {
+   "id": "IC_TV_SR60_RIVERFRONT",
+   "name": "SR 60 / Riverfront Pkwy Interchange",
+   "kind": "diamond",
+   "freeway": "HWY_SR60",
+   "crossroad": [
+    "TV_RIVERFRONT"
+   ],
+   "ramp_offset_px": 55,
+   "terminal_offset_px": 15
+  }
+ ]
+}

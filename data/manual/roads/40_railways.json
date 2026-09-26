@@ -1,0 +1,9 @@
+{
+  "_doc": "Railways (type 'rail'): Georgia Northern mainline + yards. Hidden reaches (tunnel under Laurel Gap, forest cuts) are inferred to keep one continuous line.",
+  "roads": [
+    {"id":"RR_LC_YARD","name":"Laurel City Yard","type":"rail","tracks":6,"wp":[[0.5,375],[40,387],[80,404],[120,422],[150,438],[180,452]]},
+    {"id":"RR_VALLEY","name":"Georgia Northern Mainline","type":"rail","tracks":1,"tunnel_until_px":[850,381],
+     "wp":[[850,381],[885,391],[915,405],[945,420],[972,417],[1000,404],[1030,392],[1060,388],[1100,395],[1150,405],[1190,420],[1230,442],[1260,470],[1290,500],[1320,525],[1350,551],[1380,581],[1410,620],[1440,666.5]]},
+    {"id":"RR_TV_YARD","name":"Tannersville Yard","type":"rail","tracks":8,"wp":[[1540,330],[1580,352],[1620,372],[1660,390],[1700,405],[1740,421],[1780,440],[1820,462],[1860,490],[1900,515],[1940,540],[1999.5,572]]}
+  ]
+}

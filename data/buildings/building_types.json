@@ -1,0 +1,19 @@
+{
+  "_doc": "Building proxy classes (1974 north Georgia). height_m = [min, max] eave/roof height used for the primitive proxy; roof = proxy roof form. replace_with = intended final asset category.",
+  "types": {
+    "house":            {"label": "House (1-1.5 story)",          "height_m": [5.0, 7.5],   "roof": "gable", "color": "#e8d9b5", "replace_with": "residential/house_small"},
+    "house_large":      {"label": "Two-story house / farmhouse",  "height_m": [7.5, 9.5],   "roof": "gable", "color": "#f2e6c9", "replace_with": "residential/house_2story"},
+    "trailer":          {"label": "Mobile home",                   "height_m": [3.5, 4.0],   "roof": "flat",  "color": "#d8d8d0", "replace_with": "residential/trailer"},
+    "barn":             {"label": "Barn / farm outbuilding",       "height_m": [7.0, 10.0],  "roof": "gable", "color": "#b5452f", "replace_with": "rural/barn"},
+    "shed":             {"label": "Shed / garage",                 "height_m": [3.0, 4.0],   "roof": "gable", "color": "#9b8a70", "replace_with": "rural/shed"},
+    "commercial_small": {"label": "Small commercial / store",      "height_m": [4.5, 7.0],   "roof": "flat",  "color": "#c9a27a", "replace_with": "commercial/storefront"},
+    "motel":            {"label": "Motel / roadside",              "height_m": [4.0, 7.0],   "roof": "flat",  "color": "#d6b98c", "replace_with": "commercial/motel"},
+    "downtown_lowrise": {"label": "Downtown low-rise (2-4 fl)",    "height_m": [8.0, 16.0],  "roof": "flat",  "color": "#a86b4c", "replace_with": "urban/brick_block"},
+    "urban_midrise":    {"label": "Medium urban building (5-10 fl)","height_m": [18.0, 36.0], "roof": "flat",  "color": "#8c8f99", "replace_with": "urban/midrise"},
+    "tower":            {"label": "Tall city building (11+ fl)",   "height_m": [40.0, 95.0], "roof": "flat",  "color": "#4c5a73", "replace_with": "urban/tower"},
+    "industrial":       {"label": "Industrial / warehouse",        "height_m": [7.0, 13.0],  "roof": "flat",  "color": "#9aa0a6", "replace_with": "industrial/warehouse"},
+    "civic":            {"label": "Civic / school / public",       "height_m": [8.0, 14.0],  "roof": "flat",  "color": "#c8b8a0", "replace_with": "civic/public"},
+    "church":           {"label": "Church",                        "height_m": [9.0, 12.0],  "roof": "gable", "color": "#f5f5f0", "replace_with": "civic/church", "spire_m": 12.0},
+    "arena":            {"label": "Arena / coliseum",              "height_m": [16.0, 22.0], "roof": "dome",  "color": "#d0d4d8", "replace_with": "landmark/arena"}
+  }
+}

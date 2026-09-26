@@ -1,0 +1,280 @@
+{
+ "_doc": "Terrain art-direction inputs (source px, metres). The terrain is reconstructed from the map's geography: valley floors follow river profiles; relief rises with distance from lowland (water, farmland, towns) with capped slope, steeper where the map shows exposed rock. Regions below scale relief amplitude.",
+ "relief": {
+  "default_amplitude_m": 150,
+  "base_slope_m_per_px": 1.45,
+  "rock_slope_bonus": 0.9,
+  "rock_amplitude_bonus_m": 70,
+  "sfs_amplitude_m": 14
+ },
+ "amplitude_regions": [
+  {
+   "name": "Laurel City basin (gentle hills)",
+   "amplitude_m": 45,
+   "pts": [
+    [
+     120,
+     110
+    ],
+    [
+     330,
+     120
+    ],
+    [
+     430,
+     220
+    ],
+    [
+     470,
+     330
+    ],
+    [
+     430,
+     470
+    ],
+    [
+     300,
+     540
+    ],
+    [
+     150,
+     520
+    ],
+    [
+     60,
+     420
+    ],
+    [
+     60,
+     200
+    ]
+   ],
+   "feather_px": 60
+  },
+  {
+   "name": "Tannersville basin (gentle hills)",
+   "amplitude_m": 45,
+   "pts": [
+    [
+     1480,
+     160
+    ],
+    [
+     1600,
+     110
+    ],
+    [
+     1850,
+     110
+    ],
+    [
+     1960,
+     200
+    ],
+    [
+     1960,
+     470
+    ],
+    [
+     1800,
+     500
+    ],
+    [
+     1600,
+     430
+    ],
+    [
+     1460,
+     330
+    ]
+   ],
+   "feather_px": 60
+  },
+  {
+   "name": "Hollow Ridge valley",
+   "amplitude_m": 60,
+   "pts": [
+    [
+     930,
+     210
+    ],
+    [
+     1150,
+     200
+    ],
+    [
+     1220,
+     300
+    ],
+    [
+     1200,
+     420
+    ],
+    [
+     1060,
+     440
+    ],
+    [
+     930,
+     400
+    ]
+   ],
+   "feather_px": 40
+  },
+  {
+   "name": "North Mountain / Laurel Ridge (central high country)",
+   "amplitude_m": 230,
+   "pts": [
+    [
+     420,
+     0
+    ],
+    [
+     1000,
+     0
+    ],
+    [
+     980,
+     70
+    ],
+    [
+     700,
+     140
+    ],
+    [
+     430,
+     110
+    ]
+   ],
+   "feather_px": 80
+  },
+  {
+   "name": "Stony Knob massif",
+   "amplitude_m": 260,
+   "pts": [
+    [
+     1060,
+     0
+    ],
+    [
+     1330,
+     0
+    ],
+    [
+     1330,
+     160
+    ],
+    [
+     1300,
+     240
+    ],
+    [
+     1160,
+     230
+    ],
+    [
+     1080,
+     120
+    ]
+   ],
+   "feather_px": 80
+  },
+  {
+   "name": "Bald Ridge",
+   "amplitude_m": 210,
+   "pts": [
+    [
+     640,
+     180
+    ],
+    [
+     800,
+     220
+    ],
+    [
+     920,
+     300
+    ],
+    [
+     900,
+     360
+    ],
+    [
+     760,
+     350
+    ],
+    [
+     640,
+     270
+    ]
+   ],
+   "feather_px": 60
+  },
+  {
+   "name": "South Fork highlands",
+   "amplitude_m": 220,
+   "pts": [
+    [
+     600,
+     440
+    ],
+    [
+     900,
+     470
+    ],
+    [
+     1000,
+     560
+    ],
+    [
+     1300,
+     560
+    ],
+    [
+     1340,
+     667
+    ],
+    [
+     600,
+     667
+    ]
+   ],
+   "feather_px": 80
+  },
+  {
+   "name": "Hemlock Mountain",
+   "amplitude_m": 240,
+   "pts": [
+    [
+     1300,
+     380
+    ],
+    [
+     1480,
+     420
+    ],
+    [
+     1620,
+     500
+    ],
+    [
+     1650,
+     667
+    ],
+    [
+     1300,
+     667
+    ]
+   ],
+   "feather_px": 80
+  }
+ ],
+ "flatten_zone_kinds": {
+  "downtown": 0.08,
+  "industrial": 0.1,
+  "town_center": 0.12,
+  "town": 0.45,
+  "city": 0.75
+ },
+ "sea_note": "No sea. Lowest point ~280 m (Tanner River at the east edge)."
+}

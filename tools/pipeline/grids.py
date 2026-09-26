@@ -21,9 +21,11 @@ from shapely.geometry import Polygon, LineString, Point
 
 from tools.lib.common import path, load_json, save_json, W, H
 from tools.lib.features import road_prob, hsv, water_mask
-from tools.lib.geom import rasterize_polys
+from tools.lib.geom import rasterize_polys, mask_to_polygons
+from shapely.ops import unary_union
 
-GRID_KINDS = {'downtown': 'urban_street', 'industrial': 'urban_street', 'town_center': 'urban_street'}
+GRID_KINDS = {'downtown': 'urban_street'}
+DEFAULTS = {'downtown': {'min_sep': 11, 'thr': 0.30}, 'town_center': {'min_sep': 15, 'thr': 0.36}}
 
 
 def field():
@@ -103,7 +105,7 @@ def detect_lines(F, mask, poly, theta, min_sep=11, thr_run=0.30, min_len=14, gap
                 j += 1
             if j - i >= min_len:
                 seg = pts[i:j]
-                ls = LineString(seg).intersection(poly.buffer(3))
+                ls = LineString(seg).intersection(poly.buffer(1.5))
                 if not ls.is_empty and ls.length >= min_len:
                     geoms = [ls] if ls.geom_type == 'LineString' else [g for g in ls.geoms if g.geom_type == 'LineString']
                     for g in geoms:
@@ -122,8 +124,11 @@ def main():
         if z['kind'] not in GRID_KINDS:
             continue
         poly = Polygon(z['pts'])
+        wm = np.load(path('tools/.cache/water_mask.npy'))
+        wpoly = unary_union(mask_to_polygons(cv2.dilate(wm.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0, blur=0.5, simplify=0.5))
+        poly = poly.difference(wpoly)
         mask = rasterize_polys([poly], (H, W))
-        zo = ov.get(z['id'], {})
+        zo = dict(DEFAULTS[z['kind']], **ov.get(z['id'], {}))
         thetas = zo.get('orientations_deg')
         thetas = [math.radians(a) for a in thetas] if thetas else orientations(F, mask)
         for ti, th in enumerate(thetas):
