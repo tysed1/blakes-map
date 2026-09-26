@@ -4,3 +4,4 @@ dist/
 __pycache__/
 public/world/
 tools/qa/dbg.mjs
+exports/
