@@ -56,6 +56,20 @@ def snap(wp, cost, margin=20):
     return out
 
 
+def remove_loops(pts, tol=2.5, min_gap=6):
+    """Cut out spurs/backtracks of a snapped path: whenever the path returns within tol px of an earlier
+    point (more than min_gap samples back), jump straight to the latest such return."""
+    from scipy.spatial import cKDTree
+    P = np.asarray(pts, float)
+    tree = cKDTree(P)
+    out, i = [], 0
+    while i < len(P):
+        out.append(P[i])
+        near = [j for j in tree.query_ball_point(P[i], tol) if j > i + min_gap]
+        i = max(near) if near else i + 1
+    return [tuple(p) for p in out]
+
+
 def main():
     man = load_json(path('data/manual/waterways.json'))
     cand, rapids = raw_water()
@@ -68,8 +82,9 @@ def main():
     lines = []
     for r in man['rivers']:
         wp = [tuple(map(float, p)) for p in r['wp']]
-        raw = snap(wp, cost)
+        raw = remove_loops(snap(wp, cost))
         sm = smooth_polyline(raw, 4.0 if r['class'] == 'river' else 2.5)
+        sm = np.asarray(remove_loops(sm, tol=1.5, min_gap=4))
         lines.append((r, sm))
 
     # --- keep only water components touching a centreline (drops glass towers, pools, blue roofs)

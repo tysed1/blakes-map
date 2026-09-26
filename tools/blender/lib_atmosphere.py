@@ -190,6 +190,12 @@ def apply_ambient(mats=None, skip=('Water', 'WATER', 'Marking', 'Backdrop')):
                 to = l.to_socket
                 nt.links.remove(l)
                 nt.links.new(add.outputs[0], to)
+        # the ambient emission must NOT become a light source (millions of emissive triangles would
+        # blow up the light tree: memory + render time)
+        try:
+            m.cycles.emission_sampling = 'NONE'
+        except Exception:
+            pass
         m['a3_amb'] = True
         n_done += 1
     return n_done
@@ -199,5 +205,5 @@ def setup(ARG=lambda k, d=None: d):
     world(float(ARG('--sky', 0.8)), float(ARG('--skyrot', 0)))
     lights(float(ARG('--fill', 0.0)))
     compositor(float(ARG('--haze', 0.85)))
-    ambient_group(float(ARG('--ambient', 0.5)))
+    ambient_group(float(ARG('--ambient', 1.2)))
     print('  ambient on', apply_ambient(), 'materials')

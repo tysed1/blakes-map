@@ -137,10 +137,11 @@ def river_profiles(cfg):
                     continue
                 e1 = elev_at(parent, L[-1])
             if e0 is None:
-                cands = [q for q in prof if q != k]
-                if not cands:
+                # a side channel leaving a parent inherits the level of the nearest channel at its head -
+                # wait until that channel (whichever it is) has been resolved
+                best = min((q for q in lines if q != k), key=lambda q: np.hypot(*(lines[q] - L[0]).T).min())
+                if best not in prof:
                     continue
-                best = min(cands, key=lambda q: np.hypot(*(lines[q] - L[0]).T).min())
                 e0 = elev_at(best, L[0])
                 if p.get('backwater'):
                     e0 = max(e0, e1)

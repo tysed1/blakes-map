@@ -96,8 +96,11 @@ def cams():
             out[key] = make('TC_' + key, b(cx, cy, hgt(cx, cy) + z0), b(x + dx / n * 60, y + dy / n * 60, hgt(x + dx / n * 60, y + dy / n * 60) + z0 + 2), 30)
     # forest interior, pedestrian (a moist hollow if possible)
     cov = eco[..., 2].astype(float); tpi = eco[..., 6].astype(float)
-    sc = cov - np.abs(tpi - 110) * 0.5
-    sc[:, :600] = -1e9; sc[:, 1400:] = -1e9
+    gy, gx = np.gradient(T, 2.5); slope = np.hypot(gx, gy)
+    sc = cov - np.abs(tpi - 115) * 0.3 - slope * 400
+    if eco.shape[2] > 9:
+        sc -= (eco[..., 8] < 250) * 500 + (eco[..., 9] < 250) * 500   # away from roads / rail
+    sc[:, :800] = -1e9; sc[:, 1300:] = -1e9; sc[:200] = -1e9; sc[500:] = -1e9
     y, x = np.unravel_index(np.argmax(sc), sc.shape)
     out['forest_ped'] = make('TC_forest_ped', b(x, y, hgt(x, y) + 1.7), b(x + 20, y - 8, hgt(x + 20, y - 8) + 4), 26)
     # river bank, low 5 m looking along Hollow Creek / Laurel River

@@ -657,7 +657,11 @@ def build_signs(coll, net, T, P_):
             for kind, dist, extra in (('crossbuck', 4.6, 1.0), ('rr_advance', 100.0, 0.8)):
                 st = st0 - direction * dist
                 if st < D['s'][0] or st > D['s'][-1]:
-                    continue
+                    if kind != 'rr_advance':
+                        continue
+                    st = float(np.clip(st, D['s'][0] + 3, D['s'][-1] - 3))
+                    if abs(st - st0) < 35:
+                        continue
                 f_ = lambda a: np.interp(st, D['s'], a)
                 p = np.array([f_(D['P'][:, 0]), f_(D['P'][:, 1])]); nrm = np.array([f_(D['N'][:, 0]), f_(D['N'][:, 1])])
                 tg = np.array([f_(D['T'][:, 0]), f_(D['T'][:, 1])])
