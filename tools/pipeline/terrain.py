@@ -621,6 +621,30 @@ def stream_power(z, fixed, cell, K, m, dt, steps, diff):
     return z
 
 
+def evolve_core(base, rel, fixed, cell, ev, seed=5):
+    """Uplift + implicit stream power + diffusion grown on a designed relief (any grid). base: floor
+    elevation (fixed cells stay on it), rel: designed relief used as the uplift map. Returns the evolved
+    relief rescaled (at rescale_sigma cells) back to the designed heights."""
+    hh, ww = rel.shape
+    U = np.clip(rel / max(np.percentile(rel, 99.5), 1.0), 0, 1.2) ** ev.get('uplift_exp', 0.4) * ev.get('uplift', 1.0)
+    rng = np.random.default_rng(seed)
+    z = base + rel * 0.05 + rng.normal(0, ev.get('noise_m', 0.5), (hh, ww))
+    outlet = fixed.copy()
+    outlet[0, :] = outlet[-1, :] = outlet[:, 0] = outlet[:, -1] = True
+    K, m, D = ev.get('K', 0.02), ev.get('m', 0.5), ev.get('diffusion', 1.5)
+    for _ in range(ev.get('steps', 150)):
+        z = z + U
+        zf, order, rec, dist, A = drainage(z, outlet, cell)
+        z = _spl(z, rec, dist, A, order, K, m, 1.0, fixed)
+        lap = cv2.Laplacian(z, cv2.CV_64F) / cell ** 2
+        z = np.where(fixed, base, z + D * lap)
+    rs = np.maximum(z - base, 0)
+    sg = ev.get('rescale_sigma_px', 12)
+    bd = cv2.GaussianBlur(rel, (0, 0), sg); bs = cv2.GaussianBlur(rs, (0, 0), sg)
+    ratio = np.clip(bd / np.maximum(bs, 1.0), 0.3, 3.0)
+    return (rs * ratio).astype(np.float32)
+
+
 def evolve_landscape(relief, V, wmask, ev, seed=5):
     """Landscape evolution on the designed layout: the designed relief is used as a tectonic uplift map
     and the land is grown under uplift + implicit stream-power incision + hillslope diffusion (half res).
@@ -631,24 +655,7 @@ def evolve_landscape(relief, V, wmask, ev, seed=5):
     r2 = cv2.resize(relief, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
     V2 = cv2.resize(V, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
     fixed = (cv2.resize(wmask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0) | (r2 < ev.get('fixed_below_m', 1.0))
-    # saturating uplift: the whole designed mountain footprint rises (so it keeps its extent), crests a bit more
-    U = np.clip(r2 / max(np.percentile(r2, 99.5), 1.0), 0, 1.2) ** ev.get('uplift_exp', 0.4) * ev.get('uplift', 1.0)
-    rng = np.random.default_rng(seed)
-    z = V2 + r2 * 0.05 + rng.normal(0, ev.get('noise_m', 0.5), (h, w))
-    outlet = fixed.copy()
-    outlet[0, :] = outlet[-1, :] = outlet[:, 0] = outlet[:, -1] = True
-    K, m, D = ev.get('K', 0.02), ev.get('m', 0.5), ev.get('diffusion', 1.5)
-    for _ in range(ev.get('steps', 150)):
-        z = z + U
-        zf, order, rec, dist, A = drainage(z, outlet, MPP * 2)
-        z = _spl(z, rec, dist, A, order, K, m, 1.0, fixed)
-        lap = cv2.Laplacian(z, cv2.CV_64F) / (MPP * 2) ** 2
-        z = np.where(fixed, V2, z + D * lap)
-    rs = np.maximum(z - V2, 0)
-    sg = ev.get('rescale_sigma_px', 12)
-    bd = cv2.GaussianBlur(r2, (0, 0), sg); bs = cv2.GaussianBlur(rs, (0, 0), sg)
-    ratio = np.clip(bd / np.maximum(bs, 1.0), 0.3, 3.0)
-    out = (rs * ratio).astype(np.float32)
+    out = evolve_core(V2, r2, fixed, MPP * 2, ev, seed)
     return cv2.resize(out, (W, H), interpolation=cv2.INTER_CUBIC)
 
 

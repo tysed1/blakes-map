@@ -279,3 +279,589 @@ def _copy(src, dst):
     for V, F, m_ in zip(src.V, src.F, src.M):
         dst.add(V, F - off, m_)
         off += len(V)
+
+
+# ------------------------------------------------------------------ road chains (continuous routes)
+def _node_deg(net):
+    deg = {}
+    for n, legs in net.legs.items():
+        deg[n] = len(legs)
+    return deg
+
+
+def chains(net, types):
+    """Continuous sampled routes (edges of one road chained through their nodes).
+    Returns dicts with s, P, N, T, hw, zl, zr, deck, near (junction mouth zone), sec, key."""
+    deg = _node_deg(net)
+    groups = {}
+    for i, e in enumerate(net.E):
+        if '_deck' not in e or e['sec']['t'] not in types:
+            continue
+        key = e['p'].get('def_id') or ('_' + e['p']['id'])
+        groups.setdefault(key, []).append(i)
+    out = []
+    for key, idxs in groups.items():
+        adj = {}
+        for i in idxs:
+            for end, nd in ((0, net.E[i]['p']['from']), (1, net.E[i]['p']['to'])):
+                adj.setdefault(nd, []).append((i, end))
+        used = set()
+        starts = [nd for nd, l in adj.items() if len(l) == 1] + list(adj)
+        for st in starts:
+            cur = st
+            parts = []
+            while True:
+                nxt = [(i, end) for i, end in adj.get(cur, []) if i not in used]
+                if not nxt:
+                    break
+                i, end = nxt[0]
+                used.add(i)
+                parts.append((i, end == 0))
+                e = net.E[i]
+                cur = e['p']['to'] if end == 0 else e['p']['from']
+            if not parts:
+                continue
+            S_, P_, N_, T_, hw_, zl_, zr_, dk_, nr_ = [], [], [], [], [], [], [], [], []
+            off = 0.0
+            for i, fwd in parts:
+                e = net.E[i]
+                D = e['_deck']
+                s = D['s'] - D['s'][0]
+                deck = LR._spans_mask(e, D['s'])
+                near = np.zeros(len(s), bool)
+                L = s[-1]
+                if deg.get(e['p']['from'], 0) >= 3:
+                    near |= D['s'] < e['trim'][0] + 9.0
+                if deg.get(e['p']['to'], 0) >= 3:
+                    near |= (D['L'] - D['s']) < e['trim'][1] + 9.0
+                if fwd:
+                    S_.append(off + s); P_.append(D['P']); N_.append(D['N']); T_.append(D['T']); hw_.append(D['hw'])
+                    zl_.append(D['zl']); zr_.append(D['zr']); dk_.append(deck); nr_.append(near)
+                else:
+                    S_.append(off + (L - s[::-1])); P_.append(D['P'][::-1]); N_.append(-D['N'][::-1]); T_.append(-D['T'][::-1])
+                    hw_.append(D['hw'][::-1]); zl_.append(D['zr'][::-1]); zr_.append(D['zl'][::-1]); dk_.append(deck[::-1]); nr_.append(near[::-1])
+                off += L + 0.5 + e['trim'][0] + e['trim'][1]
+            out.append({'key': key, 's': np.concatenate(S_), 'P': np.vstack(P_), 'N': np.vstack(N_), 'T': np.vstack(T_),
+                        'hw': np.concatenate(hw_), 'zl': np.concatenate(zl_), 'zr': np.concatenate(zr_), 'deck': np.concatenate(dk_),
+                        'near': np.concatenate(nr_), 'sec': net.E[parts[0][0]]['sec'], 'edges': [i for i, _ in parts],
+                        'zone': net.E[parts[0][0]]['zone'], 'p': net.E[parts[0][0]]['p']})
+    return out
+
+
+def _at(ch, st):
+    """Interpolated frame of a chain at stations st -> P (n,3), N, T, hw, zl, zr, deck, near."""
+    s = ch['s']
+    st = np.atleast_1d(st)
+    f = lambda a: np.interp(st, s, a)
+    P = np.c_[f(ch['P'][:, 0]), f(ch['P'][:, 1]), f(ch['P'][:, 2])]
+    T = np.c_[f(ch['T'][:, 0]), f(ch['T'][:, 1])]
+    T /= np.maximum(np.hypot(T[:, 0], T[:, 1]), 1e-9)[:, None]
+    N = np.stack([T[:, 1], -T[:, 0]], 1)
+    idx = np.clip(np.searchsorted(s, st), 0, len(s) - 1)
+    return P, N, T, f(ch['hw']), f(ch['zl']), f(ch['zr']), ch['deck'][idx], ch['near'][idx]
+
+
+def _side_offset(sec):
+    """Distance from the pavement edge to the back of the road's side detail (m)."""
+    if sec['curb']:
+        return 0.15 + sec['sw']
+    return sec['g'] + sec['dw']
+
+
+def _rotz_facing(n):
+    """Instance yaw so that the prototype's front (local -Y) faces direction n (xy)."""
+    return math.atan2(-n[1], -n[0]) - math.pi / 2
+
+
+# ------------------------------------------------------------------ utility lines
+POLE_TYPES = ('highway', 'rural', 'collector', 'main_street', 'arterial', 'gravel', 'urban_street')
+
+
+def build_poles(coll, net, T, P_, luw=None):
+    pts, rz, rx, ry, pts_tx, rz_tx, rx_tx, ry_tx = [], [], [], [], [], [], [], []
+    wires, tele = [], []
+    for ch in chains(net, POLE_TYPES):
+        t = ch['sec']['t']
+        L = ch['s'][-1]
+        if L < 90 or ch['zone'] == 'downtown':
+            continue
+        if t in ('gravel', 'urban_street') and L < 250:
+            continue
+        h = sum(ord(c) for c in ch['key'])
+        sgn = 1 if h % 2 else -1
+        spacing = 42.0 if t != 'main_street' else 36.0
+        st = np.arange(12.0 + (h % 17), L - 5, spacing)
+        st = st + RNG.uniform(-3, 3, len(st))
+        st = st[(st > 0) & (st < L)]
+        P, N, Tn, hw, zl, zr, deck, near = _at(ch, st)
+        ok = ~deck & ~near
+        u = hw + _side_offset(ch['sec']) + (0.6 if ch['sec']['curb'] else 1.6)
+        prev = None
+        for k in range(len(st)):
+            if not ok[k]:
+                prev = None
+                continue
+            c = P[k, :2] + N[k] * u[k] * sgn
+            g = float(T.at(*w2px(c[0], c[1])))
+            if abs(g - P[k, 2]) > 6:  # deep cut / high fill: the line would not be there
+                prev = None
+                continue
+            yaw = math.atan2(N[k, 1], N[k, 0])      # crossarm (local X) across the road
+            lx, ly = RNG.normal(0, 0.012), RNG.normal(0, 0.012)
+            tx = (RNG.random() < 0.14) or (t == 'main_street' and RNG.random() < 0.3)
+            if tx:
+                pts_tx.append((c[0], c[1], g)); rz_tx.append(yaw); rx_tx.append(lx); ry_tx.append(ly)
+            else:
+                pts.append((c[0], c[1], g)); rz.append(yaw); rx.append(lx); ry.append(ly)
+            X = np.array([math.cos(yaw), math.sin(yaw), 0.0]); Y = np.array([-math.sin(yaw), math.cos(yaw), 0.0])
+            base = np.array([c[0], c[1], g])
+            att = [base + X * x + Y * -0.16 + np.array([0, 0, 9.38]) for x in (-1.1, -0.4, 1.1)]
+            att.append(base + Y * 0.14 + np.array([0, 0, 7.95]))
+            tel = base + Y * 0.2 + np.array([0, 0, 5.52])
+            if prev is not None and np.hypot(*(c - prev[0][:2])) < 75:
+                for a, b in zip(prev[1], att):
+                    wires.append(_catenary(a, b, 0.018))
+                tele.append(_catenary(prev[2], tel, 0.028))
+            prev = (base, att, tel)
+    root = coll
+    if pts:
+        instance_points('INFRA Utility Poles', coll, pts, rz, P_['pole'], rotx=rx, roty=ry)
+    if pts_tx:
+        instance_points('INFRA Utility Poles (transformer)', coll, pts_tx, rz_tx, P_['pole_tx'], rotx=rx_tx, roty=ry_tx)
+    _curves('INFRA Power Lines', coll, wires, 0.009)
+    _curves('INFRA Telephone Cable', coll, tele, 0.017)
+    return len(pts) + len(pts_tx)
+
+
+def _catenary(a, b, sag_ratio, n=10):
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    span = np.hypot(*(b[:2] - a[:2]))
+    t = np.linspace(0, 1, n)[:, None]
+    p = a + (b - a) * t
+    p[:, 2] -= sag_ratio * span * 4 * t[:, 0] * (1 - t[:, 0])
+    return p
+
+
+def _curves(name, coll, polylines, radius):
+    if not polylines:
+        return None
+    cu = bpy.data.curves.new(name, 'CURVE')
+    cu.dimensions = '3D'
+    cu.bevel_depth = radius
+    cu.bevel_resolution = 0
+    cu.fill_mode = 'FULL'
+    for pl in polylines:
+        sp = cu.splines.new('POLY')
+        sp.points.add(len(pl) - 1)
+        co = np.c_[pl, np.ones(len(pl))].astype(np.float32).ravel()
+        sp.points.foreach_set('co', co)
+    cu.materials.append(mats()['wire'])
+    ob = bpy.data.objects.new(name, cu)
+    coll.objects.link(ob)
+    return ob
+
+
+# ------------------------------------------------------------------ guardrails + delineators
+GR_TYPES = ('highway', 'rural', 'collector', 'ramp', 'arterial', 'freeway')
+W_PROFILE = np.array([(0.0, -0.16), (0.035, -0.135), (0.075, -0.085), (0.075, -0.045), (0.03, -0.012), (0.03, 0.012),
+                      (0.075, 0.045), (0.075, 0.085), (0.035, 0.135), (0.0, 0.16)])
+
+
+def _runs(mask, min_len, s):
+    out, k = [], 0
+    while k < len(mask):
+        if mask[k]:
+            j = k
+            while j + 1 < len(mask) and mask[j + 1]:
+                j += 1
+            if s[j] - s[k] >= min_len:
+                out.append((k, j))
+            k = j + 1
+        else:
+            k += 1
+    return out
+
+
+def build_guardrails(coll, net, T, P_):
+    M = Mesh()
+    posts, prz = [], []
+    dl_pts, dl_rz = [], []
+    n_runs = 0
+    for ch in chains(net, GR_TYPES):
+        sec = ch['sec']
+        if sec['curb']:
+            continue
+        s = ch['s']
+        n = len(s)
+        if n < 4:
+            continue
+        P, N, Tn = ch['P'], ch['N'], ch['T']
+        hw = ch['hw']
+        deck = ch['deck']
+        # curvature along the chain
+        ang = np.unwrap(np.arctan2(Tn[:, 1], Tn[:, 0]))
+        k_ = np.gradient(ang) / np.maximum(np.gradient(s), 1e-3)
+        k_ = LR._gauss(k_, 3.0)
+        for sgn in (-1, 1):
+            ze = ch['zr'] if sgn > 0 else ch['zl']
+            u_probe = hw + sec['g'] + 3.5
+            X = P[:, 0] + N[:, 0] * u_probe * sgn; Y = P[:, 1] + N[:, 1] * u_probe * sgn
+            drop = ze - T.at(*w2px(X, Y))
+            need = drop > 2.3
+            outside = (k_ * -sgn) > 0          # left turn (k>0): outside is the right side
+            need |= (np.abs(k_) > 1 / 130.0) & outside & (drop > 1.0)
+            # bridge approaches (both sides, 25 m each end)
+            if deck.any():
+                for a, b in _runs(deck, 0.0, s):
+                    need |= ((s > s[a] - 25) & (s < s[a])) | ((s > s[b]) & (s < s[b] + 25))
+            need &= ~deck & ~ch['near']
+            # close small gaps
+            for a, b in _runs(~need, 0.0, s):
+                if 0 < a and b < n - 1 and s[b] - s[a] < 10:
+                    need[a:b + 1] = True
+            for a, b in _runs(need, 12.0, s):
+                n_runs += 1
+                touches_deck = [a > 0 and deck[a - 1], b < n - 1 and deck[b + 1]]
+                st = np.arange(s[a], s[b], 1.0)
+                if len(st) < 3:
+                    continue
+                Pp, Nn, Tt, hww, zl, zr, dk, nr = _at(ch, st)
+                zz = zr if sgn > 0 else zl
+                ur = hww + max(sec['g'], 0.3) - 0.05
+                # turned-down ends (1970s terminal) unless the run ends at a bridge parapet
+                f = np.ones(len(st))
+                if not touches_deck[0]:
+                    f = np.minimum(f, np.clip((st - st[0]) / 4.0, 0, 1))
+                if not touches_deck[1]:
+                    f = np.minimum(f, np.clip((st[-1] - st) / 4.0, 0, 1))
+                zc = zz - 0.04 * sec['g'] + (0.55 * f - 0.25 * (1 - f))
+                U = (ur[:, None] - W_PROFILE[None, :, 0]) * sgn
+                G = np.stack([Pp[:, 0:1] + Nn[:, 0:1] * U, Pp[:, 1:2] + Nn[:, 1:2] * U, zc[:, None] + W_PROFILE[None, :, 1]], -1)
+                M.grid(G, [0] * (len(W_PROFILE) - 1))
+                for q in np.arange(1.5, len(st) - 1.5, 1.9):
+                    qi = int(q)
+                    if f[qi] < 0.95:
+                        continue
+                    c = Pp[qi, :2] + Nn[qi] * (ur[qi] + 0.28) * sgn
+                    posts.append((c[0], c[1], zz[qi] - 0.04 * sec['g']))
+                    prz.append(_rotz_facing(-Nn[qi] * sgn))
+        # delineators: highways + rural roads, both sides, tighter on curves
+        if sec['t'] in ('highway', 'rural', 'ramp'):
+            st = [0.0]
+            while st[-1] < s[-1]:
+                kk = abs(np.interp(st[-1], s, k_))
+                st.append(st[-1] + (24.0 if kk > 1 / 250 else 48.0))
+            st = np.asarray(st[1:-1])
+            if len(st):
+                Pp, Nn, Tt, hww, zl, zr, dk, nr = _at(ch, st)
+                for sgn in (-1, 1):
+                    zz = zr if sgn > 0 else zl
+                    for q in range(len(st)):
+                        if dk[q] or nr[q]:
+                            continue
+                        c = Pp[q, :2] + Nn[q] * (hww[q] + sec['g'] + 0.35) * sgn
+                        dl_pts.append((c[0], c[1], zz[q] - 0.06))
+                        dl_rz.append(_rotz_facing(-Tt[q] * sgn))
+    if not M.empty():
+        M.to_object('INFRA Guardrail W-beam', coll, [mats()['galv']], smooth=True)
+    instance_points('INFRA Guardrail Posts', coll, posts, prz, P_['gr_post'])
+    instance_points('INFRA Delineators', coll, dl_pts, dl_rz, P_['delineator'])
+    return n_runs, len(dl_pts)
+
+
+# ------------------------------------------------------------------ signs
+ROUTE_OF = {'HWY_US19': '19', 'HWY_US19_E': '19', 'HR_MAIN_ST': '19', 'HWY_US76': '76', 'HWY_US129': '129',
+            'HWY_SR400': '400', 'HWY_SR60': '60', 'HWY_SR9_W': '9', 'HWY_SR9_N': '9', 'HWY_SR9_S': '9', 'LC_SR9_CONNECTOR': '9'}
+
+
+def build_signs(coll, net, T, P_):
+    place = {}
+
+    def add(kind, c, z, face_dir):
+        place.setdefault(kind, ([], []))
+        place[kind][0].append((c[0], c[1], z))
+        place[kind][1].append(_rotz_facing(face_dir) + RNG.normal(0, 0.03))
+    # STOP signs on stop-controlled approaches
+    for (i, end), (stop, xw) in getattr(net, 'ctl', {}).items():
+        if stop <= 0:
+            continue
+        e = net.E[i]
+        D = e.get('_deck')
+        if D is None:
+            continue
+        L = D['s'][-1] + e['trim'][1]
+        st = (e['trim'][0] + stop + 1.2) if end == 0 else (L - e['trim'][1] - stop - 1.2)
+        st = float(np.clip(st, D['s'][0], D['s'][-1]))
+        f = lambda a: np.interp(st, D['s'], a)
+        p = np.array([f(D['P'][:, 0]), f(D['P'][:, 1])]); nrm = np.array([f(D['N'][:, 0]), f(D['N'][:, 1])]); tg = np.array([f(D['T'][:, 0]), f(D['T'][:, 1])])
+        sgn = -1 if end == 0 else 1                 # right of the approach direction
+        u = f(D['hw']) + _side_offset(e['sec']) * 0.5 + 0.9
+        c = p + nrm * u * sgn
+        face = tg if end == 0 else -tg              # towards the approaching driver
+        add('stop', c, float(T.at(*w2px(c[0], c[1]))), face)
+    # per-route signs
+    for ch in chains(net, ('highway', 'rural', 'collector', 'main_street', 'arterial', 'freeway', 'ramp')):
+        sec = ch['sec']
+        s = ch['s']
+        if s[-1] < 60:
+            continue
+        Tn = ch['T']
+        ang = np.unwrap(np.arctan2(Tn[:, 1], Tn[:, 0]))
+        k_ = LR._gauss(np.gradient(ang) / np.maximum(np.gradient(s), 1e-3), 4.0)
+
+        def put(kind, st, direction):
+            if st < 5 or st > s[-1] - 5:
+                return
+            P, N, Tt, hw, zl, zr, dk, nr = _at(ch, st)
+            if dk[0] or nr[0]:
+                return
+            sgn = 1 if direction > 0 else -1          # right-hand side of travel
+            u = hw[0] + _side_offset(sec) + 0.8
+            c = P[0, :2] + N[0] * u * sgn
+            add(kind, c, float(T.at(*w2px(c[0], c[1]))), -Tt[0] * direction)
+        if sec['t'] in ('highway', 'rural', 'collector') and not sec['curb']:
+            R = 1.0 / np.maximum(np.abs(k_), 1e-6)
+            for a, b in _runs(R < 175, 12.0, s):
+                left = np.mean(k_[a:b + 1]) > 0
+                put('curve_l' if left else 'curve_r', s[a] - 55, 1)
+                put('curve_r' if left else 'curve_l', s[b] + 55, -1)
+        if sec['t'] == 'highway':
+            for st in np.arange(140.0, s[-1] - 100, 1600.0):
+                put('speed55', st, 1)
+                put('speed55', s[-1] - st, -1)
+        r = ROUTE_OF.get(ch['key'])
+        if r and sec['t'] != 'freeway':
+            for st in np.arange(200.0, s[-1] - 100, 950.0):
+                put('route_' + r, st, 1)
+                put('route_' + r, s[-1] - st, -1)
+    # railroad crossings: crossbucks at the tracks, advance discs 100 m before
+    edge_by_id = {e['p']['id']: e for e in net.E if '_deck' in e}
+    for f in load('data/roads/rail_crossings.geojson')['features']:
+        pr = f['properties']
+        e = edge_by_id.get(pr['road'])
+        if e is None:
+            continue
+        D = e['_deck']
+        x, y = px2w(*f['geometry']['coordinates'])
+        k = int(np.argmin(np.hypot(D['P'][:, 0] - x, D['P'][:, 1] - y)))
+        st0 = D['s'][k]
+        for direction in (1, -1):
+            for kind, dist, extra in (('crossbuck', 4.6, 1.0), ('rr_advance', 100.0, 0.8)):
+                st = st0 - direction * dist
+                if st < D['s'][0] or st > D['s'][-1]:
+                    continue
+                f_ = lambda a: np.interp(st, D['s'], a)
+                p = np.array([f_(D['P'][:, 0]), f_(D['P'][:, 1])]); nrm = np.array([f_(D['N'][:, 0]), f_(D['N'][:, 1])])
+                tg = np.array([f_(D['T'][:, 0]), f_(D['T'][:, 1])])
+                c = p + nrm * (f_(D['hw']) + _side_offset(e['sec']) * 0.5 + 1.2 + extra) * direction
+                add(kind, c, float(T.at(*w2px(c[0], c[1]))), -tg * direction)
+    n = 0
+    for kind, (pts, rz) in place.items():
+        if kind in P_:
+            instance_points(f'INFRA Signs {kind}', coll, pts, rz, P_[kind])
+            n += len(pts)
+    return n
+
+
+# ------------------------------------------------------------------ fences
+def build_fences(coll, net, T, P_, lu):
+    posts, prz, gates, grz = [], [], [], []
+    wires = []
+    if lu is None:
+        return 0
+    deg = _node_deg(net)
+    for ch in chains(net, ('rural', 'gravel', 'dirt', 'collector')):
+        if ch['zone'] is not None or ch['sec']['curb']:
+            continue
+        s = ch['s']
+        if s[-1] < 40:
+            continue
+        st = np.arange(2.0, s[-1] - 2, 3.2)
+        P, N, Tt, hw, zl, zr, dk, nr = _at(ch, st)
+        for sgn in (-1, 1):
+            u = hw + _side_offset(ch['sec']) + 4.0
+            X = P[:, 0] + N[:, 0] * u * sgn; Y = P[:, 1] + N[:, 1] * u * sgn
+            x, y = w2px(X + N[:, 0] * 6 * sgn, Y + N[:, 1] * 6 * sgn)
+            cls = lu[np.clip(y.astype(int), 0, lu.shape[0] - 1), np.clip(x.astype(int), 0, lu.shape[1] - 1)]
+            ok = np.isin(cls, (4, 5)) & ~dk & ~nr
+            for a, b in _runs(ok, 25.0, st):
+                g = T.at(*w2px(X[a:b + 1], Y[a:b + 1]))
+                for q in range(a, b + 1):
+                    posts.append((X[q], Y[q], g[q - a] + RNG.normal(0, 0.03)))
+                    prz.append(RNG.uniform(0, 6.28))
+                for hgt in (0.55, 0.85, 1.12):
+                    pl = np.c_[X[a:b + 1], Y[a:b + 1], g + hgt]
+                    wires.append(pl)
+                # a tube gate at the start of each fenced field (farm entrance)
+                if b - a > 20:
+                    q = a + 2
+                    gates.append((X[q], Y[q], float(g[2])))
+                    grz.append(math.atan2(Tt[q, 1], Tt[q, 0]))
+    instance_points('INFRA Fence Posts', coll, posts, prz, P_['fence_post'])
+    instance_points('INFRA Farm Gates', coll, gates, grz, P_['gate'])
+    _curves('INFRA Fence Wire', coll, wires, 0.004)
+    return len(posts)
+
+
+# ------------------------------------------------------------------ culverts, walls, tunnel portal
+def build_culverts(coll, net, T):
+    M = Mesh()
+    ww = []
+    for f in load('data/water/waterways.geojson')['features']:
+        c = np.asarray(f['geometry']['coordinates'], float)[:, :2]
+        X, Y = px2w(c[:, 0], c[:, 1])
+        ww.append(np.c_[X, Y])
+    n = 0
+    for e in net.E:
+        D = e.get('_deck')
+        if D is None:
+            continue
+        A = D['P'][:, :2]
+        bb0, bb1 = A.min(0) - 5, A.max(0) + 5
+        deck = LR._spans_mask(e, D['s'])
+        for W_ in ww:
+            if (W_[:, 0].max() < bb0[0]) or (W_[:, 0].min() > bb1[0]) or (W_[:, 1].max() < bb0[1]) or (W_[:, 1].min() > bb1[1]):
+                continue
+            for i in range(len(A) - 1):
+                if deck[i] or deck[i + 1]:
+                    continue
+                for j in range(len(W_) - 1):
+                    q = LR._seg_x(A[i], A[i + 1], W_[j], W_[j + 1])
+                    if q is None:
+                        continue
+                    k = i
+                    t_ = D['T'][k]; nrm = D['N'][k]
+                    u = D['hw'][k] + _side_offset(e['sec']) + 0.8
+                    for sgn in (-1, 1):
+                        c = q + nrm * u * sgn
+                        g = float(T.at(*w2px(c[0], c[1])))
+                        top = min(float(D['P'][k, 2]) - 0.1, g + 1.3)
+                        box_at(M, c, t_, nrm, 1.5, 0.18, g - 0.6, max(top, g + 0.9), 0)          # headwall
+                        for w in (-1, 1):                                                          # wingwalls
+                            box_at(M, c + t_ * w * 1.6 + nrm * sgn * 0.6, nrm, t_, 0.7, 0.14, g - 0.6, g + 0.6, 0)
+                        box_at(M, c + nrm * sgn * 0.2, t_, nrm, 0.45, 0.05, g - 0.1, g + 0.55, 1)  # pipe mouth (dark)
+                    n += 1
+    if not M.empty():
+        M.to_object('INFRA Culvert Headwalls', coll, [mats()['concrete'], mats()['dark']], smooth=False)
+    return n
+
+
+def build_walls(coll, T, bbox=None):
+    M = Mesh(('rs',))
+    n = 0
+    for f in load('data/roads/walls.geojson')['features']:
+        pr = f['properties']
+        if pr['kind'] != 'retaining_wall':
+            continue
+        c = np.asarray(f['geometry']['coordinates'], float)
+        if bbox is not None:
+            x0, y0, x1, y1 = bbox
+            if c[:, 0].max() < x0 or c[:, 0].min() > x1 or c[:, 1].max() < y0 or c[:, 1].min() > y1:
+                continue
+        X, Y = px2w(c[:, 0], c[:, 1])
+        e = {'P': np.c_[X, Y, np.zeros(len(X))], 'trim': [0, 0], 'tan': [None, None]}
+        S = LR.sample_edge(e, 1.5)
+        if S is None:
+            continue
+        P, N = S['P'], S['N']
+        tops = np.asarray(pr['top_z_m'], float)
+        ztop = np.interp(np.linspace(0, 1, len(P)), np.linspace(0, 1, len(tops)), tops)
+        g = T.at(*w2px(P[:, 0], P[:, 1]))
+        base = np.minimum(g, pr['base_z_m']) - 0.6
+        ztop = np.maximum(ztop, base + 1.0) + 0.3
+        sgn = 1 if pr['side'] == 'right' else -1
+        U = np.stack([np.zeros(len(P)), np.zeros(len(P)), np.full(len(P), 0.45), np.full(len(P), 0.45)], 1) * sgn
+        Z = np.stack([base, ztop, ztop, base], 1)
+        G = np.stack([P[:, 0:1] + N[:, 0:1] * U, P[:, 1:2] + N[:, 1:2] * U, Z], -1)
+        M.grid(G, [0, 0, 0], rs=np.broadcast_to(S['s'][:, None], (len(P), 4)))
+        n += 1
+    if not M.empty():
+        M.to_object('INFRA Retaining Walls', coll, [mats()['stone']], smooth=False)
+    return n
+
+
+def build_tunnel_portals(coll, T):
+    M = Mesh()
+    n = 0
+    for f in load('data/railways/railways.geojson')['features']:
+        c = np.asarray(f['geometry']['coordinates'], float)
+        if c.shape[1] < 3:
+            continue
+        man = [r for r in LR.load('data/manual/roads/40_railways.json')['roads'] if r['id'] == f['properties']['id']]
+        if not man or not man[0].get('tunnel_until_px'):
+            continue
+        tx, ty = man[0]['tunnel_until_px']
+        k = 0 if np.hypot(c[0, 0] - tx, c[0, 1] - ty) < np.hypot(c[-1, 0] - tx, c[-1, 1] - ty) else -1
+        k2 = 1 if k == 0 else -2
+        X, Y = px2w(c[[k, k2], 0], c[[k, k2], 1])
+        d = np.array([X[0] - X[1], Y[0] - Y[1]]); d /= np.hypot(*d)   # into the tunnel
+        nrm = np.array([d[1], -d[0]])
+        base = np.array([X[0], Y[0]])
+        z0 = float(c[k, 2]) - 0.2
+        wi, hi, Wd, Hd = 2.6, 6.2, 5.5, 10.0
+        inner, outer = [], []
+        m = 16
+        for q in range(m + 1):
+            a = math.pi * q / m
+            ix = -math.cos(a) * wi; iz = hi - wi + math.sin(a) * wi
+            inner.append((ix, iz))
+        inner = [(-wi, 0.0)] + inner + [(wi, 0.0)]
+        for q in range(len(inner)):
+            t_ = q / (len(inner) - 1)
+            if t_ < 0.33:
+                ox, oz = -Wd, Hd * (t_ / 0.33)
+            elif t_ < 0.67:
+                ox, oz = -Wd + 2 * Wd * (t_ - 0.33) / 0.34, Hd
+            else:
+                ox, oz = Wd, Hd * (1 - (t_ - 0.67) / 0.33)
+            outer.append((ox, oz))
+        inner = np.asarray(inner); outer = np.asarray(outer)
+        for depth, mat in ((0.0, 0), (1.2, 0)):
+            G = np.zeros((len(inner), 2, 3))
+            for q in range(len(inner)):
+                for j, (xx, zz) in enumerate((inner[q], outer[q])):
+                    p = base + nrm * xx + d * depth
+                    G[q, j] = (p[0], p[1], z0 + zz)
+            M.grid(G, [mat])
+        # dark bore into the hill
+        G = np.zeros((len(inner), 2, 3))
+        for q in range(len(inner)):
+            for j, dep in enumerate((0.3, 30.0)):
+                p = base + nrm * inner[q, 0] + d * dep
+                G[q, j] = (p[0], p[1], z0 + inner[q, 1])
+        M.grid(G, [1])
+        # wingwalls into the slope
+        for sgn in (-1, 1):
+            p0 = base + nrm * sgn * Wd
+            for j in range(3):
+                a0 = p0 - d * (j * 2.5) + nrm * sgn * j * 1.2
+                box_at(M, a0, d, nrm, 1.3, 0.35, z0 - 1, z0 + Hd - j * 2.8, 0)
+        n += 1
+    if not M.empty():
+        M.to_object('INFRA Tunnel Portals', coll, [mats()['concrete'], mats()['dark']], smooth=False)
+    return n
+
+
+# ------------------------------------------------------------------ entry point
+def build(root, ctx):
+    net = ctx.get('road_net')
+    if net is None:
+        net = LR.Net(ctx.get('bbox'))
+    T = ctx['T']
+    mk = ctx.get('collection')
+    coll = mk('INFRASTRUCTURE', root) if mk else root
+    P_ = build_prototypes(root)
+    lu = None
+    try:
+        lu = np.fromfile(os.path.join(LR.ROOT, 'public/world/landuse_u8.bin'), np.uint8).reshape(LR.H, LR.W)
+    except Exception:
+        pass
+    npole = build_poles(coll, net, T, P_)
+    ngr, ndl = build_guardrails(coll, net, T, P_)
+    nsg = build_signs(coll, net, T, P_)
+    nfe = build_fences(coll, net, T, P_, lu)
+    ncu = build_culverts(coll, net, T)
+    nwa = build_walls(coll, T, ctx.get('bbox'))
+    ntu = build_tunnel_portals(coll, T)
+    print(f'  lib_infrastructure: {npole} poles, {ngr} guardrail runs, {ndl} delineators, {nsg} signs, {nfe} fence posts, '
+          f'{ncu} culverts, {nwa} walls, {ntu} tunnel portals')

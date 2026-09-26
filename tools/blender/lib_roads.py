@@ -941,7 +941,7 @@ def build_edge(net, idx, T, ctl, shared=None):
     def zoff(u):
         return (1 - wb) * (-crown * np.abs(u)) + wb * es * u
     deck = _spans_mask(e, ss)
-    e['_deck'] = {'s': ss, 'P': P, 'N': N, 'T': S['T'], 'zl': P[:, 2] + zoff(-hwv), 'zr': P[:, 2] + zoff(hwv), 'hw': hwv}
+    e['_deck'] = {'s': ss, 'P': P, 'N': N, 'T': S['T'], 'zl': P[:, 2] + zoff(-hwv), 'zr': P[:, 2] + zoff(hwv), 'hw': hwv, 'L': S['L']}
     L_ = {}
     for sgn in (-1, 1):
         L_[sgn] = _side_columns(S, e, sec, zoff, hwv, deck, T, sgn)
@@ -1853,6 +1853,7 @@ _LUW = [None]
 def build_roads(coll, net, T, mats, luw=None):
     J = plan_junctions(net)
     ctl = controls(net, J)
+    net.J, net.ctl = J, ctl
     mouths = {}
     slots = [mats[k] for k in SLOT_ORDER]
     n_obj = 0

@@ -21,7 +21,7 @@ import cv2
 from scipy import ndimage as ndi
 from PIL import Image
 from tools.lib.common import path, load_json, save_json, W, H
-from tools.pipeline.terrain import stream_power, fbm, smoothstep, _flood, _receivers, _area
+from tools.pipeline.terrain import stream_power, evolve_core, fbm, smoothstep, _flood, _receivers, _area
 
 CELL = 4       # source px per backdrop cell (10 m)
 PAD_PX = 2800  # 7 km on each side
@@ -198,13 +198,27 @@ def main():
         z = np.where(wet, np.minimum(z, L - 1.5), z)
     z = np.where(np.isfinite(valley_cap), np.minimum(z, valley_cap), z)
 
-    # 4) drainage erosion on the outside (20 m cells); the map and river water stay fixed
-    z = z + (6 + 18 * rise) * fbm(81, scales=(24, 12, 6), amps=(1, .5, .25), shape=(hh, ww)) * smoothstep(60, 600, dm) * ~water
-    zc = cv2.resize(z, (ww // 2, hh // 2), interpolation=cv2.INTER_AREA)
-    fixed = cv2.resize((inside | water).astype(np.uint8), (ww // 2, hh // 2), interpolation=cv2.INTER_NEAREST) > 0
-    ze = stream_power(zc, fixed, 20.0, 0.03, 0.5, 1.0, 30, 12.0)
+    # 4) landscape evolution of the ranges (20 m cells): uplift + stream power + diffusion grown on the
+    #    designed ranges, so the backdrop has the same erosional anatomy as the map (dendritic valleys,
+    #    spurs, rounded divides) - no knife edges or noise cliffs. Map + river water stay fixed.
+    z = z + (4 + 10 * rise) * fbm(81, scales=(24, 12, 6), amps=(1, .5, .25), shape=(hh, ww)) * smoothstep(60, 600, dm) * ~water
+    h2, w2 = hh // 2, ww // 2
+    zc = cv2.resize(z, (w2, h2), interpolation=cv2.INTER_AREA).astype(np.float64)
+    fixed = cv2.resize((inside | water).astype(np.uint8), (w2, h2), interpolation=cv2.INTER_NEAREST) > 0
+    floor = cv2.GaussianBlur(ndi.grey_erosion(zc, size=(101, 101)), (0, 0), 25)
+    floor = np.minimum(floor, zc)
+    floor = np.where(fixed, zc, floor)
+    rel = np.maximum(zc - floor, 0)
+    ev = dict(steps=220, K=0.03, m=0.5, diffusion=40.0, uplift=1.0, uplift_exp=1.0, noise_m=1.0, rescale_sigma_px=14)
+    rel_e = evolve_core(floor, rel, fixed, 20.0, ev, seed=13)
+    ze = floor + rel_e
     dz = cv2.resize((ze - zc).astype(np.float32), (ww, hh), interpolation=cv2.INTER_CUBIC)
-    z = z + dz * smoothstep(20, 400, dm)
+    z = z + dz * smoothstep(40, 700, dm)
+    # rounded summits, no slivers (also avoids thin anti-aliased silhouettes against the sky)
+    for _ in range(3):
+        b_ = cv2.GaussianBlur(z, (0, 0), 2.0)
+        convex = np.clip((z - b_) / 3.0, 0, 1) * smoothstep(40, 700, dm)
+        z = z + (b_ - z) * convex
     z = np.where(water, np.minimum(z, cv2.GaussianBlur(z, (0, 0), 1)), z)
     # near the rim, keep continuity with the map edge exactly
     z = np.where(inside, small_full(small, pad, hh, ww), z)
