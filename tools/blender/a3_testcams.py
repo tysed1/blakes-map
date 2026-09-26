@@ -65,8 +65,20 @@ def make(name, loc, look, lens=35):
 
 def cams():
     out = {}
-    # rural road through forest (Hollow Creek Road), driver eye 1.2 m, looking along the road
-    rd = feature('data/roads/roads.geojson', 'id', 'RU_RD_0556')
+    # rural road through forest, driver eye 1.2 m, looking along the road (longest rural road near Hollow Ridge)
+    best = None
+    for f in json.load(open(os.path.join(ROOT, 'data/roads/roads.geojson')))['features']:
+        if f['properties'].get('type') != 'rural' or f['properties'].get('virtual'):
+            continue
+        c = np.asarray(f['geometry']['coordinates'], float)
+        L = np.hypot(*np.diff(c[:, :2], axis=0).T).sum()
+        if L < 120:
+            continue
+        m = c[len(c) // 2]
+        sc_ = np.hypot(m[0] - 960, m[1] - 430) - L * 0.3
+        if best is None or sc_ < best[0]:
+            best = (sc_, c)
+    rd = best[1] if best else None
     if rd is not None:
         p, d = along(rd, 0.45)
         z = road_z(rd, p)
@@ -106,18 +118,37 @@ def cams():
     V = np.fromfile(vf, '<f4').reshape(-1, 6) if os.path.exists(vf) else np.zeros((0, 6), np.float32)
     order = np.argsort(sc.ravel())[::-1][:4000]
     y, x = np.unravel_index(order[0], sc.shape)
+    CONI = {11, 12, 13, 14, 15, 16, 19, 20, 25, 26}   # conifers + rhododendron / laurel (view blockers)
     for k in order:
         yy, xx = np.unravel_index(k, sc.shape)
-        if not len(V) or np.hypot(V[:, 0] - xx - 0.5, V[:, 1] - yy - 0.5).min() * 2.5 > 5.0:
+        if not len(V):
+            y, x = yy, xx; break
+        d = np.hypot(V[:, 0] - xx - 0.5, V[:, 1] - yy - 0.5) * 2.5
+        near = d < 25
+        if d.min() > 6.0 and np.isin(V[near, 4].astype(int), list(CONI)).mean() < 0.15:
             y, x = yy, xx
             break
     out['forest_ped'] = make('TC_forest_ped', b(x, y, hgt(x, y) + 1.7), b(x + 20, y - 8, hgt(x + 20, y - 8) + 4), 26)
-    # river bank, low 5 m looking along Hollow Creek / Laurel River
-    rv = feature('data/water/waterways.geojson', 'id', 'WTR_R04')
-    if rv is not None:
-        p, d = along(rv, 0.55)
-        z = hgt(*p)
-        out['river_low'] = make('TC_river_low', b(p[0] - d[0] * 6, p[1] - d[1] * 6, z + 5), b(p[0] + d[0] * 30, p[1] + d[1] * 30, z + 1), 28)  # over the channel
+    # river: over the channel ~45 m downstream of the Depot Street bridge, 4 m above the water, looking
+    # upstream at the bridge (bridge, rapids, clear water, dense banks - the key reference motif)
+    brs = json.load(open(os.path.join(ROOT, 'data/roads/bridges.geojson')))['features']
+    br = next((f for f in brs if f['properties']['id'].startswith('HR_RD_0318')), None) or \
+        next((f for f in brs if f['properties'].get('waterway_class') == 'river'), None)
+    if br is not None:
+        bc = np.asarray(br['geometry']['coordinates'], float)[:, :2].mean(0)
+        riv, bd = None, 1e9
+        for f in json.load(open(os.path.join(ROOT, 'data/water/waterways.geojson')))['features']:
+            c = np.asarray(f['geometry']['coordinates'], float)
+            dd = np.hypot(c[:, 0] - bc[0], c[:, 1] - bc[1])
+            if dd.min() < bd:
+                bd, riv, i0 = dd.min(), c, int(dd.argmin())
+        s_ = np.r_[0, np.cumsum(np.hypot(*np.diff(riv[:, :2], axis=0).T))]
+        j = int(np.searchsorted(s_, s_[i0] + 18))   # 18 px = 45 m downstream
+        j = min(j, len(riv) - 1)
+        p = riv[j, :2]
+        wl = np.fromfile(os.path.join(ROOT, 'data/terrain/water_level_f32.bin'), np.float32).reshape(H, W)
+        zw = float(np.nan_to_num(wl[int(p[1]), int(p[0])], nan=hgt(*p)))
+        out['river_low'] = make('TC_river_low', b(p[0], p[1], zw + 4.0), b(bc[0], bc[1], zw + 3.0), 26)
     # medium aerial 100 m over Hollow Ridge valley, high map view 1000 m
     out['aerial_100'] = make('TC_aerial_100', b(1000, 420, hgt(1000, 420) + 100), b(1060, 350, hgt(1060, 350)), 30)
     out['high_1000'] = make('TC_high_1000', b(1000, 700, 1400), b(1000, 250, 300), 30)

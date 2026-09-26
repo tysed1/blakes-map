@@ -51,7 +51,10 @@ def main():
     # open land: farmland where usable (gentle), meadow otherwise
     op = (open_d > 0.35) & (tree_d < 0.5)
     cls[op & (slope < 0.14)] = ID['farmland']
-    cls[op & (slope >= 0.14)] = ID['meadow']
+    cls[op & (slope >= 0.14) & (slope < 0.35)] = ID['meadow']
+    # steep 'open' paint on mountainsides is the map's stylized rock / light foliage, not pasture:
+    # Appalachian slopes of this steepness are wooded (bare crags come from terrain rock exposure)
+    cls[op & (slope >= 0.35)] = ID['forest_hardwood']
     # rock: only on steep ground
     rk = (cv2.GaussianBlur(rock, (0, 0), 1.5) > 0.30) & (slope > 0.22)
     cls[rk] = ID['rock']

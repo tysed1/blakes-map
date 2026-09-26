@@ -47,7 +47,7 @@ PAL = {
     'hay':     [(0.270, 0.215, 0.095), (0.230, 0.195, 0.080), (0.300, 0.240, 0.110)],   # mown hay / straw
     'plowed':  [(0.160, 0.075, 0.038), (0.130, 0.068, 0.036), (0.185, 0.090, 0.045)],   # red-clay plow land
     'fallow':  [(0.270, 0.150, 0.060), (0.220, 0.160, 0.060), (0.300, 0.170, 0.070)],   # broomsedge
-    'lawn':    [(0.120, 0.130, 0.042), (0.140, 0.135, 0.046), (0.105, 0.118, 0.036)],
+    'lawn':    [(0.085, 0.098, 0.036), (0.115, 0.108, 0.044), (0.070, 0.085, 0.032)],
     'meadow':  [(0.180, 0.165, 0.060), (0.130, 0.145, 0.050), (0.210, 0.170, 0.065)],
     'verge':   [(0.210, 0.170, 0.080), (0.170, 0.150, 0.065), (0.240, 0.190, 0.090)],   # dry roadside grass
     'gravel':  [(0.200, 0.180, 0.150), (0.170, 0.150, 0.125), (0.230, 0.200, 0.160)],
@@ -55,14 +55,14 @@ PAL = {
     'mud':     [(0.060, 0.045, 0.030), (0.050, 0.040, 0.028), (0.075, 0.055, 0.035)],
     'bank':    [(0.170, 0.150, 0.120), (0.130, 0.120, 0.100), (0.200, 0.175, 0.140)],
     'talus':   [(0.100, 0.093, 0.080), (0.082, 0.078, 0.068), (0.120, 0.110, 0.092)],
-    'rock':    [(0.075, 0.070, 0.061), (0.060, 0.058, 0.053), (0.092, 0.084, 0.071)],   # grey-brown sandstone / gneiss
+    'rock':    [(0.062, 0.060, 0.054), (0.050, 0.050, 0.047), (0.075, 0.070, 0.061)],   # grey-brown sandstone / gneiss
 }
 # layer -> (texture id, tile size m, detail power, chroma keep, roughness)
 LAYER = {
     'forest': ('forest_leaves_02', 2.6, 0.8, 0.35, 0.9), 'humus': ('brown_mud_leaves_01', 3.0, 0.7, 0.2, 0.8),
     'pasture': ('leafy_grass', 2.8, 0.45, 0.15, 0.95), 'hay': ('withered_grass', 2.4, 0.5, 0.1, 0.95),
     'plowed': ('farm_soil', 2.5, 0.8, 0.1, 0.95), 'fallow': ('withered_grass', 3.2, 0.55, 0.15, 0.95),
-    'lawn': ('leafy_grass', 2.2, 0.35, 0.1, 0.95), 'meadow': ('leafy_grass', 4.0, 0.45, 0.1, 0.95),
+    'lawn': ('leafy_grass', 2.2, 0.6, 0.12, 0.95), 'meadow': ('leafy_grass', 4.0, 0.45, 0.1, 0.95),
     'verge': ('withered_grass', 2.0, 0.5, 0.15, 0.95), 'gravel': ('gravel_ground_01', 1.8, 0.8, 0.2, 0.9),
     'clay': ('red_mud_stones', 2.5, 0.7, 0.25, 0.9), 'mud': ('brown_mud_02', 2.2, 0.8, 0.2, 0.55),
     'bank': ('river_small_rocks', 2.0, 0.9, 0.2, 0.85), 'talus': ('rocky_trail', 3.0, 0.9, 0.15, 0.9),
@@ -298,7 +298,7 @@ def terrain_material(albedo_path=None):
     S.over(L['clay'], clay_w)
     # water margins: wet mud + gravel bars
     S.over(L['mud'], _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', _math(nt, 'MULTIPLY', bank, 0.8), _smooth(nt, moist, 0.85, 1.0)), 0.9))
-    S.over(L['bank'], _smooth(nt, bank, 0.45, 0.9))
+    S.over(L['bank'], _smooth(nt, bank, 0.75, 0.97))   # gravel / cobble only right at the waterline
     # talus / scree below outcrops, then exposed rock on cliffs + rock land use
     S.over(L['talus'], _math(nt, 'MULTIPLY', talus, _math(nt, 'SUBTRACT', 1.0, _math(nt, 'MULTIPLY', canopy, 0.6))))
     # A1 rock exposure (crags, cut banks, rapids banks) + very steep ground
@@ -307,7 +307,12 @@ def terrain_material(albedo_path=None):
     # rock lichen / moss: pale grey-green lichen blotches on dry rock, moss on moist rock
     lich = _noise(nt, pos, 0.9, 4)
     lichen_w = _math(nt, 'MULTIPLY', rock_w, _math(nt, 'MULTIPLY', _smooth(nt, lich.outputs['Fac'], 0.52, 0.68), 0.7))
-    col = _mix(nt, lichen_w, S.col, (0.13, 0.135, 0.11))
+    col = _mix(nt, lichen_w, S.col, (0.085, 0.092, 0.078))
+    # dark vertical water / weathering streaks on rock faces
+    stk = nt.nodes.new('ShaderNodeMapping'); stk.inputs['Scale'].default_value = (0.6, 0.6, 0.06)
+    nt.links.new(pos, stk.inputs['Vector'])
+    sn_ = _noise(nt, stk.outputs['Vector'], 1.0, 3)
+    col = _mix(nt, _math(nt, 'MULTIPLY', rock_w, _math(nt, 'MULTIPLY', _smooth(nt, sn_.outputs['Fac'], 0.5, 0.7), 0.6)), col, _mix(nt, 1.0, col, (0.55, 0.55, 0.55), 'MULTIPLY'))
     moss_w = _math(nt, 'MULTIPLY', rock_w, _math(nt, 'MULTIPLY', _smooth(nt, moist, 0.5, 0.9), _smooth(nt, nz.outputs['Z'], 0.5, 0.9)))
     col = _mix(nt, _math(nt, 'MULTIPLY', moss_w, 0.8), col, (0.05, 0.07, 0.025))
 
@@ -441,7 +446,7 @@ def add_terrain_attributes(terrain_objs):
     """Per-vertex ecology attributes from public/world/eco_u8.bin (tools/pipeline/vegetation.py):
        eco_a = (moisture, disturbed, canopy cover, hedge), eco_b = (pasture, hay, plowed, fallow),
        eco_c = (lawn, field angle 0..1 -> 0..pi, tpi (0.5 = flat), talus),
-       eco_d = (road edge distance / 25.5 m, rail-or-bridge edge distance / 25.5 m, rock exposure (A1), 1).
+       eco_d = (road edge distance / 25.5 m, rail-or-bridge edge distance / 25.5 m, rock exposure (A1), water distance / 25.5 m).
     Used by the terrain material and the ground-cover scatter."""
     import numpy as np
     H, W = 667, 2000
@@ -468,7 +473,7 @@ def add_terrain_attributes(terrain_objs):
         for name, data in (('eco_a', np.c_[e[:, 0], e[:, 1], e[:, 2], e[:, 5]]),
                            ('eco_b', oh[:, :4]),
                            ('eco_c', np.c_[oh[:, 4], ang, e[:, 6], e[:, 7]]),
-                           ('eco_d', np.c_[e[:, 8], e[:, 9], e[:, 10] if E.shape[2] > 10 else np.zeros(len(x)), np.ones(len(x))] if E.shape[2] > 9 else np.ones((len(x), 4)))):
+                           ('eco_d', np.c_[e[:, 8], e[:, 9], e[:, 10] if E.shape[2] > 10 else np.zeros(len(x)), e[:, 11] if E.shape[2] > 11 else np.ones(len(x))] if E.shape[2] > 9 else np.ones((len(x), 4)))):
             if name in me.attributes:
                 me.attributes.remove(me.attributes[name])
             a = me.attributes.new(name, 'FLOAT_COLOR', 'POINT')

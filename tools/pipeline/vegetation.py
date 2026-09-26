@@ -232,7 +232,7 @@ def scatter(T, cls, seed=7):
         raw = np.fromfile(fxp, np.uint8)
         btype = raw.reshape(raw.size // (H * W), H, W)[3].astype(np.float32) / 255 * 2 - 1   # -1 gravel bar .. +1 rock
     gravelbar = cv2.dilate(np.clip(-btype - 0.2, 0, 1), np.ones((3, 3), np.uint8))
-    rock = rock | (rexp > 0.5)
+    rock = rock | (rexp > 0.75)
     n40 = fbm((H, W), 16, seed + 1)      # 40 m edge wobble
     n15 = fbm((H, W), 6, seed + 2)       # 15 m
     n100 = fbm((H, W), 40, seed + 3)     # 100 m stand patches
@@ -285,13 +285,13 @@ def scatter(T, cls, seed=7):
     p_can += forest * 0.95 * edge_in * gaps
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
     p_can[rock] = 0.62 * np.clip(0.6 + 0.4 * n15[rock], 0, 1) * np.where(slope[rock] > 0.9, 0.5, 1.0)
-    p_can *= 1 - 0.8 * np.clip(rexp, 0, 1)   # bare crags / cut banks
+    p_can *= 1 - 0.3 * smoothstep(0.5, 0.95, rexp)   # crags / cut banks: thinner, trees still cling on ledges
     p_can *= 1 - np.clip(gravelbar, 0, 1)    # open gravel bars
-    p_can = np.where(dev, np.clip(0.2 + 0.18 * n100, 0.03, 0.45), p_can)
+    p_can = np.where(dev, np.clip(0.3 + 0.2 * n100 + 0.1 * n15, 0.05, 0.6), p_can)
     p_can[cls == COM] = 0.05; p_can[cls == IND] = 0.03; p_can[cls == RAIL] = 0.0
     p_can[cls == MEADOW] = np.maximum(p_can[cls == MEADOW] * 0.4, 0.008)
     p_can[cls == FARM] = 0.0
-    p_can *= np.where(slope > 1.1, 0.6, 1.0)
+    p_can *= np.where(slope > 1.4, 0.75, 1.0)
     x, y, xi, yi = _jitter_grid(1.75, rng, p_can)
     ok = clear_ok(x, y, 0); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
     m = moist[yi, xi]; r = np.clip(tpi[yi, xi], -1, 1); s = sun[yi, xi]; c = cr[yi, xi]
@@ -329,7 +329,8 @@ def scatter(T, cls, seed=7):
     pts.append((x, y, sp, sc))
 
     # ---- 2) understory (inside forest): dogwood, saplings, rhododendron/laurel thickets
-    p_und = forest * edge_in * (0.18 + 0.25 * np.clip(moist, 0, 1)) + forest * 0.1 * np.clip(-tpi, 0, 1)
+    # mature forest: fairly open at eye level; understory concentrates in canopy gaps, coves and creek hollows
+    p_und = forest * edge_in * (0.07 + 0.13 * np.clip(moist, 0, 1) + 0.35 * np.clip(1 - gaps, 0, 1)) + forest * 0.08 * np.clip(-tpi, 0, 1)
     x, y, xi, yi = _jitter_grid(2.2, rng, p_und.astype(np.float32))
     ok = clear_ok(x, y, 1); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
     m = moist[yi, xi]; r = np.clip(tpi[yi, xi], -1, 1); creek = np.exp(-dwater[yi, xi] / 25); rk = np.exp(-drock[yi, xi] / 30)
@@ -390,6 +391,13 @@ def scatter(T, cls, seed=7):
                        'RedMaple_B': np.full(len(x), 0.25), 'Sapling_HW_B': np.full(len(x), 0.3), 'Hemlock_B': np.full(len(x), 0.2)})
     pts.append((x, y, sp, np.exp(rng.normal(0, 0.18, len(x)))))
 
+    # ---- 8) yard shrubs / foundation plantings / overgrown lot corners in town
+    ys_ = dev * np.clip(0.5 + 0.5 * n15, 0, 1) * 0.12 + (cls == COM) * 0.03
+    x, y, xi, yi = _jitter_grid(1.3, rng, ys_.astype(np.float32))
+    ok = clear_ok(x, y, 1); x, y = x[ok], y[ok]
+    sp = _choose(rng, {'Brush_B': 1.0, 'Laurel_B': 0.8, 'Brush_A': 0.5, 'Dogwood': 0.25, 'Sapling_Pine': 0.15}, len(x))
+    pts.append((x, y, sp, np.exp(rng.normal(-0.1, 0.18, len(x)))))
+
     X = np.concatenate([p[0] for p in pts]); Y = np.concatenate([p[1] for p in pts])
     S = np.concatenate([p[2] for p in pts]).astype(np.int32); SC = np.concatenate([p[3] for p in pts]).astype(np.float32)
     for a, b, frac in VARIANTS:  # spread the most common species over more meshes (less visible repetition)
@@ -414,7 +422,8 @@ def scatter(T, cls, seed=7):
         moist, disturbed, cov, ftype.astype(np.float32) / 255, fang / math.pi, hedge.astype(np.float32),
         np.clip(tpi / 3 + 0.5, 0, 1), talus,
         # corridor edge distances (m / 25.5, 0.1 m steps): ground cover keeps pavement, ballast and bridge decks clear
-        np.clip(road1, 0, 25.5) / 25.5, np.clip(np.minimum(rail1, bridge1), 0, 25.5) / 25.5, np.clip(rexp, 0, 1)], -1)
+        np.clip(road1, 0, 25.5) / 25.5, np.clip(np.minimum(rail1, bridge1), 0, 25.5) / 25.5, np.clip(rexp, 0, 1),
+        np.clip(dwater, 0, 25.5) / 25.5], -1)
     eco_u8 = (np.clip(eco_u8, 0, 1) * 255).round().astype(np.uint8)
     eco_u8[..., 3] = ftype
     return veg, props, eco_u8
@@ -462,7 +471,7 @@ def run(T, cls):
     props.astype('<f4').tofile(os.path.join(out, 'props_f32.bin'))
     eco.tofile(os.path.join(out, 'eco_u8.bin'))
     with open(os.path.join(out, 'eco.json'), 'w') as f:
-        json.dump({'w': W, 'h': H, 'channels': ['moisture', 'disturbed', 'canopy', 'field_type', 'field_angle', 'hedge', 'tpi', 'talus', 'road_edge_m/25.5', 'rail_bridge_edge_m/25.5', 'rock_exposure'],
+        json.dump({'w': W, 'h': H, 'channels': ['moisture', 'disturbed', 'canopy', 'field_type', 'field_angle', 'hedge', 'tpi', 'talus', 'road_edge_m/25.5', 'rail_bridge_edge_m/25.5', 'rock_exposure', 'water_dist_m/25.5'],
                    'field_types': FIELD_TYPES, 'species': SPECIES, 'props': PROPS,
                    'vegetation': {'file': 'vegetation_f32.bin', 'stride': 6, 'count': int(len(veg))},
                    'props_file': {'file': 'props_f32.bin', 'stride': 6, 'count': int(len(props))}}, f, indent=1)

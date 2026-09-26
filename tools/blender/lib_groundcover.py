@@ -330,8 +330,10 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
     road_m = math('MULTIPLY', attr('eco_d', 'Red'), 25.5)      # distance to the paved shoulder edge (m)
     rail_m = math('MULTIPLY', attr('eco_d', 'Green'), 25.5)    # distance to ballast / bridge deck edge (m)
     # nothing on pavement / ballast / decks; low grass from 0.5 m, tall plants from ~1.5 m
-    offroad = math('MULTIPLY', smooth(road_m, 0.5, 1.6), smooth(rail_m, 0.8, 2.0))
-    offroad_tall = math('MULTIPLY', smooth(road_m, 1.2, 2.5), smooth(rail_m, 1.5, 3.0))
+    water_m = math('MULTIPLY', attr('eco_d', 'Alpha'), 25.5)   # distance to open water (0 in the channel)
+    offroad = math('MULTIPLY', math('MULTIPLY', smooth(road_m, 0.5, 1.6), smooth(rail_m, 0.8, 2.0)), smooth(water_m, 0.4, 1.2))
+    offroad_tall = math('MULTIPLY', math('MULTIPLY', smooth(road_m, 1.2, 2.5), smooth(rail_m, 1.5, 3.0)), smooth(water_m, 0.8, 1.8))
+    at_water = math('MULTIPLY', math('MULTIPLY', smooth(road_m, 1.2, 2.5), smooth(rail_m, 1.5, 3.0)), smooth(water_m, 0.1, 0.5))
     under = smooth(canopy, 0.35, 0.75)
     open_ = math('MULTIPLY', math('SUBTRACT', 1.0, under), offroad_tall)
     open_low = math('MULTIPLY', math('SUBTRACT', 1.0, under), offroad)
@@ -364,6 +366,9 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
 
     # fields
     tallgrass = math('MULTIPLY', math('MAXIMUM', math('MAXIMUM', pasture, math('MULTIPLY', fallow, 0.6)), math('MULTIPLY', meadow, 0.8)), open_)
+    # grassed creek banks and seeded road / bridge fills (non-developed)
+    tallgrass = math('MAXIMUM', tallgrass, math('MULTIPLY', math('MAXIMUM', math('MULTIPLY', bank, 0.9), math('MULTIPLY', disturbed, 0.55)),
+                                                  math('MULTIPLY', open_, math('SUBTRACT', 1.0, dev))))
     layer('pasture', 5.0, math('MAXIMUM', tallgrass, math('MULTIPLY', verge, 0.8)), (0.8, 1.3), 10)
     layer('pasture', 1.2, math('MULTIPLY', hedge, offroad_tall), (1.0, 1.5), 11)
     layer('broomsedge', 3.0, math('MULTIPLY', fallow, open_), (0.8, 1.3), 20)
@@ -375,7 +380,7 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
     layer('flowers', 0.35, math('MULTIPLY', fl, open_), (0.8, 1.2), 50)
     layer('weeds', 0.3, math('MULTIPLY', math('MAXIMUM', math('MAXIMUM', verge, disturbed), math('MULTIPLY', pasture, 0.3)), open_), (0.8, 1.3), 60)
     # creek banks / wet ground: rushes + ferns
-    wet = math('MULTIPLY', math('MAXIMUM', bank, smooth(moist, 0.7, 0.95)), offroad_tall)
+    wet = math('MULTIPLY', math('MAXIMUM', bank, smooth(moist, 0.7, 0.95)), at_water)
     layer('rush', 1.6, wet, (0.8, 1.3), 70)
     # forest floor: ferns (moist), sparse grass, in canopy gaps more
     layer('fern', 0.35, math('MULTIPLY', math('MULTIPLY', under, math('ADD', 0.35, moist)), offroad_tall), (1.0, 1.8), 80)
