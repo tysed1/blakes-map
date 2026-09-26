@@ -199,5 +199,5 @@ def setup(ARG=lambda k, d=None: d):
     world(float(ARG('--sky', 0.8)), float(ARG('--skyrot', 0)))
     lights(float(ARG('--fill', 0.0)))
     compositor(float(ARG('--haze', 0.85)))
-    ambient_group(float(ARG('--ambient', 0.3)))
+    ambient_group(float(ARG('--ambient', 0.5)))
     print('  ambient on', apply_ambient(), 'materials')

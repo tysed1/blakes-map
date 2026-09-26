@@ -105,6 +105,22 @@ def blob(g, c, rx, rz, rng, mat, ao=0.6, lumpy=0.22, flat_bottom=0.0):
         g.face([base + i for i in f], mat)
 
 
+def ell_normal(c, rx, rz, up=0.2, crown=None, w=0.6):
+    """Per-vertex shading normal from an ellipsoid (lobe) + optional crown ellipsoid: soft volume shading."""
+    def f(v):
+        q = v - c
+        n = Vector((q.x / rx, q.y / rx, q.z / rz))
+        n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
+        if crown is not None:
+            c2, rx2, rz2 = crown
+            q2 = v - c2
+            n2 = Vector((q2.x / rx2, q2.y / rx2, q2.z / rz2))
+            n2 = n2.normalized() if n2.length > 1e-6 else Vector((0, 0, 1))
+            n = n * w + n2 * (1 - w)
+        return (n + Vector((0, 0, up))).normalized()
+    return f
+
+
 def card(g, pos, facing, size, shade_n, rng, ao, lv, mat=1, aspect=1.0, spin=None):
     facing = facing.normalized()
     a = facing.orthogonal().normalized(); b = facing.cross(a)
@@ -113,7 +129,8 @@ def card(g, pos, facing, size, shade_n, rng, ao, lv, mat=1, aspect=1.0, spin=Non
     s = size / 2
     idx = []
     for (u, v) in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-        idx.append(g.add_vert(pos + a * u * s + b * v * s * aspect, shade_n, ((u + 1) / 2, (v + 1) / 2), ao, lv))
+        vp = pos + a * u * s + b * v * s * aspect
+        idx.append(g.add_vert(vp, shade_n(vp) if callable(shade_n) else shade_n, ((u + 1) / 2, (v + 1) / 2), ao, lv))
     g.face(idx, mat)
 
 
@@ -171,7 +188,7 @@ def broadleaf(rng, h=17.0, crown_base=6.0, crown_r=6.0, lobes=(9, 13), lobe_r=(0
         n = int(area * density / (np.mean(card_size) ** 2 * 0.4))
         for _ in range(n):
             u = rand_unit(rng)
-            sh = rng.uniform(0.82, 1.08)
+            sh = rng.uniform(0.82, 1.08) if rng.random() > 0.08 else rng.uniform(1.08, 1.28)  # a few tufts break the silhouette
             p = c + Vector((u.x * rr * sh, u.y * rr * sh, u.z * rh * sh))
             # cull if buried in another lobe
             buried = False
@@ -189,7 +206,7 @@ def broadleaf(rng, h=17.0, crown_base=6.0, crown_r=6.0, lobes=(9, 13), lobe_r=(0
             hf = (p.z - zlo) / max(zhi - zlo, 1e-3)
             outer = max(0.0, min(1.0, (cn.dot(sn) + 0.2)))
             ao = 0.52 + 0.3 * hf + 0.18 * outer * (0.5 + 0.5 * max(0, u.z))
-            card(g, p, facing, rng.uniform(*card_size), sn, rng, min(ao, 1.0), rng.random())
+            card(g, p, facing, rng.uniform(*card_size), ell_normal(c, rr, rh, 0.2, (cen, crown_r, crown_h * 0.5)), rng, min(ao, 1.0), rng.random())
     return g
 
 
@@ -238,7 +255,7 @@ def white_pine(rng, h=24.0, crown_base=6.0, base_r=5.0, tiers=(7, 10), card_size
             facing = (Vector((0, 0, 1)) * 0.9 + rand_unit(rng) * 0.7)   # needle tufts mostly horizontal
             hf = (p.z - crown_base) / max(h - crown_base, 1)
             ao = 0.55 + 0.25 * hf + 0.2 * max(0, u.z)
-            card(g, p, facing, rng.uniform(*card_size), ln, rng, min(ao, 1), rng.random())
+            card(g, p, facing, rng.uniform(*card_size), ell_normal(c, rr, rh * 1.6, 0.35), rng, min(ao, 1), rng.random())
     return g
 
 
@@ -274,7 +291,7 @@ def hemlock(rng, h=19.0, crown_base=1.5, base_r=4.0, card_size=(1.3, 1.8), densi
             facing = (Vector((0, 0, 1)) * 0.8 + out * 0.5 + rand_unit(rng) * 0.4)
             hf = p.z / h
             ao = 0.52 + 0.3 * hf + 0.15 * (1 - abs(u.z))
-            card(g, p, facing, rng.uniform(*card_size), ln, rng, min(ao, 1), rng.random())
+            card(g, p, facing, rng.uniform(*card_size), ell_normal(Vector((0, 0, c.z)), rr, rh * 2.5, 0.3), rng, min(ao, 1), rng.random())
     return g
 
 
@@ -305,7 +322,7 @@ def shrub(rng, w=3.0, hh=2.2, lobes=(4, 7), card_size=(0.9, 1.3), density=2.0, s
             ln = Vector((u.x / rr, u.y / rr, u.z / rh + 0.3)).normalized()
             facing = ln * 0.6 + rand_unit(rng) * 0.7
             ao = 0.5 + 0.35 * min(1, p.z / hh) + 0.15 * max(0, u.z)
-            card(g, p, facing, rng.uniform(*card_size), ln, rng, min(ao, 1), rng.random())
+            card(g, p, facing, rng.uniform(*card_size), ell_normal(c, rr, rh, 0.3), rng, min(ao, 1), rng.random())
     return g
 
 
@@ -520,6 +537,11 @@ def _species():
         ('Laurel_B', 'rhodo', SH, dict(w=2.8, hh=2.0, lobes=(4, 6), card_size=(0.8, 1.1)), 'rhodo', 'grey'),
         ('Brush_A', 'brush', SH, dict(w=2.6, hh=1.6, lobes=(4, 7), card_size=(0.8, 1.2), stems=6), 'brush', 'grey'),
         ('Brush_B', 'brush', SH, dict(w=1.8, hh=1.1, lobes=(3, 5), card_size=(0.7, 1.0), stems=4), 'brush', 'grey'),
+        # extra variants (appended: ids above stay stable; vegetation.py remaps a share of A -> C)
+        ('WhiteOak_C', 'oak', B, dict(h=18, crown_base=5.0, crown_r=6.4, lobes=(9, 13), lean=0.07, trunk_r=0.42), 'oak', 'brown'),
+        ('RedMaple_C', 'maple', B, dict(h=16, crown_base=4.0, crown_r=4.8, lobes=(7, 11), flat=1.0, lean=0.07), 'maple', 'grey'),
+        ('Hemlock_C', 'hemlock', HM, dict(h=24, crown_base=3.0, base_r=4.8), 'hemlock', 'pine'),
+        ('WhitePine_C', 'pine', WP, dict(h=28, crown_base=10, base_r=5.6, tiers=(6, 9)), 'pine', 'pine'),
     ]
 
 

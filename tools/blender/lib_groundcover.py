@@ -324,11 +324,15 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
     moist = attr('eco_a', 'Red'); disturbed = attr('eco_a', 'Green'); canopy = attr('eco_a', 'Blue'); hedge = attr('eco_a', 'Alpha')
     pasture = attr('eco_b', 'Red'); hay = attr('eco_b', 'Green'); plowed = attr('eco_b', 'Blue'); fallow = attr('eco_b', 'Alpha')
     lawn = attr('eco_c', 'Red')
-    road = smooth(shoulder, 0.35, 0.8)   # on / next to pavement -> nothing
-    offroad = math('SUBTRACT', 1.0, road)
+    road_m = math('MULTIPLY', attr('eco_d', 'Red'), 25.5)      # distance to the paved shoulder edge (m)
+    rail_m = math('MULTIPLY', attr('eco_d', 'Green'), 25.5)    # distance to ballast / bridge deck edge (m)
+    # nothing on pavement / ballast / decks; low grass from 0.5 m, tall plants from ~1.5 m
+    offroad = math('MULTIPLY', smooth(road_m, 0.5, 1.6), smooth(rail_m, 0.8, 2.0))
+    offroad_tall = math('MULTIPLY', smooth(road_m, 1.2, 2.5), smooth(rail_m, 1.5, 3.0))
     under = smooth(canopy, 0.35, 0.75)
-    open_ = math('MULTIPLY', math('SUBTRACT', 1.0, under), offroad)
-    verge = math('MULTIPLY', smooth(shoulder, 0.08, 0.3), offroad)   # roadside verge band
+    open_ = math('MULTIPLY', math('SUBTRACT', 1.0, under), offroad_tall)
+    open_low = math('MULTIPLY', math('SUBTRACT', 1.0, under), offroad)
+    verge = math('MULTIPLY', math('SUBTRACT', 1.0, smooth(road_m, 5.0, 9.0)), offroad_tall)   # roadside verge band (weeds, tall grass)
 
     def layer(key, density, weight, scale=(0.8, 1.25), seed=0, align=0.3):
         if key not in protos:
@@ -358,20 +362,20 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
     # fields
     tallgrass = math('MULTIPLY', math('MAXIMUM', math('MAXIMUM', pasture, math('MULTIPLY', fallow, 0.6)), math('MULTIPLY', meadow, 0.8)), open_)
     layer('pasture', 5.0, math('MAXIMUM', tallgrass, math('MULTIPLY', verge, 0.8)), (0.8, 1.3), 10)
-    layer('pasture', 1.2, math('MULTIPLY', hedge, offroad), (1.0, 1.5), 11)
+    layer('pasture', 1.2, math('MULTIPLY', hedge, offroad_tall), (1.0, 1.5), 11)
     layer('broomsedge', 3.0, math('MULTIPLY', fallow, open_), (0.8, 1.3), 20)
     layer('stubble', 4.0, math('MULTIPLY', hay, open_), (0.9, 1.3), 30)
-    layer('short', 3.0, math('MULTIPLY', math('MAXIMUM', lawn, math('MULTIPLY', dev, 0.7)), open_), (0.8, 1.4), 40)
+    layer('short', 3.0, math('MULTIPLY', math('MAXIMUM', lawn, math('MULTIPLY', dev, 0.7)), open_low), (0.8, 1.4), 40)
     layer('short', 1.2, math('MULTIPLY', math('MULTIPLY', plowed, 0.25), open_), (0.8, 1.2), 41)
     # wildflowers / weeds: fallow fields, verges, hedges, pasture edges
     fl = math('MAXIMUM', math('MAXIMUM', math('MULTIPLY', fallow, 0.8), math('MULTIPLY', pasture, 0.2)), math('MAXIMUM', verge, hedge))
     layer('flowers', 0.35, math('MULTIPLY', fl, open_), (0.8, 1.2), 50)
     layer('weeds', 0.3, math('MULTIPLY', math('MAXIMUM', math('MAXIMUM', verge, disturbed), math('MULTIPLY', pasture, 0.3)), open_), (0.8, 1.3), 60)
     # creek banks / wet ground: rushes + ferns
-    wet = math('MULTIPLY', math('MAXIMUM', bank, smooth(moist, 0.7, 0.95)), offroad)
+    wet = math('MULTIPLY', math('MAXIMUM', bank, smooth(moist, 0.7, 0.95)), offroad_tall)
     layer('rush', 1.6, wet, (0.8, 1.3), 70)
     # forest floor: ferns (moist), sparse grass, in canopy gaps more
-    layer('fern', 0.35, math('MULTIPLY', math('MULTIPLY', under, math('ADD', 0.35, moist)), offroad), (1.0, 1.8), 80)
+    layer('fern', 0.35, math('MULTIPLY', math('MULTIPLY', under, math('ADD', 0.35, moist)), offroad_tall), (1.0, 1.8), 80)
     layer('forest_grass', 0.25, math('MULTIPLY', math('MULTIPLY', forest, math('SUBTRACT', 1.1, canopy)), offroad), (0.8, 1.2), 90)
     for t in terrain_objs:
         m = t.modifiers.get('GroundCover') or t.modifiers.new('GroundCover', 'NODES'); m.node_group = ng

@@ -79,7 +79,7 @@ def cams():
         z = road_z(hw, p)
         out['hwy_low'] = make('TC_hwy_low', b(p[0] + d[1] * 6, p[1] - d[0] * 6, z + 5), b(p[0] + d[0] * 60, p[1] + d[1] * 60, z + 2), 28)
     # pasture / hay field, pedestrian 1.7 m looking toward the forest edge
-    eco = np.fromfile(os.path.join(ROOT, 'public/world/eco_u8.bin'), np.uint8).reshape(H, W, 8)
+    eco = np.fromfile(os.path.join(ROOT, 'public/world/eco_u8.bin'), np.uint8).reshape(H, W, -1)
     ft = eco[..., 3]
     for key, types, z0 in (('field_ped', (1, 2), 1.7), ('field_low', (4, 1), 5.0)):
         ys, xs = np.nonzero(np.isin(ft, types))

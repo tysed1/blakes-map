@@ -284,7 +284,7 @@ def terrain_material(albedo_path=None):
     S.over(L['bank'], _smooth(nt, bank, 0.45, 0.9))
     # talus / scree below outcrops, then exposed rock on cliffs + rock land use
     S.over(L['talus'], _math(nt, 'MULTIPLY', talus, _math(nt, 'SUBTRACT', 1.0, _math(nt, 'MULTIPLY', canopy, 0.6))))
-    rock_w = _math(nt, 'MAXIMUM', _smooth(nt, slope, 0.3, 0.5), _math(nt, 'MULTIPLY', _smooth(nt, rock_lu, 0.3, 0.8), _smooth(nt, slope, 0.08, 0.25)))
+    rock_w = _math(nt, 'MAXIMUM', _smooth(nt, slope, 0.3, 0.5), _math(nt, 'MULTIPLY', _smooth(nt, rock_lu, 0.3, 0.8), _smooth(nt, slope, 0.17, 0.33)))
     S.over(L['rock'], rock_w, 0.9)
     # rock lichen / moss: pale grey-green lichen blotches on dry rock, moss on moist rock
     lich = _noise(nt, pos, 0.9, 4)
@@ -423,7 +423,8 @@ def hdri_world(hdr_path, strength=1.0, rot_deg=0.0, sun_rot=None):
 def add_terrain_attributes(terrain_objs):
     """Per-vertex ecology attributes from public/world/eco_u8.bin (tools/pipeline/vegetation.py):
        eco_a = (moisture, disturbed, canopy cover, hedge), eco_b = (pasture, hay, plowed, fallow),
-       eco_c = (lawn, field angle 0..1 -> 0..pi, tpi (0.5 = flat), talus).
+       eco_c = (lawn, field angle 0..1 -> 0..pi, tpi (0.5 = flat), talus),
+       eco_d = (road edge distance / 25.5 m, rail-or-bridge edge distance / 25.5 m, 0, 1).
     Used by the terrain material and the ground-cover scatter."""
     import numpy as np
     H, W = 667, 2000
@@ -431,7 +432,7 @@ def add_terrain_attributes(terrain_objs):
     if not os.path.exists(p):
         print('  no eco_u8.bin: terrain ecology attributes skipped')
         return
-    raw = np.fromfile(p, np.uint8).reshape(H, W, 8)
+    raw = np.fromfile(p, np.uint8).reshape(H, W, -1)
     E = raw.astype(np.float32) / 255
     ft = raw[..., 3]
 
@@ -449,7 +450,8 @@ def add_terrain_attributes(terrain_objs):
         ang = E[np.clip(y.astype(int), 0, H - 1), np.clip(x.astype(int), 0, W - 1), 4]
         for name, data in (('eco_a', np.c_[e[:, 0], e[:, 1], e[:, 2], e[:, 5]]),
                            ('eco_b', oh[:, :4]),
-                           ('eco_c', np.c_[oh[:, 4], ang, e[:, 6], e[:, 7]])):
+                           ('eco_c', np.c_[oh[:, 4], ang, e[:, 6], e[:, 7]]),
+                           ('eco_d', np.c_[e[:, 8], e[:, 9], np.zeros(len(x)), np.ones(len(x))] if E.shape[2] > 9 else np.ones((len(x), 4)))):
             if name in me.attributes:
                 me.attributes.remove(me.attributes[name])
             a = me.attributes.new(name, 'FLOAT_COLOR', 'POINT')
