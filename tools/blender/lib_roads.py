@@ -138,7 +138,8 @@ class Mesh:
         if luw is not None:
             x, y = w2px(V[:, 0], V[:, 1])
             xi = np.clip(x.astype(int), 0, W - 1); yi = np.clip(y.astype(int), 0, H - 1)
-            A = luw[:, yi, xi].T  # field, meadow, developed, rock, forest, bank, shoulder
+            A = luw[:, yi, xi].T.copy()  # field, meadow, developed, rock, forest, bank, shoulder
+            A[:, 5] *= 0.15  # road fills / verges are grassed, not pale river bank
             for an, data in (('lu_a', np.c_[A[:, 0], A[:, 1], A[:, 2], A[:, 3]]), ('lu_b', np.c_[A[:, 4], A[:, 5], A[:, 6], np.ones(len(A))])):
                 at = me.attributes.new(an, 'FLOAT_COLOR', 'POINT')
                 at.data.foreach_set('color', data.astype(np.float32).ravel())
@@ -317,7 +318,7 @@ def _asphalt_material():
     cr = b.nt.nodes.new('ShaderNodeSeparateColor'); b._in(cr.inputs[0], cell)
     patch = b.lt(cr.outputs['Red'], b.add(0.03, b.mul(age, 0.13)))
     patch = b.mul(patch, b.lt(au, b.sub(hw, 0.3)))
-    col = b.mix(patch, col, b.mix(cr.outputs['Green'], (0.022, 0.022, 0.024), (0.06, 0.058, 0.055)))
+    col = b.mix(b.mul(patch, 0.6), col, b.mix(cr.outputs['Green'], (0.03, 0.03, 0.032), (0.05, 0.049, 0.046)))
     # --- cracks: alligator clusters, transverse cracks, sealed centre joint (tar snakes)
     # alligator cracking: small cells, in patches, mostly in the wheel paths of old roads
     ed = b.voronoi(b.mapping(road_uv, 0.32), 1.0, 'DISTANCE_TO_EDGE', 'Distance')
@@ -480,6 +481,24 @@ def _simple(name, col, rough=0.9, metal=0.0):
     return m
 
 
+def _riprap_material():
+    """Granite riprap: angular stones (voronoi cells) with dark voids, some moss."""
+    m = bpy.data.materials.new('MAT_Bridge_Riprap')
+    b = NB(m)
+    obj = b.tc.outputs['Object']
+    v = b.mapping(obj, 0.55)
+    cell = b.voronoi(v, 1.0, 'F1', 'Color')
+    ed = b.voronoi(v, 1.0, 'DISTANCE_TO_EDGE', 'Distance')
+    sep = b.nt.nodes.new('ShaderNodeSeparateColor'); b._in(sep.inputs[0], cell)
+    st = b.mix(sep.outputs['Red'], (0.11, 0.105, 0.1), (0.24, 0.23, 0.21))
+    st = b.mix(b.mul(b.smooth(b.noise(obj, 0.3, 3.0), 0.55, 0.8), 0.6), st, (0.06, 0.08, 0.035))
+    c = b.mix(b.lt(ed, 0.05), st, (0.015, 0.015, 0.012))
+    b.nt.links.new(c, b.inp('Base Color'))
+    b.inp('Roughness').default_value = 0.9
+    b.nt.links.new(b.bump(b.smooth(ed, 0.0, 0.2), 1.0, 0.15), b.inp('Normal'))
+    return m
+
+
 _MATS = {}
 
 
@@ -495,7 +514,8 @@ def materials():
         'sidewalk': _concrete_material('MAT_Road_Sidewalk', (0.27, 0.265, 0.245), 1.5),
         'bridge_concrete': _concrete_material('MAT_Bridge_Concrete', (0.44, 0.43, 0.40), 0.0),
         'verge': _verge_material(),
-        'truss': _steel_material('MAT_Bridge_Steel_Truss', (0.36, 0.40, 0.38), 0.5, 0.3),
+        'truss': _steel_material('MAT_Bridge_Steel_Truss', (0.2, 0.225, 0.215), 0.55, 0.35),
+        'riprap': _riprap_material(),
         'girder_steel': _steel_material('MAT_Bridge_Steel_Girder', (0.22, 0.24, 0.23), 0.6, 0.4),
         'rail_steel': _steel_material('MAT_Rail_Steel', (0.32, 0.29, 0.26), 0.45, 0.6),
         'ballast': _gravel_material('MAT_Rail_Ballast', (0.12, 0.115, 0.11), 'gravel_road', 1.1, col2=(0.1, 0.085, 0.07), ruts=False),
@@ -1398,7 +1418,7 @@ def cyl_at(M, c, r, z0, z1, mat, seg=12, rx=None, ax=None, **at):
     M.add(V[:2 * m + 1], [f for f in F if len(f) == 3], mat, **at)
 
 
-B_SLOT = {'concrete': 0, 'steel': 1, 'railing': 2, 'girder': 3}
+B_SLOT = {'concrete': 0, 'steel': 1, 'railing': 2, 'girder': 3, 'riprap': 4}
 
 
 def _deck_frame(e, s0, s1, step=1.5):
@@ -1424,6 +1444,19 @@ def _sweep(M, Fr, prof_fn, mat, closed=False, **at):
     U, Z = prof_fn(Fr)
     G = np.stack([Fr['P'][:, 0:1] + Fr['N'][:, 0:1] * U, Fr['P'][:, 1:2] + Fr['N'][:, 1:2] * U, Z], -1)
     M.grid(G, [mat] * (U.shape[1] - 1), **at)
+
+
+def riprap(M, c, t_, n_, dirn, half_w, T, reach=9.0, lift=0.06):
+    """Draped stone apron on the slope under a bridge end (from the abutment towards the
+    span, and a little past the deck edges) - protects the fill against scour."""
+    us = np.linspace(-(half_w + 3.0), half_w + 3.0, max(3, int(2 * half_w / 1.5) + 5))
+    ts = np.linspace(0.3, reach, max(3, int(reach / 1.2)))
+    G = np.zeros((len(ts), len(us), 3))
+    for i, tt in enumerate(ts):
+        p = np.asarray(c)[None, :2] - t_[None] * dirn * tt + n_[None] * us[:, None]
+        z = T.at(*w2px(p[:, 0], p[:, 1])) + lift
+        G[i] = np.c_[p, z]
+    M.grid(G, [B_SLOT['riprap']] * (len(us) - 1))
 
 
 def girder_bridge(M, Fr, T, kind, structure, over=None, lower_pts=None):
@@ -1521,6 +1554,8 @@ def girder_bridge(M, Fr, T, kind, structure, over=None, lower_pts=None):
         g = float(T.at(*w2px(c[0], c[1])))
         cc = c + t_ * dirn * 0.5
         box_at(M, cc, t_, n_, 0.6, Wd[k], min(g, zt) - 2.0, float(zc[k]) - 0.25, B_SLOT['concrete'])
+        if kind in ('bridge', 'viaduct'):
+            riprap(M, c, t_, n_, dirn, float(Wd[k]), T)
         for sgn in (-1, 1):
             p0 = c + n_ * sgn * (Wd[k] - 0.2)
             for j in range(4):
@@ -1599,6 +1634,16 @@ def truss_bridge(M, Fr, T):
         c = Fr['P'][k, :2]; t_ = Fr['T'][k]; n_ = Fr['N'][k]
         g = float(T.at(*w2px(c[0], c[1])))
         box_at(M, c + t_ * dirn * 0.7, t_, n_, 0.9, ut + 0.9, min(g, zc[k] - 1) - 2.0, float(zc[k]) - 0.3, B_SLOT['concrete'])
+        riprap(M, c, t_, n_, dirn, ut + 0.9, T)
+        for sgn in (-1, 1):   # short concrete wingwalls retaining the approach fill
+            p0 = c + n_ * sgn * (ut + 0.8)
+            for j in range(3):
+                a0 = p0 + t_ * dirn * (0.9 + j * 1.8)
+                gg = float(T.at(*w2px(a0[0], a0[1])))
+                ztop = float(zc[k]) + 0.3 - j * 0.9
+                if ztop < gg - 0.2:
+                    break
+                box_at(M, a0, t_, n_, 0.9, 0.2, gg - 1.2, ztop, B_SLOT['concrete'])
 
 
 def _seg_x(a0, a1, b0, b1):
@@ -1646,7 +1691,7 @@ def build_bridges(coll, net, T, mats):
     idx = {e['p']['id']: e for e in net.E}
     road_by_id = idx
     out = 0
-    bm = [mats['bridge_concrete'], mats['truss'], mats['railing'], mats['girder_steel']]
+    bm = [mats['bridge_concrete'], mats['truss'], mats['railing'], mats['girder_steel'], mats['riprap']]
     for b in load('data/roads/bridges.geojson')['features']:
         pr = b['properties']
         if pr['kind'] not in ('bridge', 'viaduct', 'overpass'):
