@@ -1,16 +1,22 @@
 {
- "_doc": "Terrain art-direction inputs (source px, metres). The terrain is reconstructed from the map's geography: valley floors follow river profiles; relief rises with distance from lowland (water, farmland, towns) with capped slope, steeper where the map shows exposed rock. Regions below scale relief amplitude.",
- "relief": {
-  "default_amplitude_m": 240,
-  "base_slope_m_per_px": 2.7,
-  "rock_slope_bonus": 0.9,
-  "rock_amplitude_bonus_m": 90,
-  "sfs_amplitude_m": 0
+ "_doc": "Terrain art-direction inputs (source px, metres) for tools/pipeline/terrain.py v4. The large landforms come from the ridge skeleton (data/manual/ridges.json) over valley floors that follow the river profiles. 'background' = low soft hills where the map shows woodland but no designed ridge (amplitude per region below). 'lowland' caps relief near farmland/towns/water with a concave toe. 'corridors' carve natural gaps for roads/rail (grade envelope). 'erosion' = stream-power incision (dendritic hollows) + droplets + thermal. 'water' = channel/bank shaping.",
+ "seed": 11,
+ "ridges": {
+  "relief_scale": 0.78,
+  "hw_scale": 1.5,
+  "union_k": 10.0,
+  "lobe_amp": 0.4,
+  "spur_spacing_scale": 1.4,
+  "warp_px": 6.0
+ },
+ "background": {
+  "amplitude_m": 70,
+  "slope_m_per_px": 1.1
  },
  "amplitude_regions": [
   {
    "name": "Laurel City basin (gentle hills)",
-   "amplitude_m": 70,
+   "amplitude_m": 30,
    "pts": [
     [
      120,
@@ -53,7 +59,7 @@
   },
   {
    "name": "Tannersville basin (gentle hills)",
-   "amplitude_m": 70,
+   "amplitude_m": 30,
    "pts": [
     [
      1480,
@@ -92,7 +98,7 @@
   },
   {
    "name": "Hollow Ridge valley",
-   "amplitude_m": 150,
+   "amplitude_m": 35,
    "pts": [
     [
      930,
@@ -120,155 +126,60 @@
     ]
    ],
    "feather_px": 40
-  },
-  {
-   "name": "North Mountain / Laurel Ridge (central high country)",
-   "amplitude_m": 420,
-   "pts": [
-    [
-     420,
-     0
-    ],
-    [
-     1000,
-     0
-    ],
-    [
-     980,
-     70
-    ],
-    [
-     700,
-     140
-    ],
-    [
-     430,
-     110
-    ]
-   ],
-   "feather_px": 80
-  },
-  {
-   "name": "Stony Knob massif",
-   "amplitude_m": 480,
-   "pts": [
-    [
-     1060,
-     0
-    ],
-    [
-     1330,
-     0
-    ],
-    [
-     1330,
-     160
-    ],
-    [
-     1300,
-     240
-    ],
-    [
-     1160,
-     230
-    ],
-    [
-     1080,
-     120
-    ]
-   ],
-   "feather_px": 80
-  },
-  {
-   "name": "Bald Ridge",
-   "amplitude_m": 360,
-   "pts": [
-    [
-     640,
-     180
-    ],
-    [
-     800,
-     220
-    ],
-    [
-     920,
-     300
-    ],
-    [
-     900,
-     360
-    ],
-    [
-     760,
-     350
-    ],
-    [
-     640,
-     270
-    ]
-   ],
-   "feather_px": 60
-  },
-  {
-   "name": "South Fork highlands",
-   "amplitude_m": 400,
-   "pts": [
-    [
-     600,
-     440
-    ],
-    [
-     900,
-     470
-    ],
-    [
-     1000,
-     560
-    ],
-    [
-     1300,
-     560
-    ],
-    [
-     1340,
-     667
-    ],
-    [
-     600,
-     667
-    ]
-   ],
-   "feather_px": 80
-  },
-  {
-   "name": "Hemlock Mountain",
-   "amplitude_m": 430,
-   "pts": [
-    [
-     1300,
-     380
-    ],
-    [
-     1480,
-     420
-    ],
-    [
-     1620,
-     500
-    ],
-    [
-     1650,
-     667
-    ],
-    [
-     1300,
-     667
-    ]
-   ],
-   "feather_px": 80
   }
  ],
+ "lowland": {
+  "toe_slope_m_per_px": 2.6,
+  "toe_px": 14,
+  "roll_m": 7,
+  "terrace_m": 2.5,
+  "terrace_px": [
+   18,
+   34
+  ],
+  "core_erode_px": 6
+ },
+ "detail": {
+  "macro_var": 0.08,
+  "meso_m": 7.0,
+  "crag_m": 7.0
+ },
+ "corridors": {
+  "side_m_per_px": 0.6,
+  "side_curve": 0.05,
+  "reach_px": 40,
+  "grade_frac": 0.8,
+  "tolerance_m": 2.0
+ },
+ "erosion": {
+  "spl_steps": 25,
+  "spl_K": 0.06,
+  "spl_m": 0.5,
+  "spl_diffusion": 5.0,
+  "droplets": 0,
+  "talus": 0.9,
+  "thermal_iters": 60,
+  "max_breach_m": 3.0
+ },
+ "water": {
+  "rapid_gain": 7.0,
+  "bank_reach_px": 28,
+  "bend_kappa": 0.025,
+  "rapid_slope": [
+   0.01,
+   0.045
+  ],
+  "depth_base": 0.5,
+  "depth_per_px": 0.09,
+  "depth_min": 0.5,
+  "depth_max": 4.5,
+  "pool_gain": 0.5,
+  "riffle_cut": 0.35,
+  "bar_rise": 0.7,
+  "bank_h": 1.2,
+  "bank_ramp_px": 6,
+  "relief_fade_px": 12
+ },
  "flatten_zone_kinds": {
   "downtown": 0.08,
   "industrial": 0.1,

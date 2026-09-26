@@ -9,88 +9,100 @@
   "height_f32": "data/terrain/height_f32.bin",
   "height_u16": "data/terrain/height_u16.png",
   "water_level_f32": "data/terrain/water_level_f32.bin",
+  "water_fx_u8": "data/terrain/water_fx_u8.bin",
+  "rock_exposure_u8": "data/terrain/rock_exposure_u8.png",
+  "ridge_skeleton": "data/terrain/ridge_skeleton.geojson",
   "height_graded_f32": "data/terrain/height_graded_f32.bin",
   "height_graded_u16": "data/terrain/height_graded_u16.png"
  },
+ "water_fx_u8": {
+  "layout": "uint8 [4][667][2000]",
+  "channels": [
+   "depth: v/255*6 m",
+   "surface slope: v/255*0.1 m/m",
+   "flow direction: v/255*2pi (atan2(dy,dx), image axes, y down)",
+   "bank/bed type: v/255*2-1 (-1 gravel bar .. 0 plain .. +1 rock/rapids)"
+  ]
+ },
  "u16_decode": {
   "min_m": 276.0,
-  "max_m": 618.0,
+  "max_m": 560.0,
   "formula": "h = min + v/65535*(max-min)"
  },
  "stats": {
   "min_m": 276.6,
-  "max_m": 617.7,
-  "mean_m": 368.0
+  "max_m": 559.9,
+  "mean_m": 349.7
  },
  "river_profiles_m": {
-  "WTR_C02": [
-   346.0,
-   318.0
+  "WTR_C05": [
+   345.0,
+   300.0
   ],
   "WTR_R08": [
    300.0,
    281.0
   ],
-  "WTR_C05": [
-   345.0,
-   300.0
+  "WTR_C02": [
+   346.0,
+   318.0
   ],
   "WTR_R05": [
    352.0,
    316.0
   ],
-  "WTR_C04": [
-   326.0,
-   297.6
-  ],
   "WTR_R04": [
    362.0,
-   347.2
+   347.8
   ],
-  "WTR_R06C": [
-   298.6,
-   281.0
+  "WTR_C04": [
+   326.0,
+   298.0
   ],
   "WTR_R01": [
    332.0,
    300.0
   ],
+  "WTR_C03": [
+   352.0,
+   304.2
+  ],
   "WTR_R06": [
    304.0,
    284.0
   ],
-  "WTR_C01": [
-   306.8,
-   306.8
+  "WTR_R06B": [
+   296.3,
+   296.3
   ],
-  "WTR_R03": [
-   425.0,
-   358.5
+  "WTR_R06C": [
+   285.1,
+   281.0
   ],
   "WTR_R06D": [
    300.0,
-   284.9
+   285.2
+  ],
+  "WTR_R03": [
+   425.0,
+   357.3
   ],
   "WTR_C06": [
    470.0,
-   409.1
+   408.3
   ],
-  "WTR_C03": [
-   352.0,
-   304.6
-  ],
-  "WTR_R06B": [
-   295.0,
-   295.0
+  "WTR_C01": [
+   309.8,
+   309.8
   ],
   "WTR_R07": [
    318.0,
-   303.5
+   303.7
   ]
  },
- "note": "Reconstructed from the map geography (not survey data). Rebuild with tools/pipeline/terrain.py; roads grade/terrain cut-fill is applied by tools/pipeline/grading.py.",
+ "note": "Designed from the map geography + ridge skeleton (data/manual/ridges.json), not survey data. Rebuild with tools/pipeline/terrain.py; road cut/fill is applied by tools/pipeline/grading.py.",
  "u16_graded_decode": {
   "min_m": 276.0,
-  "max_m": 618.0
+  "max_m": 560.0
  }
 }
