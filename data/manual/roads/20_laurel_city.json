@@ -1,0 +1,338 @@
+{
+ "_doc": "Laurel City (west city) arterials and primary streets. Minor streets come from the automatic extraction + grid detection.",
+ "roads": [
+  {
+   "id": "LC_NORTH_BLVD",
+   "name": "North Boulevard / Laurel River Bridge",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     266,
+     215
+    ],
+    [
+     271,
+     200
+    ],
+    [
+     275,
+     185
+    ],
+    [
+     280,
+     170
+    ],
+    [
+     287,
+     153
+    ],
+    [
+     300,
+     139
+    ],
+    [
+     316,
+     127
+    ],
+    [
+     330,
+     114
+    ],
+    [
+     343,
+     101
+    ],
+    [
+     354,
+     89
+    ],
+    [
+     364,
+     77
+    ],
+    [
+     378,
+     68
+    ],
+    [
+     392,
+     67
+    ]
+   ]
+  },
+  {
+   "id": "LC_WEST_AVE",
+   "name": "West Avenue",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     98,
+     0.5
+    ],
+    [
+     102,
+     30
+    ],
+    [
+     100,
+     60
+    ],
+    [
+     98,
+     90
+    ],
+    [
+     97,
+     130
+    ],
+    [
+     97,
+     160
+    ],
+    [
+     93,
+     175
+    ],
+    [
+     90,
+     195
+    ],
+    [
+     90,
+     220
+    ],
+    [
+     92,
+     245
+    ],
+    [
+     95,
+     270
+    ],
+    [
+     98,
+     300
+    ]
+   ]
+  },
+  {
+   "id": "LC_COURTHOUSE_RD",
+   "name": "Courthouse Road",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     90,
+     195
+    ],
+    [
+     110,
+     193
+    ],
+    [
+     140,
+     195
+    ],
+    [
+     170,
+     200
+    ],
+    [
+     190,
+     205
+    ],
+    [
+     208,
+     210
+    ],
+    [
+     225,
+     213
+    ],
+    [
+     245,
+     214
+    ],
+    [
+     266,
+     215
+    ]
+   ]
+  },
+  {
+   "id": "LC_MARKET_ST",
+   "name": "Market Street",
+   "type": "urban_street",
+   "wp": [
+    [
+     266,
+     215
+    ],
+    [
+     285,
+     218
+    ],
+    [
+     310,
+     225
+    ],
+    [
+     335,
+     235
+    ],
+    [
+     360,
+     245
+    ],
+    [
+     378,
+     251
+    ]
+   ]
+  },
+  {
+   "id": "LC_EAST_AVE",
+   "name": "East Avenue",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     378,
+     251
+    ],
+    [
+     372,
+     275
+    ],
+    [
+     367,
+     300
+    ],
+    [
+     363,
+     330
+    ],
+    [
+     360,
+     346
+    ]
+   ]
+  },
+  {
+   "id": "LC_FRONT_ST",
+   "name": "Front Street",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     180,
+     345
+    ],
+    [
+     210,
+     350
+    ],
+    [
+     240,
+     355
+    ],
+    [
+     268,
+     363
+    ]
+   ]
+  },
+  {
+   "id": "LC_SOUTH_BLVD",
+   "name": "South Boulevard",
+   "type": "arterial",
+   "lanes": 4,
+   "wp": [
+    [
+     392,
+     383
+    ],
+    [
+     390,
+     410
+    ],
+    [
+     395,
+     440
+    ],
+    [
+     402,
+     470
+    ],
+    [
+     405,
+     500
+    ],
+    [
+     400,
+     525
+    ]
+   ]
+  },
+  {
+   "id": "LC_LAKESHORE_DR",
+   "name": "Lakeshore Drive",
+   "type": "collector",
+   "wp": [
+    [
+     0.5,
+     197
+    ],
+    [
+     20,
+     202
+    ],
+    [
+     45,
+     206
+    ],
+    [
+     70,
+     205
+    ],
+    [
+     90,
+     195
+    ]
+   ]
+  },
+  {
+   "id": "LC_RAILROAD_AVE",
+   "name": "Railroad Avenue",
+   "type": "urban_street",
+   "wp": [
+    [
+     35,
+     370
+    ],
+    [
+     60,
+     380
+    ],
+    [
+     90,
+     393
+    ],
+    [
+     120,
+     407
+    ],
+    [
+     140,
+     420
+    ],
+    [
+     160,
+     430
+    ]
+   ]
+  }
+ ]
+}

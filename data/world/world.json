@@ -1,0 +1,56 @@
+{
+  "name": "Blake's Map",
+  "version": 1,
+  "source_image": {
+    "file": "assets/maps/source/base_map.webp",
+    "sha256": "c8cb7ad8443f9557aec9e37ecf7cbcf927cec5d05caf6f24335f79cb0c06997f",
+    "width_px": 2000,
+    "height_px": 667,
+    "note": "Canonical master layout. Never modified; processed/debug derivatives live in assets/maps/processed and assets/maps/debug."
+  },
+  "coordinate_system": {
+    "storage": "All authored/extracted geometry is stored in SOURCE-IMAGE PIXEL coordinates (continuous; pixel (i,j) spans [i,i+1)x[j,j+1); x right, y down).",
+    "meters_per_pixel": 2.5,
+    "origin_px": [1000.0, 333.5],
+    "world_axes": {
+      "X": "east  = +image x",
+      "Y": "up    = elevation in metres above datum",
+      "Z": "south = +image y"
+    },
+    "handedness": "right-handed, Y-up (three.js / glTF convention)",
+    "formulas": {
+      "normalized": "u = px / 2000, v = py / 667",
+      "world": "X = (px - 1000) * 2.5, Z = (py - 333.5) * 2.5, Y = elevation(px, py)",
+      "leaflet_crs_simple": "lat = -py, lng = px  (zoom 0 => 1 map unit = 1 source pixel)",
+      "blender_z_up": "bx = X, by = -Z, bz = Y  (the glTF exporter converts back to Y-up)"
+    },
+    "world_extent_m": {"x": [-2500.0, 2500.0], "z": [-833.75, 833.75]}
+  },
+  "elevation": {
+    "datum_m": 0.0,
+    "note": "Relief is reconstructed from the map's visual geography (not survey data). See data/terrain/terrain.json."
+  },
+  "chunking": {
+    "chunk_size_px": 100,
+    "chunk_size_m": 250,
+    "grid": [20, 7],
+    "id_format": "C{cx:02d}_{cz:02d}  (cx = floor(px/100), cz = floor(py/100))"
+  },
+  "data_files": {
+    "regions": "data/world/regions.geojson",
+    "settlements": "data/world/settlements.geojson",
+    "roads": "data/roads/roads.geojson",
+    "road_nodes": "data/roads/road_nodes.geojson",
+    "road_types": "data/roads/road_types.json",
+    "bridges": "data/roads/bridges.geojson",
+    "railways": "data/railways/railways.geojson",
+    "buildings": "data/buildings/buildings.geojson",
+    "building_types": "data/buildings/building_types.json",
+    "waterways": "data/water/waterways.geojson",
+    "water_bodies": "data/water/water_bodies.geojson",
+    "landuse": "data/landuse/landuse.geojson",
+    "landmarks": "data/poi/landmarks.geojson",
+    "terrain": "data/terrain/terrain.json",
+    "landforms": "data/terrain/landforms.geojson"
+  }
+}

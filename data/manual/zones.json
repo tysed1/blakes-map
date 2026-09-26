@@ -1,0 +1,13 @@
+{
+  "_doc": "Hand-drawn development zones (source px). Used to classify auto-extracted roads and seed regions/land use. Order matters: first match wins.",
+  "zones": [
+    {"id": "Z_W_DOWNTOWN", "kind": "downtown", "settlement": "laurel_city", "pts": [[212,238],[252,205],[305,212],[352,245],[362,300],[350,345],[255,347],[212,300]]},
+    {"id": "Z_W_INDUSTRIAL", "kind": "industrial", "settlement": "laurel_city", "pts": [[18,338],[205,330],[296,394],[300,445],[222,500],[120,470],[18,425]]},
+    {"id": "Z_E_DOWNTOWN", "kind": "downtown", "settlement": "tannersville", "pts": [[1592,176],[1700,160],[1782,150],[1832,196],[1834,330],[1700,338],[1640,334],[1602,282]]},
+    {"id": "Z_E_INDUSTRIAL", "kind": "industrial", "settlement": "tannersville", "pts": [[1532,318],[1640,340],[1762,378],[1880,420],[2000,500],[2000,600],[1880,560],[1760,500],[1640,450],[1545,410]]},
+    {"id": "Z_HR_CENTER", "kind": "town_center", "settlement": "hollow_ridge", "pts": [[995,300],[1120,296],[1135,340],[1130,398],[1060,405],[995,398]]},
+    {"id": "Z_HR_TOWN", "kind": "town", "settlement": "hollow_ridge", "pts": [[935,205],[1180,205],[1215,300],[1205,440],[1100,470],[960,440],[925,330]]},
+    {"id": "Z_W_CITY", "kind": "city", "settlement": "laurel_city", "pts": [[0,0],[335,0],[350,60],[405,110],[425,170],[445,222],[475,265],[512,300],[565,330],[575,380],[605,450],[565,480],[585,560],[598,667],[0,667]]},
+    {"id": "Z_E_CITY", "kind": "city", "settlement": "tannersville", "pts": [[1330,0],[2000,0],[2000,667],[1640,667],[1600,590],[1560,520],[1500,440],[1420,390],[1370,320],[1335,220]]}
+  ]
+}

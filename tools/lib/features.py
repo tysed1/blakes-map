@@ -52,3 +52,13 @@ def road_prob():
         p[water_mask()] *= 0.1
         return p.astype(np.float32)
     return cached('road_prob_v1', f)
+
+
+def rock_density():
+    def f():
+        Lb = lab()
+        Lc = Lb[..., 0]; A = Lb[..., 1] - 128; B = Lb[..., 2] - 128
+        chroma = np.hypot(A, B)
+        rock = (chroma < 22) & (Lc > 80) & (Lc < 200) & (road_prob() < 0.3) & ~water_mask()
+        return cv2.GaussianBlur(rock.astype(np.float32), (0, 0), 6)
+    return cached('rock_density_v1', f)
