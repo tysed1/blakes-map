@@ -17,7 +17,7 @@ keep = [l for l in head.splitlines() if re.search(r'<title>|<script|<link rel="s
 page = '\n'.join(k.strip() for k in keep) + '\n<style>:root{color-scheme:dark}html,body{height:100%}</style>\n' + body.strip() + '\n'
 open(os.path.join(D, 'artifact.html'), 'w').write(page)
 files, tot = {}, 0
-SKIP = {'eco_u8.bin'}
+SKIP = {'eco_u8.bin', 'trees.bin'}  # pipeline-only / legacy
 for sub in ('assets', 'world'):
     for dirpath, _, names in os.walk(os.path.join(D, sub)):
         for f in sorted(names):

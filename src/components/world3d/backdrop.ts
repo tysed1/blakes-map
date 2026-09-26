@@ -96,6 +96,8 @@ function forestCanopyMaterial() {
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.9, 1.35, 0.55), smoothstep(0.62, 0.9, stand) * 0.6);
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.85, 0.8), smoothstep(0.35, 0.1, stand) * 0.5);
         }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        reflectedLight.directSpecular *= 0.1; reflectedLight.indirectSpecular *= 0.3;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec2 dH = vec2(dFdx(cH), dFdy(cH)) * 3.0;

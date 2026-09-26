@@ -94,3 +94,5 @@ body.mode3d select.cam3d { display: inline-block; }
 #topbar { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 #views { min-width: 0; }
 body.immersive #app { grid-template-columns: minmax(0, 1fr); }
+#loading { transition: opacity .8s ease; }
+#loading.fade { opacity: 0; pointer-events: none; }

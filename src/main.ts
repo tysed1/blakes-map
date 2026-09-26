@@ -84,8 +84,23 @@ async function ensure3D() {
   const poll = setInterval(() => { if (w3d!.camsReady) { clearInterval(poll); fill(); } }, 300);
   shots.onchange = () => { if (shots.value) { w3d!.flyTo(shots.value, 5); document.querySelectorAll('#camMode button').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.m === 'free')); } shots.value = ''; };
   for (const l of LAYERS) if (l.in3d) w3d.setLayer(l.in3d, ($(`#lay-${l.key}`) as HTMLInputElement).checked || l.key === 'terrain');
-  $('#loading').style.display = 'none';
   (window as any).w3d = w3d;
+  // hold the curtain until the heavy layers have streamed in, so the world opens complete
+  await new Promise<void>((res) => {
+    const t0 = performance.now();
+    const tick = () => {
+      const w = w3d as any;
+      const parts: [string, boolean][] = [['forest', w.vegReady], ['roads & rivers', w.infraReady], ['ground cover', w.gcReady ?? true], ['mountains', w.backdropReady]];
+      const left = parts.filter(([, ok]) => !ok).map(([n]) => n);
+      $('#loadmsg').textContent = left.length ? `streaming ${left.join(', ')}…` : 'ready';
+      if (!left.length || performance.now() - t0 > 60000) res(); else setTimeout(tick, 200);
+    };
+    tick();
+  });
+  $('#loadmsg').textContent = 'compiling shaders…';
+  await w3d.warmup();
+  $('#loading').classList.add('fade');
+  setTimeout(() => { $('#loading').style.display = 'none'; $('#loading').classList.remove('fade'); }, 900);
   return w3d;
 }
 

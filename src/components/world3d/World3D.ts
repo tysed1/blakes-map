@@ -487,6 +487,13 @@ export class World3D {
     this.cine?.setSize(w, h, this.renderer.getPixelRatio());
   }
 
+  /** Hook every material into the cascaded shadows and compile all programs up front (no first-frame hitch). */
+  async warmup() {
+    this.cine.prepare(this.scene);
+    this.camera.updateMatrixWorld(); this.updateCulling();
+    try { await this.renderer.compileAsync(this.scene, this.camera); } catch { /* optional */ }
+  }
+
   /** Render a still for QA / screenshots. */
   updateCullingPublic() { if (this.mode === 'orbit') this.orbit.update(); this.updateCulling(); }
   snapshot(): string { this.updateCulling(); this.cine.prepare(this.scene); this.cine.render(); return this.renderer.domElement.toDataURL('image/png'); }

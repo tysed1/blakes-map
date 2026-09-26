@@ -79,6 +79,9 @@ export function terrainMaterial(albedo: THREE.Texture, anisotropy: number) {
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.82, tRockW);`)
+      // vegetated ground is matte: kill the grazing-angle sheen that reads as frost against the sun
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        reflectedLight.directSpecular *= mix(0.12, 0.5, tRockW); reflectedLight.indirectSpecular *= 0.35;`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
           vec2 dH = vec2(dFdx(tH), dFdy(tH)) * (1.4 + tRockW * 2.0) * tFade;

@@ -75,7 +75,9 @@ export async function loadWorld(progress: (msg: string) => void): Promise<World>
   ]);
   progress('terrain');
   const t = manifest.terrain;
-  const [tb, wb, lb, trb] = await Promise.all([bin(t.file), bin(t.water), bin('landuse_u8.bin'), bin(manifest.trees.file)]);
+  // (legacy trees.bin is no longer loaded: the 3D view streams the species scatter itself)
+  const [tb, wb, lb] = await Promise.all([bin(t.file), bin(t.water), bin('landuse_u8.bin')]);
+  const trb = new ArrayBuffer(0);
   return {
     manifest, roads, nodes, bridges, rail, water, landuse, regions, settlements, landmarks, qa,
     terrain: Heightfield.fromU16(tb, IMG_W, IMG_H, t.min_m, t.max_m),
