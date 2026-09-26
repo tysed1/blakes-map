@@ -357,9 +357,9 @@ def scatter_modifier(terrain_objs, protos, cam_locs=None, grass_radius=GC_RADIUS
 
     # fields
     tallgrass = math('MULTIPLY', math('MAXIMUM', math('MAXIMUM', pasture, math('MULTIPLY', fallow, 0.6)), math('MULTIPLY', meadow, 0.8)), open_)
-    layer('pasture', 3.2, math('MAXIMUM', tallgrass, math('MULTIPLY', verge, 0.8)), (0.8, 1.3), 10)
+    layer('pasture', 5.0, math('MAXIMUM', tallgrass, math('MULTIPLY', verge, 0.8)), (0.8, 1.3), 10)
     layer('pasture', 1.2, math('MULTIPLY', hedge, offroad), (1.0, 1.5), 11)
-    layer('broomsedge', 2.2, math('MULTIPLY', fallow, open_), (0.8, 1.3), 20)
+    layer('broomsedge', 3.0, math('MULTIPLY', fallow, open_), (0.8, 1.3), 20)
     layer('stubble', 4.0, math('MULTIPLY', hay, open_), (0.9, 1.3), 30)
     layer('short', 3.0, math('MULTIPLY', math('MAXIMUM', lawn, math('MULTIPLY', dev, 0.7)), open_), (0.8, 1.4), 40)
     layer('short', 1.2, math('MULTIPLY', math('MULTIPLY', plowed, 0.25), open_), (0.8, 1.2), 41)

@@ -473,7 +473,7 @@ def bark_material(name='MAT_Bark_PBR', aid='bark_brown_02', tint=(1, 1, 1, 1), s
     diff = [f for f in os.listdir(p) if '_diff_' in f] if os.path.isdir(p) else []
     if diff:
         tc = N.new('ShaderNodeTexCoord')
-        mp = N.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / scale, 1 / scale, 0.35 / scale)
+        mp = N.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / scale, 1 / scale, 0.5 / scale)
         L.new(tc.outputs['Object'], mp.inputs[0])
         t = N.new('ShaderNodeTexImage'); t.image = _img(os.path.join(p, diff[0])); t.projection = 'BOX'; t.projection_blend = 0.4
         L.new(mp.outputs[0], t.inputs[0])
@@ -484,7 +484,7 @@ def bark_material(name='MAT_Bark_PBR', aid='bark_brown_02', tint=(1, 1, 1, 1), s
         if disp:
             d = N.new('ShaderNodeTexImage'); d.image = _img(os.path.join(p, disp[0]), False); d.projection = 'BOX'; d.projection_blend = 0.4
             L.new(mp.outputs[0], d.inputs[0])
-            bp = N.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.7; bp.inputs['Distance'].default_value = 0.05
+            bp = N.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 1.0; bp.inputs['Distance'].default_value = 0.04
             L.new(d.outputs['Color'], bp.inputs['Height']); L.new(bp.outputs['Normal'], bsdf.inputs['Normal'])
     else:
         bsdf.inputs['Base Color'].default_value = (0.05, 0.04, 0.03, 1)
@@ -548,10 +548,10 @@ def build_prototypes(coll, seed=7, only=None):
     """Build all species prototype objects (hidden source meshes for instancing)."""
     rng = np.random.default_rng(seed)
     barks = {
-        'brown': bark_material('MAT_Bark_Oak', 'bark_brown_02', (0.42, 0.38, 0.34, 1)),
-        'grey': bark_material('MAT_Bark_Grey', 'bark_brown_02', (0.5, 0.5, 0.48, 1)),
-        'pine': bark_material('MAT_Bark_Pine', 'pine_bark', (0.55, 0.48, 0.42, 1)),
-        'dead': bark_material('MAT_Bark_Dead', 'bark_brown_02', (0.85, 0.83, 0.8, 1), 1.0),
+        'brown': bark_material('MAT_Bark_Oak', 'bark_brown_02', (0.34, 0.31, 0.28, 1), 0.6),
+        'grey': bark_material('MAT_Bark_Grey', 'bark_brown_02', (0.42, 0.42, 0.4, 1), 0.6),
+        'pine': bark_material('MAT_Bark_Pine', 'pine_bark', (0.45, 0.38, 0.33, 1), 0.7),
+        'dead': bark_material('MAT_Bark_Dead', 'bark_brown_02', (0.75, 0.73, 0.7, 1), 0.6),
     }
     core = core_material()
     objs = []

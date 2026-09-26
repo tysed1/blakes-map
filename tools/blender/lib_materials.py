@@ -47,15 +47,15 @@ PAL = {
     'hay':     [(0.270, 0.215, 0.095), (0.230, 0.195, 0.080), (0.300, 0.240, 0.110)],   # mown hay / straw
     'plowed':  [(0.160, 0.075, 0.038), (0.130, 0.068, 0.036), (0.185, 0.090, 0.045)],   # red-clay plow land
     'fallow':  [(0.270, 0.150, 0.060), (0.220, 0.160, 0.060), (0.300, 0.170, 0.070)],   # broomsedge
-    'lawn':    [(0.100, 0.130, 0.040), (0.120, 0.140, 0.045), (0.090, 0.115, 0.035)],
+    'lawn':    [(0.120, 0.130, 0.042), (0.140, 0.135, 0.046), (0.105, 0.118, 0.036)],
     'meadow':  [(0.180, 0.165, 0.060), (0.130, 0.145, 0.050), (0.210, 0.170, 0.065)],
     'verge':   [(0.210, 0.170, 0.080), (0.170, 0.150, 0.065), (0.240, 0.190, 0.090)],   # dry roadside grass
     'gravel':  [(0.200, 0.180, 0.150), (0.170, 0.150, 0.125), (0.230, 0.200, 0.160)],
     'clay':    [(0.270, 0.105, 0.050), (0.230, 0.095, 0.045), (0.300, 0.130, 0.060)],   # Georgia red clay
     'mud':     [(0.060, 0.045, 0.030), (0.050, 0.040, 0.028), (0.075, 0.055, 0.035)],
     'bank':    [(0.170, 0.150, 0.120), (0.130, 0.120, 0.100), (0.200, 0.175, 0.140)],
-    'talus':   [(0.150, 0.140, 0.120), (0.120, 0.112, 0.098), (0.175, 0.160, 0.135)],
-    'rock':    [(0.160, 0.145, 0.120), (0.120, 0.115, 0.100), (0.190, 0.175, 0.145)],   # grey-brown sandstone / gneiss
+    'talus':   [(0.100, 0.093, 0.080), (0.082, 0.078, 0.068), (0.120, 0.110, 0.092)],
+    'rock':    [(0.095, 0.088, 0.075), (0.075, 0.072, 0.064), (0.115, 0.104, 0.086)],   # grey-brown sandstone / gneiss
 }
 # layer -> (texture id, tile size m, detail power, chroma keep, roughness)
 LAYER = {
@@ -287,7 +287,7 @@ def terrain_material(albedo_path=None):
     # rock lichen / moss: pale grey-green lichen blotches on dry rock, moss on moist rock
     lich = _noise(nt, pos, 0.9, 4)
     lichen_w = _math(nt, 'MULTIPLY', rock_w, _math(nt, 'MULTIPLY', _smooth(nt, lich.outputs['Fac'], 0.52, 0.68), 0.7))
-    col = _mix(nt, lichen_w, S.col, (0.2, 0.21, 0.17))
+    col = _mix(nt, lichen_w, S.col, (0.13, 0.135, 0.11))
     moss_w = _math(nt, 'MULTIPLY', rock_w, _math(nt, 'MULTIPLY', _smooth(nt, moist, 0.5, 0.9), _smooth(nt, nz.outputs['Z'], 0.5, 0.9)))
     col = _mix(nt, _math(nt, 'MULTIPLY', moss_w, 0.8), col, (0.05, 0.07, 0.025))
 
@@ -300,6 +300,12 @@ def terrain_material(albedo_path=None):
     val = nt.nodes.new('ShaderNodeMapRange'); val.inputs['To Min'].default_value = 0.86; val.inputs['To Max'].default_value = 1.14
     nt.links.new(m2.outputs['Fac'], val.inputs['Value']); nt.links.new(val.outputs['Result'], hs.inputs['Value'])
     col = hs.outputs['Color']
+    # near the camera the open ground is covered by ground-cover plants (lib_groundcover): darken the
+    # soil between clumps (thatch / self-shadow) so it never reads as bare sand; fades out by ~140 m
+    cd = nt.nodes.new('ShaderNodeCameraData')
+    near = _math(nt, 'SUBTRACT', 1.0, _smooth(nt, cd.outputs['View Distance'], 40.0, 150.0))
+    grassy = _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', _math(nt, 'MAXIMUM', pasture, fallow), _math(nt, 'MAXIMUM', meadow, _math(nt, 'MULTIPLY', hay, 0.5))), opn)
+    col = _mix(nt, _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', near, grassy), 0.55), col, _mix(nt, 1.0, col, (0.45, 0.42, 0.35), 'MULTIPLY'))
     # forest floor under canopy slightly darker (canopy shade is also real lighting; keep it subtle)
     col = _mix(nt, _math(nt, 'MULTIPLY', canopy, 0.25), col, _mix(nt, 1.0, col, (0.75, 0.75, 0.75), 'MULTIPLY'))
     # stylized macro albedo from the map painter (very light touch: keeps map identity at world scale)

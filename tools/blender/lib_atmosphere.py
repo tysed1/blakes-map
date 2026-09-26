@@ -89,8 +89,8 @@ def compositor(haze=0.85):
         ct.nodes.remove(n)
     N, L = ct.nodes, ct.links
     rl = N.new('CompositorNodeRLayers'); comp = N.new('CompositorNodeComposite')
-    # geometry mask (sky depth ~1e10): map range depth 30000..30001 -> 1..0
-    gm = N.new('CompositorNodeMapRange'); gm.inputs['From Min'].default_value = 30000; gm.inputs['From Max'].default_value = 30001
+    # geometry mask (sky depth ~1e10; far backdrop ridges reach > 30 km): depth 1e6 -> 1..0
+    gm = N.new('CompositorNodeMapRange'); gm.inputs['From Min'].default_value = 1e6; gm.inputs['From Max'].default_value = 1e6 + 1
     gm.inputs['To Min'].default_value = 1; gm.inputs['To Max'].default_value = 0; gm.use_clamp = True
     L.new(rl.outputs['Depth'], gm.inputs['Value'])
     # haze amount = mist * strength (the ONLY Math node: render.py --mist sets its 2nd input)
