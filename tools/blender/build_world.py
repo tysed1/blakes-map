@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib_trees as LT
 import lib_materials as LM
 import lib_groundcover as GC
+import lib_water as LW  # A1: rivers/creeks (surfaces, bed, wet shore, boulders)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -155,33 +156,7 @@ def build_terrain(coll, mat):
 
 
 def build_water(coll, mat):
-    # raw buffers from the web export (Blender's Python has no PIL/scipy)
-    lu = np.fromfile(P('public/world/landuse_u8.bin'), np.uint8).reshape(H, W)
-    man = load('public/world/manifest.json')['terrain']
-    wl = man['min_m'] + np.fromfile(P('public/world/water_u16.bin'), '<u2').reshape(H, W).astype(np.float32) * (man['max_m'] - man['min_m']) / 65535
-    WL = HF(wl)  # nearest-filled water surface
-    wet = lu == 1
-    wet = wet | np.roll(wet, 1, 0) | np.roll(wet, -1, 0) | np.roll(wet, 1, 1) | np.roll(wet, -1, 1)
-    for cy in range(0, math.ceil(H / CHUNK)):
-        for cx in range(0, math.ceil(W / CHUNK)):
-            sub = wet[cy * CHUNK:(cy + 1) * CHUNK, cx * CHUNK:(cx + 1) * CHUNK]
-            if not sub.any():
-                continue
-            ys, xs = np.nonzero(sub)
-            xs = xs + cx * CHUNK; ys = ys + cy * CHUNK
-            vid = {}
-            verts, faces = [], []
-            def v(x, y):
-                k = (x, y)
-                if k not in vid:
-                    vid[k] = len(verts)
-                    verts.append((x, y))
-                return vid[k]
-            for x, y in zip(xs, ys):
-                faces.append((v(x, y), v(x, y + 1), v(x + 1, y + 1), v(x + 1, y)))
-            V = np.asarray(verts, float)
-            bx, by, bz = px2b(V[:, 0], V[:, 1], WL.at(V[:, 0], V[:, 1]) + 0.05)
-            mesh_obj(f'WATER_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mat=mat, smooth=True)
+    return LW.build_water(coll, mat)  # A1: lib_water (WATER_* surfaces, bed, wet shore, boulders)
 
 
 # ------------------------------------------------------------------ roads
@@ -503,16 +478,7 @@ def terrain_material():
 
 
 def water_material():
-    def b(nt, bsdf, out):
-        inp(bsdf, 'Base Color').default_value = (0.035, 0.085, 0.09, 1)
-        inp(bsdf, 'Roughness').default_value = 0.06
-        inp(bsdf, 'IOR').default_value = 1.333
-        tc = nt.nodes.new('ShaderNodeTexCoord')
-        wave = nt.nodes.new('ShaderNodeTexNoise'); wave.inputs['Scale'].default_value = 0.4; wave.inputs['Detail'].default_value = 6
-        nt.links.new(tc.outputs['Object'], wave.inputs['Vector'])
-        bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.12
-        nt.links.new(wave.outputs['Fac'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], inp(bsdf, 'Normal'))
-    return node_mat('MAT_Water', b)
+    return LW.water_material()  # A1: lib_water
 
 
 def foliage_material(name, base):

@@ -178,7 +178,9 @@
   "bar_rise": 0.7,
   "bank_h": 1.2,
   "bank_ramp_px": 6,
-  "relief_fade_px": 12
+  "relief_fade_px": 12,
+  "max_drop_per_px": 0.45,
+  "bank_min_m": 0.3
  },
  "flatten_zone_kinds": {
   "downtown": 0.08,

@@ -17,7 +17,7 @@ Outputs (data/terrain/):
   height_f32.bin       float32 [667][2000] metres (row = image y)
   height_u16.png       16-bit normalized (see terrain.json for min/max)
   water_level_f32.bin  float32 water surface (NaN where dry)
-  water_fx_u8.bin      uint8 [4][667][2000]: depth, surface slope, flow direction, bank type (see terrain.json)
+  water_fx_u8.bin      uint8 [5][667][2000]: depth, surface slope, flow direction, bank type, whitewater (see terrain.json)
   rock_exposure_u8.png terrain-derived rock exposure (crest crags, cut banks, cliffs) for materials/landuse
   ridge_skeleton.geojson  ridges + generated spurs actually used (debug / editing aid)
   terrain.json         metadata
@@ -153,8 +153,21 @@ def river_profiles(cfg):
             if e0 - e1 < 0.05:
                 z = np.full(n, e1)
             else:
-                c = np.r_[0, np.cumsum(0.5 * (wgt[1:] + wgt[:-1]))]
-                z = e0 - (e0 - e1) * c / c[-1]
+                # per-sample drops proportional to the steepness weights, capped (no water 'walls':
+                # the steepest cascades still fall at most ~max_drop per 2.5 m) and redistributed
+                total = e0 - e1
+                wm = 0.5 * (wgt[1:] + wgt[:-1])
+                drop = total * wm / wm.sum()
+                cap = max(wcfg.get('max_drop_per_px', 0.45), 1.6 * total / max(n - 1, 1))
+                for _ in range(20):
+                    over = drop > cap
+                    if not over.any():
+                        break
+                    ex = (drop[over] - cap).sum()
+                    drop[over] = cap
+                    room = ~over
+                    drop[room] += ex * wm[room] / wm[room].sum()
+                z = e0 - np.r_[0, np.cumsum(drop)]
             prof[k] = z
             steep[k] = np.abs(np.gradient(z)) / MPP  # m/m
             pending.discard(k)
@@ -185,21 +198,58 @@ def channel_fields(lines, prof, steep, feats, wmask):
 
 
 def water_surface(CF, wmask):
-    """Water surface from the nearest centreline sample, smoothed across wide water (lakes, confluences)."""
+    """Continuous water surface: the centreline profiles are fixed and the level inside each water body is
+    the harmonic interpolation between them (Laplace on the water pixels, no-flux at the banks). No
+    Voronoi steps across bends or confluences; the fall is spread smoothly over riffles and rapids."""
     yy, xx = np.nonzero(wmask)
-    d, idx = CF['tree'].query(np.stack([xx + 0.5, yy + 0.5], 1), k=4)
-    # prefer the lowest of the near samples when they are nearly equidistant (confluences)
-    z = CF['Z'][idx]
-    near = d <= d[:, :1] + 2.0
-    zsel = np.where(near, z, np.inf).min(1)
+    n = len(yy)
+    idx = -np.ones((H, W), np.int64)
+    idx[yy, xx] = np.arange(n)
+    # Dirichlet: pixels on a centreline (lowest profile wins at confluences)
+    fixed_v = np.full(n, np.nan)
+    ci = np.clip(CF['X'].astype(int), 0, W - 1); cj = np.clip(CF['Y'].astype(int), 0, H - 1)
+    on = idx[cj, ci] >= 0
+    order = np.argsort(-CF['Z'][on])  # write high first so the lowest ends up stored
+    k = idx[cj[on], ci[on]][order]
+    fixed_v[k] = CF['Z'][on][order]
+    fixed = np.isfinite(fixed_v)
+    # initial guess / fallback: nearest centreline sample
+    d, nn = CF['tree'].query(np.stack([xx + 0.5, yy + 0.5], 1), k=1)
+    guess = CF['Z'][nn]
+    rows, cols, vals = [], [], []
+    b = np.zeros(n)
+    deg = np.zeros(n)
+    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        y2, x2 = yy + dy, xx + dx
+        ok = (y2 >= 0) & (y2 < H) & (x2 >= 0) & (x2 < W)
+        j = np.full(n, -1)
+        j[ok] = idx[y2[ok], x2[ok]]
+        ok = (j >= 0) & ~fixed
+        deg += ok
+        rows.append(np.nonzero(ok)[0]); cols.append(j[ok]); vals.append(-np.ones(ok.sum()))
+    # rows for free cells: deg*u_i - sum(u_j) = 0 ; fixed cells: u_i = v
+    free = ~fixed & (deg > 0)
+    lone = ~fixed & (deg == 0)
+    diag_v = np.where(free, deg, 1.0)
+    rows = np.concatenate(rows + [np.arange(n)]); cols = np.concatenate(cols + [np.arange(n)]); vals = np.concatenate(vals + [diag_v])
+    b[fixed] = fixed_v[fixed]
+    b[lone] = guess[lone]
+    A = csr_matrix((vals, (rows, cols)), shape=(n, n))
+    # water bodies without any centreline pixel keep the nearest-profile level (flat ponds)
+    lab, nl = ndi.label(wmask)
+    has = np.zeros(nl + 1, bool)
+    has[lab[yy[fixed], xx[fixed]]] = True
+    orphan = ~has[lab[yy, xx]]
+    if orphan.any():
+        A = A.tolil()
+        for i in np.nonzero(orphan)[0]:
+            A.rows[i] = [i]; A.data[i] = [1.0]
+        A = A.tocsr()
+        b[orphan] = guess[orphan]
+    u = spsolve(A, b)
     surf = np.full((H, W), np.nan, np.float32)
-    surf[yy, xx] = zsel
-    s = np.where(wmask, surf, 0)
-    wgt = cv2.GaussianBlur(wmask.astype(np.float32), (0, 0), 2.5)
-    sm = cv2.GaussianBlur(np.nan_to_num(s).astype(np.float32), (0, 0), 2.5) / np.maximum(wgt, 1e-6)
-    # never raise above the nearest profile (keeps monotonic flow) and never drop much below it
-    surf = np.where(wmask, np.clip(sm, surf - 0.6, surf), np.nan)
-    return surf.astype(np.float32)
+    surf[yy, xx] = u
+    return surf
 
 
 def harmonic_fill(values, known, scale=4):
@@ -735,7 +785,7 @@ def carve_channels(elev, V, surf, wmask, CF, cfg):
     bank_curve = cut * (1 - (1 - tb) ** 3) + (1 - cut) * tb ** 1.25  # cut bank: steep then flat; slip-off: gradual
     cur = elev[yl, xl]
     fade = np.clip((dl - ramp * 0.5) / (ramp * 1.5 + 4), 0, 1) ** 1.2
-    shaped = vw + 0.15 + np.maximum(hb * bank_curve, (cur - vw - 0.15) * fade)
+    shaped = vw + wc.get('bank_min_m', 0.3) + np.maximum(hb * bank_curve, (cur - vw - wc.get('bank_min_m', 0.3)) * fade)
     wgt = 1 - smoothstep(reach * 0.55, reach, dl)
     elev[yl, xl] = cur * (1 - wgt) + shaped * wgt
     gravel = np.clip((-b - 0.3) / 0.5, 0, 1) * np.clip(1 - dl / (ramp * 1.2), 0, 1)
@@ -744,7 +794,7 @@ def carve_channels(elev, V, surf, wmask, CF, cfg):
     # banks never below the adjacent water (local max of the neighbouring surface, no Voronoi levels)
     sl = surf_local_max(surf, wmask, 2)
     edge = (dws > 0) & (dws <= 2.5)
-    elev = np.where(edge, np.maximum(elev, sl + 0.1), elev)
+    elev = np.where(edge, np.maximum(elev, sl + wc.get('bank_min_m', 0.3)), elev)
     return elev, fx
 
 
@@ -901,9 +951,19 @@ def main():
     os.makedirs(path('data/terrain'), exist_ok=True)
     elev.tofile(path('data/terrain/height_f32.bin'))
     surf.astype(np.float32).tofile(path('data/terrain/water_level_f32.bin'))
-    # compact water attributes for renderers: u8 [4][H][W]
+    # surface slope from the (continuous) water surface, and whitewater: where the painted map shows white
+    # water, or where the surface is genuinely steep (riffle lips, rapids, cascades); never in pools
+    sgy, sgx = np.gradient(np.where(wmask, surf, np.nan), MPP)
+    sslope = np.nan_to_num(np.hypot(sgx, sgy))
+    sslope = np.where(wmask, cv2.GaussianBlur(sslope.astype(np.float32), (0, 0), 1.0), 0)
+    rapm = np.load(path('tools/.cache/rapids_mask.npy')).astype(np.float32)
+    rap_map = cv2.GaussianBlur(rapm, (0, 0), 1.5)
+    foam = np.maximum(np.clip(rap_map * 2.2, 0, 1) * smoothstep(0.004, 0.02, sslope + 0.01 * rap_map), smoothstep(0.03, 0.11, sslope))
+    foam = (foam * wmask).astype(np.float32)
+    fx[1] = sslope * wmask
+    # compact water attributes for renderers: u8 [5][H][W]
     ang = (np.arctan2(fx[3], fx[2]) % (2 * np.pi)) / (2 * np.pi)
-    fxu = np.stack([np.clip(fx[0] / 6.0, 0, 1), np.clip(fx[1] / 0.1, 0, 1), ang, np.clip(fx[4] * 0.5 + 0.5, 0, 1)])
+    fxu = np.stack([np.clip(fx[0] / 6.0, 0, 1), np.clip(fx[1] / 0.25, 0, 1), ang, np.clip(fx[4] * 0.5 + 0.5, 0, 1), np.clip(foam, 0, 1)])
     fxu = (fxu * 255).round().astype(np.uint8)
     fxu[:, ~cv2.dilate((fx[0] > 0).astype(np.uint8) | (np.abs(fx[4]) > 0).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)] = 0
     fxu[3][(fx[0] <= 0) & (np.abs(fx[4]) == 0)] = 128
@@ -920,7 +980,7 @@ def main():
         'files': {'height_f32': 'data/terrain/height_f32.bin', 'height_u16': 'data/terrain/height_u16.png',
                   'water_level_f32': 'data/terrain/water_level_f32.bin', 'water_fx_u8': 'data/terrain/water_fx_u8.bin',
                   'rock_exposure_u8': 'data/terrain/rock_exposure_u8.png', 'ridge_skeleton': 'data/terrain/ridge_skeleton.geojson'},
-        'water_fx_u8': {'layout': 'uint8 [4][667][2000]', 'channels': ['depth: v/255*6 m', 'surface slope: v/255*0.1 m/m', 'flow direction: v/255*2pi (atan2(dy,dx), image axes, y down)', 'bank/bed type: v/255*2-1 (-1 gravel bar .. 0 plain .. +1 rock/rapids)']},
+        'water_fx_u8': {'layout': 'uint8 [5][667][2000]', 'channels': ['depth: v/255*6 m', 'surface slope: v/255*0.25 m/m', 'flow direction: v/255*2pi (atan2(dy,dx), image axes, y down)', 'bank/bed type: v/255*2-1 (-1 gravel bar .. 0 plain .. +1 rock/rapids)', 'whitewater: v/255 (0..1)']},
         'u16_decode': {'min_m': lo_, 'max_m': hi_, 'formula': 'h = min + v/65535*(max-min)'},
         'stats': {'min_m': rnd(elev.min(), 1), 'max_m': rnd(elev.max(), 1), 'mean_m': rnd(elev.mean(), 1)},
         'river_profiles_m': {k: [rnd(v[0], 1), rnd(v[-1], 1)] for k, v in prof.items()},
