@@ -31,7 +31,7 @@ sys.argv = [sys.argv[0], '--', '--cams', 'NONE', '--sun', ARG('--sun', '255,18')
             '--sky', ARG('--sky', '0.6'), '--exposure', ARG('--exposure', '0.7')]
 src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render.py')).read()
 src = src.split('for c in cams:')[0]  # lighting setup only
-exec(compile(src, 'render.py', 'exec'), {'__name__': 'render_setup'})
+exec(compile(src, 'render.py', 'exec'), {'__name__': 'render_setup', '__file__': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'render.py')})
 sc.camera = ob
 outdir = os.path.join(TR.BW.ROOT, ARG('--outdir', 'exports/a2/renders/full'))
 os.makedirs(outdir, exist_ok=True)

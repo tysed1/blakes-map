@@ -575,7 +575,7 @@ def build_prototypes(coll, seed=7, only=None):
     rng = np.random.default_rng(seed)
     barks = {
         'brown': bark_material('MAT_Bark_Oak', 'bark_brown_02', (0.55, 0.5, 0.45, 1), 0.6),
-        'grey': bark_material('MAT_Bark_Grey', 'bark_brown_02', (0.7, 0.7, 0.66, 1), 0.6),
+        'grey': bark_material('MAT_Bark_Grey', 'bark_brown_02', (0.55, 0.55, 0.52, 1), 0.6),
         'pine': bark_material('MAT_Bark_Pine', 'pine_bark', (0.6, 0.5, 0.44, 1), 0.7),
         'dead': bark_material('MAT_Bark_Dead', 'bark_brown_02', (0.75, 0.73, 0.7, 1), 0.6),
     }

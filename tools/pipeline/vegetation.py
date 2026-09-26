@@ -417,7 +417,7 @@ def scatter(T, cls, seed=7):
     # ---- eco raster
     disturbed = np.clip(np.exp(-np.clip(road1, 0, None) / 6) * 0.8 + np.exp(-np.clip(rail1, 0, None) / 8) + np.isin(cls, [IND, RAIL]) * 0.8
                         + (cls == COM) * 0.35, 0, 1)
-    talus = np.clip(np.exp(-drock / 18) * smoothstep(0.25, 0.6, slope) + (cls == ROCK) * 0.5 + gravelbar * 0.8, 0, 1)
+    talus = np.clip(np.exp(-drock / 10) * smoothstep(0.35, 0.7, slope) * 0.8 + gravelbar * 0.8, 0, 1)
     eco_u8 = np.stack([
         moist, disturbed, cov, ftype.astype(np.float32) / 255, fang / math.pi, hedge.astype(np.float32),
         np.clip(tpi / 3 + 0.5, 0, 1), talus,

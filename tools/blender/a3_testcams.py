@@ -52,7 +52,35 @@ def road_z(c, p):
     return hgt(*p)
 
 
+_VEG = None
+
+
+def keep_out(loc, look, r=6.0):
+    """Low cameras: step back (away from the look target) until no tree / shrub trunk is within r m."""
+    global _VEG
+    if _VEG is None:
+        vf = os.path.join(ROOT, 'public/world/vegetation_f32.bin')
+        _VEG = np.fromfile(vf, '<f4').reshape(-1, 6) if os.path.exists(vf) else np.zeros((0, 6), np.float32)
+        _VEG = np.c_[(_VEG[:, 0] - 1000) * 2.5, -(_VEG[:, 1] - 333.5) * 2.5]
+    if not len(_VEG):
+        return loc
+    d = (loc - look); d.z = 0
+    d = d.normalized() if d.length > 1e-6 else Vector((1, 0, 0))
+    p = loc.copy()
+    for k in range(20):
+        dd = np.hypot(_VEG[:, 0] - p.x, _VEG[:, 1] - p.y).min()
+        if dd > r:
+            if k:
+                x, y = p.x / 2.5 + 1000, -p.y / 2.5 + 333.5
+                p.z = max(p.z, hgt(x, y) + (loc.z - hgt(loc.x / 2.5 + 1000, -loc.y / 2.5 + 333.5)))
+            return p
+        p = p + d * 3.0
+    return loc
+
+
 def make(name, loc, look, lens=35):
+    if loc.z - hgt(loc.x / 2.5 + 1000, -loc.y / 2.5 + 333.5) < 20 and name not in ('TC_river_low', 'TC_road_driver', 'TC_hwy_low'):
+        loc = keep_out(loc, look)
     cd = bpy.data.cameras.get(name) or bpy.data.cameras.new(name)
     cd.lens = lens; cd.clip_start = 0.1; cd.clip_end = 40000
     ob = bpy.data.objects.get(name) or bpy.data.objects.new(name, cd)
@@ -118,12 +146,16 @@ def cams():
     V = np.fromfile(vf, '<f4').reshape(-1, 6) if os.path.exists(vf) else np.zeros((0, 6), np.float32)
     order = np.argsort(sc.ravel())[::-1][:4000]
     y, x = np.unravel_index(order[0], sc.shape)
+    pf = os.path.join(ROOT, 'public/world/props_f32.bin')
+    PR = np.fromfile(pf, '<f4').reshape(-1, 6) if os.path.exists(pf) else np.zeros((0, 6), np.float32)
     CONI = {11, 12, 13, 14, 15, 16, 19, 20, 25, 26}   # conifers + rhododendron / laurel (view blockers)
     for k in order:
         yy, xx = np.unravel_index(k, sc.shape)
         if not len(V):
             y, x = yy, xx; break
         d = np.hypot(V[:, 0] - xx - 0.5, V[:, 1] - yy - 0.5) * 2.5
+        if len(PR) and np.hypot(PR[:, 0] - xx - 0.5, PR[:, 1] - yy - 0.5).min() * 2.5 < 5:
+            continue   # not right next to a boulder / log
         near = d < 25
         if d.min() > 6.0 and np.isin(V[near, 4].astype(int), list(CONI)).mean() < 0.15:
             y, x = yy, xx
