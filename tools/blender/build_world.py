@@ -15,6 +15,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib_trees as LT
 import lib_materials as LM
+import lib_groundcover as GC
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -775,6 +776,7 @@ def setup_cameras():
     c = collection('CAMERAS')
     cams = {
         # hero: from the ridge south-west of Hollow Ridge looking up the valley (graphics ref composition)
+        'CAM_LD_Field': cam('CAM_LD_Field', (812, 140, 2.2), (850, 110, -2), 30, c),
         'CAM_Ref_Match': cam('CAM_Ref_Match', (858, 286, 45), (1300, 380, 90), 27, c),
         'CAM_HollowRidge_Overlook': cam('CAM_HollowRidge_Overlook', (1190, 470, 120), (1060, 360, 10), 26, c),
         'CAM_HollowRidge_Valley': cam('CAM_HollowRidge_Valley', (930, 480, 140), (1060, 350, 0), 26, c),
@@ -822,7 +824,7 @@ def main():
     mats['leaf_hw'] = foliage_material('MAT_Foliage_Hardwood', None)
     mats['leaf_cf'] = foliage_material('MAT_Foliage_Conifer', None)
     root = collection('WORLD')
-    print('terrain...'); build_terrain(collection('TERRAIN', root), mats['terrain'])
+    print('terrain...'); terr = build_terrain(collection('TERRAIN', root), mats['terrain'])
     print('water...'); build_water(collection('WATER', root), mats['water'])
     print('roads...'); build_roads(collection('ROADS', root), mats, types)
     print('bridges...'); build_bridges(collection('BRIDGES', root), mats, types)
@@ -835,6 +837,25 @@ def main():
     collection('BUILDINGS (deferred)', root)
     setup_world()
     cams = setup_cameras()
+    if not OPT('--no-groundcover'):
+        print('ground cover...')
+        gcc = collection('GROUNDCOVER', root)
+        protos = GC.load_protos(gcc)
+        for c in gcc.children:
+            c.hide_render = True; c.hide_viewport = True  # prototypes only
+        hero = [(o.location.x, o.location.y) for n, o in cams.items() if n != 'CAM_Validation_Top']
+        # grass only around the ground in front of each hero camera
+        import mathutils
+        pts = []
+        for n, o in cams.items():
+            if n == 'CAM_Validation_Top':
+                continue
+            f = o.matrix_world.to_quaternion() @ mathutils.Vector((0, 0, -1))
+            f.z = 0
+            if f.length > 0:
+                f.normalize()
+            pts.append((o.location.x + f.x * 120, o.location.y + f.y * 120))
+        GC.scatter_modifier(terr, protos, pts, float(ARG('--grass-radius', 170)))
     render_settings(int(ARG('--samples', 48)))
     bpy.context.scene.camera = cams['CAM_HollowRidge_Overlook']
     out = P(ARG('--out', 'exports/blender/world.blend'))
