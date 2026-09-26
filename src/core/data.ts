@@ -47,10 +47,19 @@ async function json<T>(f: string): Promise<T> {
   if (!r.ok) throw new Error(`failed to load ${f}`);
   return r.json();
 }
-async function bin(f: string): Promise<ArrayBuffer> {
-  const r = await fetch(BASE + f);
+/**
+ * Binary rasters. Static hosts that only serve web media types (the Artifact deploy, see
+ * tools/deploy/prepare_artifact.py) get them as gzip + base64 text: built with VITE_PACKED_BIN=1.
+ */
+const PACKED = import.meta.env.VITE_PACKED_BIN === '1';
+export async function bin(f: string): Promise<ArrayBuffer> {
+  const r = await fetch(BASE + f + (PACKED ? '.gz.b64.txt' : ''));
   if (!r.ok) throw new Error(`failed to load ${f}`);
-  return r.arrayBuffer();
+  if (!PACKED) return r.arrayBuffer();
+  const b64 = (await r.text()).trim();
+  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Response(ds).arrayBuffer();
 }
 
 export const assetUrl = (f: string) => BASE + f;

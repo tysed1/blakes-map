@@ -10,14 +10,15 @@ const page = await browser.newPage({ viewport: { width: +get('--w', 1600), heigh
 const logs = [];
 page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
-await page.goto('http://localhost:5173/#view=3d');
+await page.goto(get('--url', 'http://localhost:5173/#view=3d'));
 await page.waitForFunction(() => (window).w3d && document.querySelector('#loading')?.style.display === 'none', null, { timeout: 300000 });
 await page.waitForFunction(() => (window).w3d.backdropReady, null, { timeout: 300000 });
-await page.waitForTimeout(3000); // textures
+await page.waitForFunction(() => (window).w3d.vegReady !== false, null, { timeout: 300000 });
+await page.waitForTimeout(4000); // textures
 const url = await page.evaluate(([x, y, dist, pitch, yaw, mode, ev]) => {
   const w = (window).w3d; w.stop();
   if (mode) w.setMode(mode);
-  w.setView(x, y, dist, pitch, yaw);
+  if (x < 0) w.heroView(); else w.setView(x, y, dist, pitch, yaw);
   if (ev) eval(ev);
   w.updateCullingPublic?.();
   return w.snapshot();

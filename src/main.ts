@@ -50,8 +50,14 @@ async function main() {
   };
   $<HTMLInputElement>('#baseOpacity').oninput = (e) => map.setBaseOpacity(+(e.target as HTMLInputElement).value);
   $<HTMLInputElement>('#drape').onchange = (e) => w3d?.setDrape((e.target as HTMLInputElement).checked);
+  document.body.classList.add('immersive');
+  window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.key.toLowerCase() !== 'h') return;
+    document.body.classList.toggle('immersive');
+    requestAnimationFrame(() => { w3d?.resize(); map.invalidate(); });
+  });
   const hash = new URLSearchParams(location.hash.slice(1));
-  if (hash.get('view') === '3d') switchView('3d');
+  if (hash.get('view') !== '2d') switchView('3d', false);
   if (hash.get('at')) { const [x, y] = hash.get('at')!.split(',').map(Number); focusAt(x, y, 80); }
 }
 
@@ -62,6 +68,7 @@ async function ensure3D() {
   await new Promise((r) => setTimeout(r, 30));
   const { World3D } = await import('./components/world3d/World3D');
   w3d = new World3D($('#world3d'), world);
+  w3d.onSpeed = (v) => ($('#speed').textContent = `fly speed ×${v.toFixed(1)}`);
   for (const l of LAYERS) if (l.in3d) w3d.setLayer(l.in3d, ($(`#lay-${l.key}`) as HTMLInputElement).checked || l.key === 'terrain');
   $('#loading').style.display = 'none';
   (window as any).w3d = w3d;
@@ -79,7 +86,7 @@ async function switchView(v: '2d' | '3d', keepFocus = true) {
   if (v === '3d') {
     const w = await ensure3D();
     w.resize();
-    if (keepFocus) w.setView(c.x, c.y, 900, 0.75, 0.5);
+    if (keepFocus) w.setView(c.x, c.y, 900, 0.45, 0.5);
     w.start();
   } else {
     w3d?.stop();

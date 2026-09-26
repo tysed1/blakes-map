@@ -6,8 +6,8 @@ import { pxToWorld, worldToPx, IMG_W, IMG_H } from '../../core/coords';
 import { bus, Selection } from '../../core/bus';
 import { buildTerrain, buildWater, CHUNK } from './terrain';
 import { buildRoads, buildBridges, buildRail, highlightMesh, roadWorldPoints, setGround } from './roads';
-import { buildTrees } from './vegetation';
-import { assetUrl } from '../../core/data';
+import { buildVegetation, Vegetation } from './vegetation';
+import { assetUrl, bin } from '../../core/data';
 import { buildBackdrop, buildSky } from './backdrop';
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -18,7 +18,7 @@ export class World3D {
   camera: THREE.PerspectiveCamera;
   private orbit: OrbitControls;
   private mapc: MapControls;
-  mode: CamMode = 'orbit';
+  mode: CamMode = 'free';
   private groups: Record<string, THREE.Object3D> = {};
   private pickMaps: Map<THREE.Mesh, string[]>[] = [];
   private sun: THREE.DirectionalLight;
@@ -32,6 +32,12 @@ export class World3D {
   treeDistance = 5200;
   private clock = new THREE.Clock();
   private sky!: THREE.Mesh;
+  private veg: Vegetation | null = null;
+  private time = { value: 0 };
+  flySpeed = 1;
+  onSpeed?: (v: number) => void;
+  readonly sunDir = new THREE.Vector3(-1400, 520, -500).normalize();
+  readonly haze = new THREE.Color().setRGB(0.6, 0.58, 0.55);
 
   constructor(private el: HTMLElement, private w: World) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, preserveDrawingBuffer: true });
@@ -51,22 +57,36 @@ export class World3D {
     this.mapc.enabled = false; this.mapc.enableRotate = false; this.mapc.minDistance = 30; this.mapc.maxDistance = 9000;
     this.mapc.screenSpacePanning = true;
 
-    // atmosphere (graphics ref: warm late-afternoon light, blue haze in the distance)
-    this.scene.background = new THREE.Color(0xb9c9d8);
-    this.scene.fog = new THREE.FogExp2(0xb4c2cc, 0.00016);
-    this.sky = buildSky(new THREE.Vector3(-0.8, 0.28, -0.3));
+    // atmosphere matched to the Blender renders (render.py --sun 255,18 --sky 0.6 --exposure 0.7,
+    // kloppenheim_06_puresky HDRI, blue-grey aerial haze, warm low sun from the WSW)
+    this.renderer.toneMappingExposure = 1.0;
+    this.scene.fog = new THREE.FogExp2(this.haze, 0.00026);
+    this.scene.background = this.haze;
+    this.sky = buildSky(this.sunDir, null, this.haze);
     this.scene.add(this.sky);
-    const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x4d4a33, 0.9);
+    new THREE.TextureLoader().load(assetUrl('sky.jpg'), (t) => {
+      t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+      t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; // no mip seam at the equirect wrap
+      const skyMat = this.sky.material as THREE.ShaderMaterial;
+      skyMat.uniforms.sky.value = t; skyMat.uniforms.hasSky.value = 1;
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pm.fromEquirectangular(t).texture;
+      this.scene.environmentIntensity = 0.55;
+      (this.scene as any).environmentRotation = new THREE.Euler(0, Math.atan2(this.sunDir.z, this.sunDir.x) + (0.612 - 0.5) * 2 * Math.PI, 0);
+      pm.dispose();
+    });
+    const hemi = new THREE.HemisphereLight(0xbcd2ee, 0x5a5236, 0.55);
     this.scene.add(hemi);
-    this.sun = new THREE.DirectionalLight(0xffdcb0, 2.6);
+    this.sun = new THREE.DirectionalLight(0xffd6a6, 3.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(4096, 4096);
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -700; sc.right = 700; sc.top = 700; sc.bottom = -700; sc.near = 10; sc.far = 4000;
-    this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.6;
+    sc.left = -600; sc.right = 600; sc.top = 600; sc.bottom = -600; sc.near = 10; sc.far = 5000;
+    this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.8;
     this.scene.add(this.sun, this.sun.target);
     this.build();
-    this.setView(1000, 330, 1400, 0.9, 0.6);
+    this.orbit.enabled = false;
+    this.heroView();
     this.bindInput();
     new ResizeObserver(() => this.resize()).observe(el);
     this.resize();
@@ -82,7 +102,7 @@ export class World3D {
     this.terrainMat = new THREE.MeshStandardMaterial({ map: this.albedo, roughness: 0.96, metalness: 0 });
     const terrain = buildTerrain(this.w.terrain, this.terrainMat);
     const water = buildWater(this.w.waterLevel, this.w.landuseRaster, new THREE.MeshStandardMaterial({
-      color: 0x355f6e, roughness: 0.35, metalness: 0.0, transparent: true, opacity: 0.9,
+      color: 0x23434a, roughness: 0.08, metalness: 0.0, transparent: true, opacity: 0.88, envMapIntensity: 1.4,
     }));
     const tex = (hex: number, rough = 0.9) => new THREE.MeshStandardMaterial({ color: hex, roughness: rough, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const roadMats: Record<string, THREE.Material> = {
@@ -93,14 +113,20 @@ export class World3D {
     const roads = buildRoads(this.w, roadMats);
     const bridges = buildBridges(this.w, this.w.terrain, { concrete: new THREE.MeshStandardMaterial({ color: 0xb8b2a6, roughness: 0.9, side: THREE.DoubleSide }), steel: new THREE.MeshStandardMaterial({ color: 0x6f7b73, roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide }) });
     const rail = buildRail(this.w, { ballast: tex(0x6b625a, 1), tie: tex(0x4a3b2e, 1), rail: new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.7, roughness: 0.35 }) });
-    const trees = buildTrees(this.w.trees, this.w.manifest.trees.stride);
+    const trees = new THREE.Group(); trees.name = 'trees';
     Object.assign(this.groups, { terrain, water, roads: roads.group, bridges: bridges.group, rail: rail.group, trees });
+    bin('vegetation_f32.bin').then((b) => {
+      this.veg = buildVegetation(new Float32Array(b), this.time);
+      trees.add(this.veg.group);
+      this.vegReady = true;
+    });
     this.pickMaps.push(roads.pick, bridges.pick, rail.pick);
     for (const g of Object.values(this.groups)) this.scene.add(g);
-    Promise.all([fetch(assetUrl('backdrop.json')).then((r) => r.json()), fetch(assetUrl('backdrop_u16.bin')).then((r) => r.arrayBuffer()), fetch(assetUrl('backdrop_water_u8.bin')).then((r) => r.arrayBuffer())])
+    Promise.all([fetch(assetUrl('backdrop.json')).then((r) => r.json()), bin('backdrop_u16.bin'), bin('backdrop_water_u8.bin')])
       .then(([meta, hb, wb]) => { const b = buildBackdrop(meta, hb, wb); this.groups.backdrop = b; this.scene.add(b); this.backdropReady = true; });
   }
   backdropReady = false;
+  vegReady = false;
 
   setLayer(k: string, on: boolean) {
     const g = this.groups[k];
@@ -114,6 +140,12 @@ export class World3D {
   }
 
   setMode(m: CamMode) {
+    if (this.mode === 'free' && m !== 'free') {
+      // orbit / top pivot on the ground point the fly camera is looking at
+      const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+      const hit = new THREE.Raycaster(this.camera.position, d, 1, 6000).intersectObject(this.groups.terrain, true)[0];
+      this.orbit.target.copy(hit ? hit.point : this.camera.position.clone().addScaledVector(d, 600));
+    }
     const target = this.orbit.target.clone();
     this.mode = m;
     this.orbit.enabled = m === 'orbit';
@@ -127,10 +159,7 @@ export class World3D {
     } else if (m === 'orbit') {
       this.orbit.target.copy(this.mode === 'orbit' ? target : this.mapc.target);
       this.orbit.update();
-    } else {
-      const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
-      this.yaw = Math.atan2(-d.x, -d.z); this.pitch = Math.asin(THREE.MathUtils.clamp(d.y, -1, 1));
-    }
+    } else this.syncFly();
   }
 
   /** Position camera to look at source px (x,y) from distance dist. */
@@ -144,6 +173,24 @@ export class World3D {
     if (this.mode === 'top') this.camera.position.set(t.x, t.y + dist, t.z + 0.01);
     this.camera.lookAt(t);
     this.orbit.update();
+    if (this.mode === 'free') this.syncFly();
+  }
+
+  private syncFly() {
+    const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
+    this.yaw = Math.atan2(-d.x, -d.z); this.pitch = Math.asin(THREE.MathUtils.clamp(d.y, -1, 1));
+  }
+
+  /** Opening shot matching the Blender CAM_Ref_Match framing (px 858,286 +45 m, looking east). */
+  heroView() {
+    const [X, , Z] = pxToWorld(858, 286);
+    const [TX, , TZ] = pxToWorld(1300, 380);
+    const y0 = this.w.terrain.at(858, 286) + 45, ty = this.w.terrain.at(1300, 380) + 90;
+    this.camera.position.set(X, y0 + 60, Z);
+    const d = new THREE.Vector3(TX - X, ty - y0 - 60, TZ - Z).normalize();
+    this.yaw = Math.atan2(-d.x, -d.z); this.pitch = Math.asin(d.y);
+    this.camera.lookAt(this.camera.position.clone().add(d));
+    this.orbit.target.set(TX, ty, TZ); this.mapc.target.set(TX, ty, TZ);
   }
 
   focus(x: number, y: number, r = 60) { this.setView(x, y, Math.max(120, r * 6), this.mode === 'top' ? Math.PI / 2 : 0.7, 0.5); }
@@ -157,6 +204,7 @@ export class World3D {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, this.clock.getDelta());
+    this.time.value += dt;
     if (this.mode === 'orbit') this.orbit.update();
     else if (this.mode === 'top') this.mapc.update();
     else this.fly(dt);
@@ -167,33 +215,31 @@ export class World3D {
   private updateCulling() {
     const cam = this.camera.position;
     // trees: distance culling per chunk mesh
-    const td2 = this.treeDistance * this.treeDistance;
-    for (const m of this.groups.trees.children as THREE.InstancedMesh[]) {
-      const s = m.boundingSphere;
-      if (!s) continue;
-      m.visible = s.center.distanceToSquared(cam) < td2;
-    }
+    this.veg?.update(cam, this.treeDistance);
     // sun + shadow frustum follow the view target (late-afternoon sun from the WSW)
-    const t = this.mode === 'top' ? this.mapc.target : this.mode === 'orbit' ? this.orbit.target : cam;
+    let t = this.mode === 'top' ? this.mapc.target : this.mode === 'orbit' ? this.orbit.target : cam;
+    if (this.mode === 'free') { const d = new THREE.Vector3(); this.camera.getWorldDirection(d); d.y = 0; t = cam.clone().addScaledVector(d.normalize(), 350); t.y = cam.y - 60; }
     this.sun.target.position.copy(t);
-    this.sun.position.set(t.x - 1400, t.y + 700, t.z - 500);
+    this.sun.position.copy(t).addScaledVector(this.sunDir, 2000);
     this.sky.position.copy(cam);
     // fog density eases with altitude so overview shots stay readable
     const alt = cam.y - t.y;
-    (this.scene.fog as THREE.FogExp2).density = THREE.MathUtils.clamp(0.00019 - alt * 0.00000003, 0.00009, 0.00019);
+    (this.scene.fog as THREE.FogExp2).density = THREE.MathUtils.clamp(0.00026 - alt * 0.00000004, 0.00012, 0.00026);
   }
 
   private fly(dt: number) {
-    const speed = (this.keys.has('shift') ? 260 : 70) * dt;
+    const speed = (this.keys.has('shift') ? 320 : 80) * this.flySpeed * dt;
     const f = new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
     const r = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const p = this.camera.position;
-    if (this.keys.has('w')) p.addScaledVector(f, speed);
-    if (this.keys.has('s')) p.addScaledVector(f, -speed);
-    if (this.keys.has('d')) p.addScaledVector(r, speed);
-    if (this.keys.has('a')) p.addScaledVector(r, -speed);
-    if (this.keys.has('e')) p.y += speed;
-    if (this.keys.has('q')) p.y -= speed;
+    const k = (a: string, b: string) => this.keys.has(a) || this.keys.has(b);
+    if (k('w', 'arrowup')) p.addScaledVector(f, speed);
+    if (k('s', 'arrowdown')) p.addScaledVector(f, -speed);
+    if (k('d', 'arrowright')) p.addScaledVector(r, speed);
+    if (k('a', 'arrowleft')) p.addScaledVector(r, -speed);
+    if (k('e', ' ')) p.y += speed;
+    if (k('q', 'c')) p.y -= speed;
+    p.y = Math.min(p.y, 4000);
     const px = worldToPx(p.x, p.z);
     const ground = this.w.terrain.at(Math.min(Math.max(px.x, 0), IMG_W), Math.min(Math.max(px.y, 0), IMG_H)) + 1.8;
     if (p.y < ground) p.y = ground;
@@ -217,6 +263,12 @@ export class World3D {
     });
     dom.addEventListener('pointerup', (e) => { if (!drag) this.click(e); down = null; });
     dom.addEventListener('pointerleave', () => bus.cursor.emit(null));
+    dom.addEventListener('wheel', (e) => {
+      if (this.mode !== 'free') return;
+      e.preventDefault();
+      this.flySpeed = THREE.MathUtils.clamp(this.flySpeed * (e.deltaY > 0 ? 0.85 : 1.18), 0.1, 12);
+      this.onSpeed?.(this.flySpeed);
+    }, { passive: false });
   }
 
   private ndc(e: PointerEvent) {

@@ -70,24 +70,43 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
   return g;
 }
 
-/** Gradient sky dome with a warm late-afternoon glow toward the sun (graphics ref). */
-export function buildSky(sunDir: THREE.Vector3) {
-  const geo = new THREE.SphereGeometry(40000, 32, 16);
+/**
+ * Sky dome: the Blender scene's HDRI (kloppenheim_06_puresky, tone-mapped to sky.jpg) rotated so
+ * its sun sits at the scene sun's azimuth, graded warm and melted into the haze at the horizon
+ * (graphics ref: soft golden light, hazy layered ridges).
+ */
+export function buildSky(sunDir: THREE.Vector3, tex: THREE.Texture | null, haze: THREE.Color) {
+  const geo = new THREE.SphereGeometry(40000, 48, 24);
+  const sd = sunDir.clone().normalize();
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { sunDir: { value: sunDir.clone().normalize() } },
+    uniforms: { sunDir: { value: sd }, sky: { value: tex }, hasSky: { value: tex ? 1 : 0 }, haze: { value: haze },
+      // HDRI sun at u=0.612 (equirect); rotate so it lines up with the scene sun
+      uOff: { value: 0.612 - Math.atan2(sd.z, sd.x) / (2 * Math.PI) } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; gl_Position.z = gl_Position.w; }`,
-    fragmentShader: `varying vec3 vDir; uniform vec3 sunDir;
+    fragmentShader: `varying vec3 vDir; uniform vec3 sunDir; uniform sampler2D sky; uniform float hasSky; uniform vec3 haze; uniform float uOff;
       void main(){
-        float h = vDir.y;
-        vec3 zenith = vec3(0.36,0.52,0.78), mid = vec3(0.66,0.76,0.88), horizon = vec3(0.95,0.84,0.70), ground = vec3(0.62,0.66,0.66);
-        vec3 c = h > 0.0 ? mix(mix(horizon, mid, smoothstep(0.0,0.12,h)), zenith, smoothstep(0.12,0.6,h)) : mix(horizon, ground, smoothstep(0.0,-0.2,h));
-        float s = max(dot(normalize(vDir), normalize(sunDir)), 0.0);
-        c += vec3(1.0,0.72,0.45) * (pow(s, 8.0)*0.35 + pow(s, 200.0)*1.2);
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 zenith = vec3(0.36,0.52,0.78), mid = vec3(0.66,0.76,0.88), horizon = vec3(0.95,0.84,0.70);
+        vec3 c = mix(mix(horizon, mid, smoothstep(0.0,0.12,h)), zenith, smoothstep(0.12,0.6,h));
+        if (hasSky > 0.5) {
+          float u = fract(atan(d.z, d.x) / 6.2831853 + uOff);
+          float v = 0.5 + asin(clamp(max(h, 0.0) * 0.92 + 0.02, -1.0, 1.0)) / 3.1415927;
+          c = texture2D(sky, vec2(u, v)).rgb;
+          c = c * c; // texture is display-referred (sRGB-ish) -> approx linear
+          c *= vec3(1.14, 0.99, 0.82); // warm late-afternoon grade (render: --sky 0.6, warm haze)
+        }
+        float s = max(dot(d, sunDir), 0.0);
+        c += vec3(1.0,0.72,0.45) * (pow(s, 6.0)*0.28 + pow(s, 300.0)*1.5);
+        // haze band: the sky melts into the fog colour toward and below the horizon
+        c = mix(c, haze, 1.0 - smoothstep(-0.02, 0.16, h));
         gl_FragColor = vec4(c, 1.0);
+        #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
   });
+  mat.toneMapped = true;
   const m = new THREE.Mesh(geo, mat);
   m.renderOrder = -10;
   m.frustumCulled = false;

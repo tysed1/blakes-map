@@ -87,7 +87,13 @@ def main():
         shutil.copy(path('data/terrain/' + f), os.path.join(OUT, f))
     # images
     shutil.copy(path('assets/maps/processed/base_map.png'), os.path.join(OUT, 'base_map.png'))
-    shutil.copy(path('data/terrain/albedo_2x.jpg'), os.path.join(OUT, 'albedo.jpg'))
+    # Blender-baked terrain albedo (tools/blender/bake_web_albedo.py) when present
+    alb = path('data/terrain/albedo_web.jpg')
+    if not os.path.exists(alb):
+        alb = path('data/terrain/albedo_2x.jpg')
+    shutil.copy(alb, os.path.join(OUT, 'albedo.jpg'))
+    if os.path.exists(path('data/terrain/sky_web.jpg')):  # tone-mapped kloppenheim_06_puresky
+        shutil.copy(path('data/terrain/sky_web.jpg'), os.path.join(OUT, 'sky.jpg'))
     shutil.copy(path('assets/maps/debug/hillshade_graded.png'), os.path.join(OUT, 'hillshade.png'))
     pal = np.array([[int(c['color'][i:i + 2], 16) for i in (1, 3, 5)] for c in lu['classes']], np.uint8)
     Image.fromarray(pal[cls]).save(os.path.join(OUT, 'landuse.png'))
