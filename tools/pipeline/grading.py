@@ -272,7 +272,21 @@ def main():
                     continue
                 a0, a1 = sorted([g2.project(Point(s_.coords[0])), g2.project(Point(s_.coords[-1]))])
                 pad = 2.0 + types[f['properties']['type']]['width_m'] / MPP * 0.3
-                spans.append([max(0.0, a0 - pad), min(g2.length, a1 + pad)])
+                a0, a1 = max(0.0, a0 - pad), min(g2.length, a1 + pad)
+                # extend over low banks / pools that sit below the water surface
+                wlv = WL[np.clip(int(s_.coords[0][1]), 0, H - 1), np.clip(int(s_.coords[0][0]), 0, W - 1)]
+                if np.isfinite(wlv) and f['properties']['type'] in ('gravel', 'dirt', 'driveway', 'rural', 'residential'):
+                    for _ in range(14):
+                        q = g2.interpolate(max(0.0, a0 - 1))
+                        if a0 <= 0 or bilinear(T, q.x, q.y) > wlv + 0.4:
+                            break
+                        a0 = max(0.0, a0 - 1)
+                    for _ in range(14):
+                        q = g2.interpolate(min(g2.length, a1 + 1))
+                        if a1 >= g2.length or bilinear(T, q.x, q.y) > wlv + 0.4:
+                            break
+                        a1 = min(g2.length, a1 + 1)
+                spans.append([a0, a1])
         f['properties']['bridge_spans'] = spans
     nodes = {f['properties']['id']: f['geometry']['coordinates'][:2] for f in load_json(path('data/roads/road_nodes.geojson'))['features']}
     ww = load_json(path('data/water/waterways.geojson'))['features']

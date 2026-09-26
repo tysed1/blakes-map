@@ -4,12 +4,12 @@
    "upper": "TV_RD_3185",
    "lower": "RR_TV_YARD",
    "at": [
-    1864.14,
-    492.71
+    1863.97,
+    492.55
    ],
    "lower_z": 290.49,
    "kind": "rail",
-   "angle_deg": 14.8
+   "angle_deg": 14.6
   },
   {
    "upper": "TV_RD_3185",
@@ -50,7 +50,7 @@
    ],
    "lower_z": 353.41,
    "kind": "rail",
-   "angle_deg": 18.4
+   "angle_deg": 18.5
   },
   {
    "upper": "TV_RD_3006",
@@ -92,8 +92,8 @@
    "upper": "TV_RD_3170",
    "lower": "RR_TV_YARD",
    "at": [
-    1745.75,
-    422.06
+    1745.68,
+    422.08
    ],
    "lower_z": 296.01,
    "kind": "rail",
@@ -112,6 +112,13 @@
   }
  ],
  "issues": [
+  {
+   "kind": "grade",
+   "id": "HR_RD_0318",
+   "type": "collector",
+   "max_grade_pct": 22.5,
+   "limit_pct": 10.0
+  },
   {
    "kind": "grade",
    "id": "RU_RD_0421",
