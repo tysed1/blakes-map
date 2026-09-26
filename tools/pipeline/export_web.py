@@ -106,31 +106,11 @@ def main():
 
 
 def scatter_trees(T, cls, cell=1.6, seed=7):
-    """Jittered-grid scatter driven by tree density; kept off roads, rail and water."""
-    rng = np.random.default_rng(seed)
-    td = np.asarray(Image.open(path('data/landuse/tree_density.png')), np.float32) / 255
-    cr = np.asarray(Image.open(path('data/landuse/conifer_ratio.png')), np.float32) / 255
-    block = np.zeros((H, W), np.uint8)
-    rtypes = load_json(path('data/roads/road_types.json'))['types']
-    for f in load_json(path('data/roads/roads.geojson'))['features']:
-        wpx = rtypes[f['properties']['type']]['width_m'] / 2.5
-        cv2.polylines(block, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, max(2, int(wpx + 3)))
-    for f in load_json(path('data/railways/railways.geojson'))['features']:
-        cv2.polylines(block, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, int(f['properties']['width_m'] / 2.5 + 4))
-    block |= (cls == 1).astype(np.uint8)
-    block = cv2.dilate(block, np.ones((3, 3), np.uint8))
-    gx, gy = np.meshgrid(np.arange(0, W, cell), np.arange(0, H, cell))
-    x = gx + rng.random(gx.shape) * cell
-    y = gy + rng.random(gy.shape) * cell
-    x, y = x.ravel(), y.ravel()
-    xi, yi = np.clip(x.astype(int), 0, W - 1), np.clip(y.astype(int), 0, H - 1)
-    rockish = (cls[yi, xi] == 6)
-    keep = (rng.random(len(x)) < np.where(rockish, 0.35, td[yi, xi] ** 1.3)) & (block[yi, xi] == 0)
-    x, y, xi, yi = x[keep], y[keep], xi[keep], yi[keep]
-    kind = (rng.random(len(x)) < cr[yi, xi]).astype(np.float32)
-    scale = 0.75 + 0.5 * rng.random(len(x))
-    z = T[yi, xi]
-    return np.stack([x, y, z, scale, kind], 1).astype(np.float32)
+    """Ecosystem vegetation scatter (tools/pipeline/vegetation.py): writes vegetation_f32.bin,
+    props_f32.bin and eco_u8.bin for Blender and returns the web tree array
+    [x_px, y_px, z_m, scale, kind(0 hardwood / 1 conifer)] (trees only; shrubs / snags excluded)."""
+    from tools.pipeline import vegetation
+    return vegetation.run(T, cls)
 
 
 if __name__ == '__main__':
