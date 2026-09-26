@@ -41,7 +41,7 @@ MEAN = {
 
 # art-directed terrain palettes (linear albedo): 3 tones per layer (patch A / patch B / accent)
 PAL = {
-    'forest':  [(0.070, 0.045, 0.022), (0.090, 0.058, 0.026), (0.055, 0.042, 0.022)],   # autumn leaf litter
+    'forest':  [(0.105, 0.068, 0.034), (0.125, 0.082, 0.038), (0.085, 0.062, 0.032)],   # autumn leaf litter (dry, fairly bright)
     'humus':   [(0.035, 0.036, 0.018), (0.045, 0.050, 0.022), (0.030, 0.028, 0.016)],   # moist hollows / moss
     'pasture': [(0.215, 0.180, 0.065), (0.150, 0.155, 0.050), (0.250, 0.195, 0.075)],   # golden-green pasture
     'hay':     [(0.270, 0.215, 0.095), (0.230, 0.195, 0.080), (0.300, 0.240, 0.110)],   # mown hay / straw
@@ -249,6 +249,8 @@ def terrain_material(albedo_path=None):
     moist, disturbed, canopy, hedge = _attr(nt, 'eco_a')
     pasture, hay, plowed, fallow = _attr(nt, 'eco_b')
     lawn, fang, tpi, talus = _attr(nt, 'eco_c')
+    road_n, railbr_n, rexp, _ = _attr(nt, 'eco_d')
+    road_m = _math(nt, 'MULTIPLY', road_n, 25.5)   # m from the paved shoulder edge
     geo = nt.nodes.new('ShaderNodeNewGeometry')
     nz = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(geo.outputs['Normal'], nz.inputs[0])
     slope = _math(nt, 'SUBTRACT', 1.0, nz.outputs['Z'])      # 0 flat .. 1 vertical
@@ -283,12 +285,15 @@ def terrain_material(albedo_path=None):
     S.over(L['plowed'], _math(nt, 'MULTIPLY', plowed, opn), 0.3)
     S.over(L['lawn'], _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', lawn, _math(nt, 'MULTIPLY', dev, 0.8)), opn))
     # roadside: dry grass verge, then gravel shoulder right at the pavement
-    verge = _math(nt, 'MULTIPLY', _smooth(nt, shoulder, 0.1, 0.45), 0.9)
+    # (exact corridor distance, not the blurred road raster: towns stay green up to the curbs)
+    notdev = _math(nt, 'SUBTRACT', 1.0, _math(nt, 'MAXIMUM', _math(nt, 'MULTIPLY', dev, 0.85), lawn))
+    verge = _math(nt, 'MULTIPLY', _math(nt, 'SUBTRACT', 1.0, _smooth(nt, road_m, 3.0, 7.0)), _math(nt, 'MULTIPLY', notdev, 0.85))
     S.over(L['verge'], verge)
-    S.over(L['gravel'], _smooth(nt, shoulder, 0.55, 0.9))
+    S.over(L['gravel'], _math(nt, 'MULTIPLY', _math(nt, 'SUBTRACT', 1.0, _smooth(nt, road_m, 0.4, 1.4)), _math(nt, 'ADD', 0.35, _math(nt, 'MULTIPLY', notdev, 0.65))))
     # red clay: disturbed ground, road cuts / fills (steep + near roads), bare steep open slopes
-    cut = _math(nt, 'MULTIPLY', _smooth(nt, slope, 0.12, 0.3), _math(nt, 'MAXIMUM', _smooth(nt, shoulder, 0.05, 0.4), _math(nt, 'MULTIPLY', disturbed, 0.7)))
-    clay_w = _math(nt, 'MAXIMUM', cut, _math(nt, 'MULTIPLY', _smooth(nt, disturbed, 0.6, 1.0), 0.5))
+    near_road = _math(nt, 'SUBTRACT', 1.0, _smooth(nt, road_m, 4.0, 14.0))
+    cut = _math(nt, 'MULTIPLY', _smooth(nt, slope, 0.12, 0.3), _math(nt, 'MAXIMUM', near_road, _math(nt, 'MULTIPLY', disturbed, 0.7)))
+    clay_w = _math(nt, 'MAXIMUM', cut, _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', _smooth(nt, disturbed, 0.6, 1.0), 0.5), notdev))
     clay_w = _math(nt, 'MULTIPLY', clay_w, _math(nt, 'ADD', 0.35, _math(nt, 'MULTIPLY', _noise(nt, pos, 0.08, 3).outputs['Fac'], 1.0)))
     S.over(L['clay'], clay_w)
     # water margins: wet mud + gravel bars
@@ -296,7 +301,8 @@ def terrain_material(albedo_path=None):
     S.over(L['bank'], _smooth(nt, bank, 0.45, 0.9))
     # talus / scree below outcrops, then exposed rock on cliffs + rock land use
     S.over(L['talus'], _math(nt, 'MULTIPLY', talus, _math(nt, 'SUBTRACT', 1.0, _math(nt, 'MULTIPLY', canopy, 0.6))))
-    rock_w = _math(nt, 'MAXIMUM', _smooth(nt, slope, 0.3, 0.5), _math(nt, 'MULTIPLY', _smooth(nt, rock_lu, 0.3, 0.8), _smooth(nt, slope, 0.17, 0.33)))
+    # A1 rock exposure (crags, cut banks, rapids banks) + very steep ground
+    rock_w = _math(nt, 'MAXIMUM', _smooth(nt, slope, 0.32, 0.52), _smooth(nt, rexp, 0.25, 0.65))
     S.over(L['rock'], rock_w, 0.9)
     # rock lichen / moss: pale grey-green lichen blotches on dry rock, moss on moist rock
     lich = _noise(nt, pos, 0.9, 4)
@@ -321,7 +327,6 @@ def terrain_material(albedo_path=None):
     grassy = _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', _math(nt, 'MAXIMUM', pasture, fallow), _math(nt, 'MAXIMUM', meadow, _math(nt, 'MULTIPLY', hay, 0.5))), opn)
     col = _mix(nt, _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', near, grassy), 0.55), col, _mix(nt, 1.0, col, (0.45, 0.42, 0.35), 'MULTIPLY'))
     # forest floor under canopy slightly darker (canopy shade is also real lighting; keep it subtle)
-    col = _mix(nt, _math(nt, 'MULTIPLY', canopy, 0.6), col, _mix(nt, 1.0, col, (0.6, 0.6, 0.6), 'MULTIPLY'))
     # stylized macro albedo from the map painter (very light touch: keeps map identity at world scale)
     if albedo_path and os.path.exists(albedo_path):
         alb = nt.nodes.new('ShaderNodeTexImage'); alb.image = _img(albedo_path); alb.interpolation = 'Cubic'
@@ -436,7 +441,7 @@ def add_terrain_attributes(terrain_objs):
     """Per-vertex ecology attributes from public/world/eco_u8.bin (tools/pipeline/vegetation.py):
        eco_a = (moisture, disturbed, canopy cover, hedge), eco_b = (pasture, hay, plowed, fallow),
        eco_c = (lawn, field angle 0..1 -> 0..pi, tpi (0.5 = flat), talus),
-       eco_d = (road edge distance / 25.5 m, rail-or-bridge edge distance / 25.5 m, 0, 1).
+       eco_d = (road edge distance / 25.5 m, rail-or-bridge edge distance / 25.5 m, rock exposure (A1), 1).
     Used by the terrain material and the ground-cover scatter."""
     import numpy as np
     H, W = 667, 2000
@@ -463,7 +468,7 @@ def add_terrain_attributes(terrain_objs):
         for name, data in (('eco_a', np.c_[e[:, 0], e[:, 1], e[:, 2], e[:, 5]]),
                            ('eco_b', oh[:, :4]),
                            ('eco_c', np.c_[oh[:, 4], ang, e[:, 6], e[:, 7]]),
-                           ('eco_d', np.c_[e[:, 8], e[:, 9], np.zeros(len(x)), np.ones(len(x))] if E.shape[2] > 9 else np.ones((len(x), 4)))):
+                           ('eco_d', np.c_[e[:, 8], e[:, 9], e[:, 10] if E.shape[2] > 10 else np.zeros(len(x)), np.ones(len(x))] if E.shape[2] > 9 else np.ones((len(x), 4)))):
             if name in me.attributes:
                 me.attributes.remove(me.attributes[name])
             a = me.attributes.new(name, 'FLOAT_COLOR', 'POINT')

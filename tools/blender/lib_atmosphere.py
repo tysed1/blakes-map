@@ -166,7 +166,7 @@ def ambient_group(strength=0.3):
     return g
 
 
-def apply_ambient(mats=None, skip=('Water', 'WATER', 'Marking', 'Backdrop')):
+def apply_ambient(mats=None, skip=('MAT_Water', 'WATER', 'Marking', 'Backdrop')):
     """Insert Add(principled, A3_Ambient(base colour)) after every Principled BSDF."""
     g = ambient_group()
     n_done = 0

@@ -223,6 +223,16 @@ def scatter(T, cls, seed=7):
     wet = cls == WATER
     forest = np.isin(cls, [HARD, CONI])
     rock = cls == ROCK
+    # A1: real rock exposure (crags, cut banks, rapids banks) + bank/bed type along channels
+    rp = path('data/terrain/rock_exposure_u8.png')
+    rexp = cv2.GaussianBlur(np.asarray(Image.open(rp), np.float32) / 255, (0, 0), 0.8) if os.path.exists(rp) else rock.astype(np.float32)
+    fxp = path('data/terrain/water_fx_u8.bin')
+    btype = np.zeros((H, W), np.float32)
+    if os.path.exists(fxp):
+        raw = np.fromfile(fxp, np.uint8)
+        btype = raw.reshape(raw.size // (H * W), H, W)[3].astype(np.float32) / 255 * 2 - 1   # -1 gravel bar .. +1 rock
+    gravelbar = cv2.dilate(np.clip(-btype - 0.2, 0, 1), np.ones((3, 3), np.uint8))
+    rock = rock | (rexp > 0.5)
     n40 = fbm((H, W), 16, seed + 1)      # 40 m edge wobble
     n15 = fbm((H, W), 6, seed + 2)       # 15 m
     n100 = fbm((H, W), 40, seed + 3)     # 100 m stand patches
@@ -275,6 +285,8 @@ def scatter(T, cls, seed=7):
     p_can += forest * 0.95 * edge_in * gaps
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
     p_can[rock] = 0.62 * np.clip(0.6 + 0.4 * n15[rock], 0, 1) * np.where(slope[rock] > 0.9, 0.5, 1.0)
+    p_can *= 1 - 0.8 * np.clip(rexp, 0, 1)   # bare crags / cut banks
+    p_can *= 1 - np.clip(gravelbar, 0, 1)    # open gravel bars
     p_can = np.where(dev, np.clip(0.2 + 0.18 * n100, 0.03, 0.45), p_can)
     p_can[cls == COM] = 0.05; p_can[cls == IND] = 0.03; p_can[cls == RAIL] = 0.0
     p_can[cls == MEADOW] = np.maximum(p_can[cls == MEADOW] * 0.4, 0.008)
@@ -371,7 +383,7 @@ def scatter(T, cls, seed=7):
     pts.append((x, y, sp, np.exp(rng.normal(-0.1, 0.2, len(x)))))
 
     # ---- 7) creek-bank thickets (dense near water, outside the channel)
-    bank = np.exp(-((dwater - 5) / 5) ** 2) * ~wet * ~np.isin(cls, [COM, IND, RAIL, FARM]) * (1 - 0.7 * dev)
+    bank = np.exp(-((dwater - 5) / 5) ** 2) * ~wet * ~np.isin(cls, [COM, IND, RAIL, FARM]) * (1 - 0.7 * dev) * (1 - np.clip(gravelbar, 0, 1)) * (1 - 0.7 * np.clip(rexp, 0, 1))
     x, y, xi, yi = _jitter_grid(1.4, rng, (bank * 0.4).astype(np.float32))
     ok = clear_ok(x, y, 1); x, y = x[ok], y[ok]
     sp = _choose(rng, {'Rhododendron_A': np.full(len(x), 1.0), 'Laurel_B': np.full(len(x), 0.5), 'Brush_A': np.full(len(x), 0.8),
@@ -397,12 +409,12 @@ def scatter(T, cls, seed=7):
     # ---- eco raster
     disturbed = np.clip(np.exp(-np.clip(road1, 0, None) / 6) * 0.8 + np.exp(-np.clip(rail1, 0, None) / 8) + np.isin(cls, [IND, RAIL]) * 0.8
                         + (cls == COM) * 0.35, 0, 1)
-    talus = np.clip(np.exp(-drock / 18) * smoothstep(0.25, 0.6, slope) + rock * 1.0, 0, 1)
+    talus = np.clip(np.exp(-drock / 18) * smoothstep(0.25, 0.6, slope) + (cls == ROCK) * 0.5 + gravelbar * 0.8, 0, 1)
     eco_u8 = np.stack([
         moist, disturbed, cov, ftype.astype(np.float32) / 255, fang / math.pi, hedge.astype(np.float32),
         np.clip(tpi / 3 + 0.5, 0, 1), talus,
         # corridor edge distances (m / 25.5, 0.1 m steps): ground cover keeps pavement, ballast and bridge decks clear
-        np.clip(road1, 0, 25.5) / 25.5, np.clip(np.minimum(rail1, bridge1), 0, 25.5) / 25.5], -1)
+        np.clip(road1, 0, 25.5) / 25.5, np.clip(np.minimum(rail1, bridge1), 0, 25.5) / 25.5, np.clip(rexp, 0, 1)], -1)
     eco_u8 = (np.clip(eco_u8, 0, 1) * 255).round().astype(np.uint8)
     eco_u8[..., 3] = ftype
     return veg, props, eco_u8
@@ -450,7 +462,7 @@ def run(T, cls):
     props.astype('<f4').tofile(os.path.join(out, 'props_f32.bin'))
     eco.tofile(os.path.join(out, 'eco_u8.bin'))
     with open(os.path.join(out, 'eco.json'), 'w') as f:
-        json.dump({'w': W, 'h': H, 'channels': ['moisture', 'disturbed', 'canopy', 'field_type', 'field_angle', 'hedge', 'tpi', 'talus', 'road_edge_m/25.5', 'rail_bridge_edge_m/25.5'],
+        json.dump({'w': W, 'h': H, 'channels': ['moisture', 'disturbed', 'canopy', 'field_type', 'field_angle', 'hedge', 'tpi', 'talus', 'road_edge_m/25.5', 'rail_bridge_edge_m/25.5', 'rock_exposure'],
                    'field_types': FIELD_TYPES, 'species': SPECIES, 'props': PROPS,
                    'vegetation': {'file': 'vegetation_f32.bin', 'stride': 6, 'count': int(len(veg))},
                    'props_file': {'file': 'props_f32.bin', 'stride': 6, 'count': int(len(props))}}, f, indent=1)

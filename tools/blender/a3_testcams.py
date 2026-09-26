@@ -97,7 +97,7 @@ def cams():
     # forest interior, pedestrian (a moist hollow if possible)
     cov = eco[..., 2].astype(float); tpi = eco[..., 6].astype(float)
     gy, gx = np.gradient(T, 2.5); slope = np.hypot(gx, gy)
-    sc = cov - np.abs(tpi - 115) * 0.3 - slope * 400
+    sc = cov - np.abs(tpi - 135) * 0.3 - slope * 400   # mid-slope hardwoods (not a hemlock hollow)
     if eco.shape[2] > 9:
         sc -= (eco[..., 8] < 250) * 500 + (eco[..., 9] < 250) * 500   # away from roads / rail
     sc[:, :800] = -1e9; sc[:, 1300:] = -1e9; sc[:200] = -1e9; sc[500:] = -1e9
@@ -117,7 +117,7 @@ def cams():
     if rv is not None:
         p, d = along(rv, 0.55)
         z = hgt(*p)
-        out['river_low'] = make('TC_river_low', b(p[0] - d[1] * 8, p[1] + d[0] * 8, z + 5), b(p[0] + d[0] * 30, p[1] + d[1] * 30, z), 28)
+        out['river_low'] = make('TC_river_low', b(p[0] - d[0] * 6, p[1] - d[1] * 6, z + 5), b(p[0] + d[0] * 30, p[1] + d[1] * 30, z + 1), 28)  # over the channel
     # medium aerial 100 m over Hollow Ridge valley, high map view 1000 m
     out['aerial_100'] = make('TC_aerial_100', b(1000, 420, hgt(1000, 420) + 100), b(1060, 350, hgt(1060, 350)), 30)
     out['high_1000'] = make('TC_high_1000', b(1000, 700, 1400), b(1000, 250, 300), 30)
