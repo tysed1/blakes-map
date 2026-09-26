@@ -135,8 +135,8 @@ def compositor(haze=0.85):
     L.new(sa.outputs[0], gl.inputs['Image'])
     # grade: warm highlights, cool lifted shadows, rich but controlled saturation
     cb = N.new('CompositorNodeColorBalance'); cb.correction_method = 'LIFT_GAMMA_GAIN'
-    cb.lift = (0.985, 1.0, 1.035); cb.gamma = (1.02, 1.0, 0.97); cb.gain = (1.07, 1.02, 0.92)
-    hs = N.new('CompositorNodeHueSat'); hs.inputs['Saturation'].default_value = 1.12
+    cb.lift = (0.985, 1.0, 1.03); cb.gamma = (1.03, 1.0, 0.95); cb.gain = (0.98, 0.93, 0.8)
+    hs = N.new('CompositorNodeHueSat'); hs.inputs['Saturation'].default_value = 1.28
     L.new(gl.outputs[0], cb.inputs['Image']); L.new(cb.outputs[0], hs.inputs['Image'])
     L.new(hs.outputs[0], comp.inputs['Image'])
 
@@ -205,5 +205,5 @@ def setup(ARG=lambda k, d=None: d):
     world(float(ARG('--sky', 0.8)), float(ARG('--skyrot', 0)))
     lights(float(ARG('--fill', 0.0)))
     compositor(float(ARG('--haze', 0.85)))
-    ambient_group(float(ARG('--ambient', 1.2)))
+    ambient_group(float(ARG('--ambient', 0.9)))
     print('  ambient on', apply_ambient(), 'materials')

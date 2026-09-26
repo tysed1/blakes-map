@@ -360,6 +360,10 @@ def to_mesh(name, g):
 
 # ---------------------------------------------------------------- materials
 def _img(path, color=True):
+    c = os.path.join(PH, '_cache1k', os.path.splitext(os.path.basename(path))[0])
+    for ext in ('.jpg', '.png'):
+        if os.path.exists(c + ext) and 'polyhaven' in path:
+            path = c + ext; break
     im = bpy.data.images.load(path, check_existing=True)
     if not color:
         im.colorspace_settings.name = 'Non-Color'

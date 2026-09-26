@@ -101,7 +101,16 @@ def cams():
     if eco.shape[2] > 9:
         sc -= (eco[..., 8] < 250) * 500 + (eco[..., 9] < 250) * 500   # away from roads / rail
     sc[:, :800] = -1e9; sc[:, 1300:] = -1e9; sc[:200] = -1e9; sc[500:] = -1e9
-    y, x = np.unravel_index(np.argmax(sc), sc.shape)
+    # candidate spots, best first; reject any within 5 m of a tree / shrub instance (camera inside a crown)
+    vf = os.path.join(ROOT, 'public/world/vegetation_f32.bin')
+    V = np.fromfile(vf, '<f4').reshape(-1, 6) if os.path.exists(vf) else np.zeros((0, 6), np.float32)
+    order = np.argsort(sc.ravel())[::-1][:4000]
+    y, x = np.unravel_index(order[0], sc.shape)
+    for k in order:
+        yy, xx = np.unravel_index(k, sc.shape)
+        if not len(V) or np.hypot(V[:, 0] - xx - 0.5, V[:, 1] - yy - 0.5).min() * 2.5 > 5.0:
+            y, x = yy, xx
+            break
     out['forest_ped'] = make('TC_forest_ped', b(x, y, hgt(x, y) + 1.7), b(x + 20, y - 8, hgt(x + 20, y - 8) + 4), 26)
     # river bank, low 5 m looking along Hollow Creek / Laurel River
     rv = feature('data/water/waterways.geojson', 'id', 'WTR_R04')

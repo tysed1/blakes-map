@@ -55,7 +55,7 @@ PAL = {
     'mud':     [(0.060, 0.045, 0.030), (0.050, 0.040, 0.028), (0.075, 0.055, 0.035)],
     'bank':    [(0.170, 0.150, 0.120), (0.130, 0.120, 0.100), (0.200, 0.175, 0.140)],
     'talus':   [(0.100, 0.093, 0.080), (0.082, 0.078, 0.068), (0.120, 0.110, 0.092)],
-    'rock':    [(0.095, 0.088, 0.075), (0.075, 0.072, 0.064), (0.115, 0.104, 0.086)],   # grey-brown sandstone / gneiss
+    'rock':    [(0.075, 0.070, 0.061), (0.060, 0.058, 0.053), (0.092, 0.084, 0.071)],   # grey-brown sandstone / gneiss
 }
 # layer -> (texture id, tile size m, detail power, chroma keep, roughness)
 LAYER = {
@@ -71,8 +71,20 @@ LAYER = {
 
 
 # ------------------------------------------------------------------ node helpers
+CACHE = os.path.join(PH, '_cache1k')   # tools/assets/make_tex_cache.py (1k, 8-bit): ~4x less render memory
+
+
+def _cached(path):
+    b = os.path.splitext(os.path.basename(path))[0]
+    for ext in ('.jpg', '.png'):
+        c = os.path.join(CACHE, b + ext)
+        if os.path.exists(c):
+            return c
+    return path
+
+
 def _img(path, color=True):
-    im = bpy.data.images.load(path, check_existing=True)
+    im = bpy.data.images.load(_cached(path), check_existing=True)
     if not color:
         im.colorspace_settings.name = 'Non-Color'
     return im
@@ -309,7 +321,7 @@ def terrain_material(albedo_path=None):
     grassy = _math(nt, 'MULTIPLY', _math(nt, 'MAXIMUM', _math(nt, 'MAXIMUM', pasture, fallow), _math(nt, 'MAXIMUM', meadow, _math(nt, 'MULTIPLY', hay, 0.5))), opn)
     col = _mix(nt, _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', near, grassy), 0.55), col, _mix(nt, 1.0, col, (0.45, 0.42, 0.35), 'MULTIPLY'))
     # forest floor under canopy slightly darker (canopy shade is also real lighting; keep it subtle)
-    col = _mix(nt, _math(nt, 'MULTIPLY', canopy, 0.25), col, _mix(nt, 1.0, col, (0.75, 0.75, 0.75), 'MULTIPLY'))
+    col = _mix(nt, _math(nt, 'MULTIPLY', canopy, 0.6), col, _mix(nt, 1.0, col, (0.6, 0.6, 0.6), 'MULTIPLY'))
     # stylized macro albedo from the map painter (very light touch: keeps map identity at world scale)
     if albedo_path and os.path.exists(albedo_path):
         alb = nt.nodes.new('ShaderNodeTexImage'); alb.image = _img(albedo_path); alb.interpolation = 'Cubic'

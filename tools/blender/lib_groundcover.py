@@ -102,9 +102,12 @@ def forb(rng, kind):
             h = rng.uniform(0.6, 1.1); bend = rng.uniform(0.1, 0.3)
             pts = [root + Vector((math.cos(a) * bend * h * t * t, math.sin(a) * bend * h * t * t, h * t)) for t in np.linspace(0, 1, 6)]
             m.quad_strip(pts, [0.012] * 6, Vector((-math.sin(a), math.cos(a), 0)), stem0, stem1)
-            for t in np.linspace(0.65, 1.0, 7):  # arching plume of yellow florets
-                p = pts[0].lerp(pts[-1], t) + Vector((math.cos(a) * 0.06 * t, math.sin(a) * 0.06 * t, 0))
-                m.blob(p, rng.uniform(0.03, 0.05), (0.55, 0.38, 0.03), 6)
+            # plume: many tiny floret clusters on short side branches of the arching tip (fuzzy panicle)
+            for k in range(28):
+                t = rng.uniform(0.62, 1.0)
+                p = pts[0].lerp(pts[-1], t) + Vector((math.cos(a) * 0.08 * t, math.sin(a) * 0.08 * t, 0))
+                off = Vector((rng.normal(0, 0.035), rng.normal(0, 0.035), rng.normal(0, 0.02) - 0.02 * (t - 0.6)))
+                m.blob(p + off, rng.uniform(0.008, 0.016), tuple(c * rng.uniform(0.8, 1.1) for c in (0.55, 0.38, 0.03)), 5)
             for t in np.linspace(0.15, 0.6, 5):  # leaves
                 p = pts[0].lerp(pts[-1], t); la = rng.uniform(0, 6.28)
                 m.quad_strip([p, p + Vector((math.cos(la) * 0.08, math.sin(la) * 0.08, 0.02)), p + Vector((math.cos(la) * 0.14, math.sin(la) * 0.14, 0.0))],

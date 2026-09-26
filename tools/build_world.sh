@@ -10,6 +10,7 @@ python3 tools/pipeline/roads.py
 python3 tools/pipeline/railways.py
 python3 tools/pipeline/terrain.py
 python3 tools/pipeline/grading.py
+python3 tools/qa/validate_terrain.py
 # buildings: deferred (tools/pipeline/buildings.py is a draft, not part of the build yet)
 python3 tools/pipeline/landuse.py
 python3 tools/pipeline/terrain_albedo.py

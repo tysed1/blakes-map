@@ -269,7 +269,8 @@ def scatter(T, cls, seed=7):
 
     # ---- 1) canopy trees
     edge_in = smoothstep(-2, 10, sdn)
-    gaps = np.clip(0.8 + 0.3 * n100 + 0.15 * n15, 0.35, 1.0)
+    n8 = fbm((H, W), 3.5, seed + 4)
+    gaps = np.clip(0.8 + 0.3 * n100 + 0.15 * n15 + 0.12 * n8, 0.3, 1.0)  # small canopy gaps + clumps
     p_can = np.zeros((H, W), np.float32)
     p_can += forest * 0.95 * edge_in * gaps
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
@@ -279,7 +280,7 @@ def scatter(T, cls, seed=7):
     p_can[cls == MEADOW] = np.maximum(p_can[cls == MEADOW] * 0.4, 0.008)
     p_can[cls == FARM] = 0.0
     p_can *= np.where(slope > 1.1, 0.6, 1.0)
-    x, y, xi, yi = _jitter_grid(2.0, rng, p_can)
+    x, y, xi, yi = _jitter_grid(1.75, rng, p_can)
     ok = clear_ok(x, y, 0); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
     m = moist[yi, xi]; r = np.clip(tpi[yi, xi], -1, 1); s = sun[yi, xi]; c = cr[yi, xi]
     dry = np.clip(0.5 * np.clip(s, 0, 1) + 0.5 * np.clip(r, 0, 1) + 0.4 * (0.5 - m), 0, 1)
@@ -306,6 +307,10 @@ def scatter(T, cls, seed=7):
         'Snag_A': 0.012 + 0.05 * rk + 0.012 * ridge,
         'Snag_B': 0.008 + 0.03 * rk,
     }
+    # stands: each species clumps in ~50-80 m patches (not salt-and-pepper mixing)
+    for k_, name in enumerate(w):
+        fld = fbm((H, W), 22 + 3 * (k_ % 4), 100 + k_, 2)
+        w[name] = np.asarray(w[name]) * np.exp(0.8 * fld[yi, xi])
     sp = _choose(rng, w)
     sc = np.exp(rng.normal(0, 0.14, len(x))) * (1 + 0.12 * cove - 0.12 * ridge - 0.25 * rk * (1 - cove)) * np.where(d, 0.9, 1.0)
     sc *= np.where(slope[yi, xi] > 0.8, 0.9, 1.0)
