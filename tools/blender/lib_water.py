@@ -15,7 +15,7 @@ in rapids and along rocky banks.
 Objects
   WATER_Cxx_yy        water surface per 100 px chunk (attrs: depth, foam, flow, shore)
   WATER_Bed_Cxx_yy    riverbed + gravel bars + rocky banks, 3 cm above the terrain (attrs: depth, bank, edge)
-  WATER_Shore_Cxx_yy  wet film on the banks just above the waterline (attr: wet)
+  WATER_Shore_Cxx_yy  damp mud skin, <= 5 m out and < 1.5 m above the waterline (attr: wet)
   WATER_Boulders      boulders in rapids, pools and on rocky banks (one mesh)
 """
 import bpy, math, os
@@ -324,7 +324,10 @@ def bed_material():
         col_r = _mixrgb(nt, vor.outputs['Distance'], (0.20, 0.18, 0.15, 1), (0.42, 0.39, 0.34, 1))
     else:
         col_r = rocks.outputs['Color']
-    col_g = grav.outputs['Color'] if grav is not None else _mixrgb(nt, vor.outputs['Distance'], (0.35, 0.32, 0.27, 1), (0.55, 0.51, 0.44, 1))
+    col_g = grav.outputs['Color'] if grav is not None else _mixrgb(nt, vor.outputs['Distance'], (0.22, 0.20, 0.17, 1), (0.36, 0.33, 0.28, 1))
+    # grey-brown river cobble, never pale sand (texture desaturated and pulled down)
+    col_g = _mixrgb(nt, 0.55, col_g, (0.26, 0.24, 0.21, 1), 'MIX')
+    col_g = _mixrgb(nt, 1.0, col_g, (0.78, 0.76, 0.72, 1), 'MULTIPLY')
     # bank < 0 -> gravel bar, > 0 -> rock; stone mix everywhere
     gfac = _maprange(nt, bank, -0.1, -0.6)
     col = _mixrgb(nt, gfac, col_r, col_g)
@@ -336,7 +339,7 @@ def bed_material():
     wetdark = _maprange(nt, depth, 0.0, 2.5, 0.0, 0.75)
     col = _mixrgb(nt, wetdark, col, (0.05, 0.055, 0.045, 1), 'MIX')
     # wet dark margin just above the waterline (depth -0.6..0 m), dry pale cobbles above
-    col = _mixrgb(nt, _maprange(nt, depth, -0.7, 0.02, 0.0, 0.6), col, (0.25, 0.24, 0.22, 1), 'MULTIPLY')
+    col = _mixrgb(nt, _maprange(nt, depth, -0.5, 0.02, 0.0, 0.55), col, (0.35, 0.33, 0.30, 1), 'MULTIPLY')
     nt.links.new(col, _inp(b, 'Base Color'))
     nt.links.new(_maprange(nt, depth, -0.7, 0.05, 0.85, 0.3), _inp(b, 'Roughness'))
     disp = _tex_or_none(nt, 'river_small_rocks', 'disp', mp.outputs[0], False)
@@ -353,17 +356,23 @@ def bed_material():
 
 
 def shore_material():
-    """Wet film just above the waterline: darker, glossier ground/stone fading out upslope."""
+    """Damp mud/silt skin in a narrow band (~1-2 m) just above the waterline: dark, slightly glossy,
+    fading out upslope so the terrain bank layers and riparian plants read above it."""
     m, nt = _new_mat('MAT_WetShore')
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     wet = _attr(nt, 'wet')
     b = nt.nodes.new('ShaderNodeBsdfPrincipled')
-    _inp(b, 'Base Color').default_value = (0.035, 0.035, 0.028, 1)
-    _inp(b, 'Roughness').default_value = 0.16
     tc = nt.nodes.new('ShaderNodeTexCoord')
     n = nt.nodes.new('ShaderNodeTexNoise'); n.inputs['Scale'].default_value = 0.8; n.inputs['Detail'].default_value = 5
     nt.links.new(tc.outputs['Object'], n.inputs['Vector'])
-    a = _maprange(nt, _math(nt, 'SUBTRACT', wet, _math(nt, 'MULTIPLY', n.outputs['Fac'], 0.35)), 0.05, 0.55, 0.0, 0.8)
+    n2 = nt.nodes.new('ShaderNodeTexNoise'); n2.inputs['Scale'].default_value = 6.0; n2.inputs['Detail'].default_value = 4
+    nt.links.new(tc.outputs['Object'], n2.inputs['Vector'])
+    mud = _mixrgb(nt, n2.outputs['Fac'], (0.030, 0.025, 0.018, 1), (0.070, 0.058, 0.040, 1))
+    nt.links.new(mud, _inp(b, 'Base Color'))
+    nt.links.new(_maprange(nt, wet, 0.0, 1.0, 0.7, 0.28), _inp(b, 'Roughness'))
+    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.3; bp.inputs['Distance'].default_value = 0.02
+    nt.links.new(n2.outputs['Fac'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], _inp(b, 'Normal'))
+    a = _maprange(nt, _math(nt, 'SUBTRACT', wet, _math(nt, 'MULTIPLY', n.outputs['Fac'], 0.3)), 0.0, 0.45, 0.0, 0.85)
     tr = nt.nodes.new('ShaderNodeBsdfTransparent')
     nt.links.new(_mixsh(nt, a, tr.outputs[0], b.outputs[0]), out.inputs['Surface'])
     return m
@@ -601,11 +610,14 @@ def build_water(coll, mat=None):
     WLc = _corner_avg(WLf)
     shore_steps = _erode_steps(wet, 6)
     skirt = _dilate(wet, 1)
-    near3 = _dilate(wet, 4) & ~wet
+    near3 = _dilate(wet, 2) & ~wet            # shore skin: <= 5 m out from the water edge (height-limited below)
     # distance to water on land (px, 0 in water, capped): drives the rocky/cobbled bank band
     dland = _erode_steps(~wet, 6)
-    bedcells = _dilate(wet, 5)
+    bar = D['bank'] < -0.3                      # genuine gravel bars (inside of bends)
+    bedcells = _dilate(wet, 1) | (_dilate(wet, 3) & bar)
     bnoise = _value_noise(wet.shape, 3, 11)
+    hab_px = D['T'] - WLf
+    shore_ok = np.isfinite(hab_px) & (hab_px < 1.5)
     rocks = place_boulders(D)
     wake = boulder_wake(D, rocks)
     objs = []
@@ -634,26 +646,27 @@ def build_water(coll, mat=None):
                 ys = ys + cy * CHUNK; xs = xs + cx * CHUNK
                 vx, vy, faces = _grid_mesh((ys, xs), None, 0, 0)
                 zt = T.at(vx, vy)
-                bx, by, bz = px2b(vx, vy, zt + 0.03)
+                bx, by, bz = px2b(vx, vy, zt + 0.02)
                 pxi = np.clip(vx.astype(int), 0, W - 1); pyi = np.clip(vy.astype(int), 0, H - 1)
                 wlv = WLc[vy.astype(int), vx.astype(int)]
                 dep = np.where(np.isfinite(wlv), wlv - zt, -1.0)
-                # cobble/rock band on the banks: full at the waterline, fading out 2-5 px up the bank (ragged)
-                dl = dland[pyi, pxi]
-                reach_px = 2.0 + 3.0 * np.clip(np.abs(D['bank'][pyi, pxi]), 0, 1) + 1.5 * bnoise[pyi, pxi]
-                edge = np.clip(1.0 - (dl - 0.5) / reach_px, 0, 1)
+                # the bed never shows above the waterline except on gravel bars: opacity from height above water
+                hab = -dep
+                isbar = bar[pyi, pxi] | (D['bank'][pyi, pxi] < -0.3)
+                lim = np.where(isbar, 0.45 + 0.25 * bnoise[pyi, pxi], 0.06)
+                edge = np.where(hab <= 0, 1.0, np.clip(1.0 - hab / lim, 0, 1))
                 objs.append(_mesh(f'WATER_Bed_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mbed,
                                   attrs={'depth': ('FLOAT', dep), 'bank': ('FLOAT', D['bank'][pyi, pxi]), 'edge': ('FLOAT', edge)}))
             # ---- wet shore film
-            ys, xs = np.nonzero(near3[sl])
+            ys, xs = np.nonzero(near3[sl] & shore_ok[sl])
             if len(ys):
                 ys = ys + cy * CHUNK; xs = xs + cx * CHUNK
                 vx, vy, faces = _grid_mesh((ys, xs), None, 0, 0)
                 zt = T.at(vx, vy)
-                bx, by, bz = px2b(vx, vy, zt + 0.05)
+                bx, by, bz = px2b(vx, vy, zt + 0.015)   # thin skin on the terrain vertices (same grid)
                 wlv = WLc[vy.astype(int), vx.astype(int)]
                 hab = zt - np.where(np.isfinite(wlv), wlv, zt - 5)
-                wetf = np.clip(1 - hab / 0.9, 0, 1) * np.isfinite(wlv)
+                wetf = np.clip(1 - hab / 1.2, 0, 1) * np.isfinite(wlv)
                 objs.append(_mesh(f'WATER_Shore_C{cx:02d}_{cy:02d}', np.stack([bx, by, bz], 1), faces, coll, mshore,
                                   attrs={'wet': ('FLOAT', wetf)}))
     b = build_boulders(D, rocks, coll, mrock)
