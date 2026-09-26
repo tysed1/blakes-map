@@ -311,7 +311,7 @@ def bed_material():
     b = nt.nodes.new('ShaderNodeBsdfPrincipled')
     tc = nt.nodes.new('ShaderNodeTexCoord')
     depth = _attr(nt, 'depth'); bank = _attr(nt, 'bank'); edge = _attr(nt, 'edge')
-    mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / 2.2,) * 3
+    mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / 1.6,) * 3
     nt.links.new(tc.outputs['Object'], mp.inputs['Vector'])
     mp2 = nt.nodes.new('ShaderNodeMapping'); mp2.inputs['Scale'].default_value = (1 / 3.1,) * 3
     mp2.inputs['Rotation'].default_value = (0, 0, 0.7)
@@ -335,11 +335,12 @@ def bed_material():
     # silt + wet darkening with depth; dry bar tops stay pale
     wetdark = _maprange(nt, depth, 0.0, 2.5, 0.0, 0.75)
     col = _mixrgb(nt, wetdark, col, (0.05, 0.055, 0.045, 1), 'MIX')
-    col = _mixrgb(nt, _maprange(nt, depth, -0.05, 0.05, 0.0, 0.35), col, (0.3, 0.3, 0.3, 1), 'MULTIPLY')
+    # wet dark margin just above the waterline (depth -0.6..0 m), dry pale cobbles above
+    col = _mixrgb(nt, _maprange(nt, depth, -0.7, 0.02, 0.0, 0.6), col, (0.25, 0.24, 0.22, 1), 'MULTIPLY')
     nt.links.new(col, _inp(b, 'Base Color'))
-    nt.links.new(_maprange(nt, depth, -0.05, 0.05, 0.85, 0.35), _inp(b, 'Roughness'))
+    nt.links.new(_maprange(nt, depth, -0.7, 0.05, 0.85, 0.3), _inp(b, 'Roughness'))
     disp = _tex_or_none(nt, 'river_small_rocks', 'disp', mp.outputs[0], False)
-    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.6; bp.inputs['Distance'].default_value = 0.06
+    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.9; bp.inputs['Distance'].default_value = 0.1
     nt.links.new(disp.outputs['Color'] if disp else vor.outputs['Distance'], bp.inputs['Height'])
     nt.links.new(bp.outputs['Normal'], _inp(b, 'Normal'))
     # soft edge into the surrounding terrain
@@ -369,25 +370,37 @@ def shore_material():
 
 
 def rock_material():
+    """River boulders: grey-brown weathered granite/gneiss, lichen and moss on the dry tops, dark and glossy
+    below the waterline (attr 'wet'), strong small-scale relief."""
     m, nt = _new_mat('MAT_RiverRock')
     out = nt.nodes.new('ShaderNodeOutputMaterial')
     b = nt.nodes.new('ShaderNodeBsdfPrincipled')
     tc = nt.nodes.new('ShaderNodeTexCoord')
-    mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / 1.5,) * 3
+    mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (1 / 1.2,) * 3
     nt.links.new(tc.outputs['Object'], mp.inputs['Vector'])
-    t = _tex_or_none(nt, 'mossy_rock', 'diff', mp.outputs[0])
+    t = _tex_or_none(nt, 'rock_face', 'diff', mp.outputs[0]) or _tex_or_none(nt, 'mossy_rock', 'diff', mp.outputs[0])
     wetz = _attr(nt, 'wet')
-    base = t.outputs['Color'] if t else (0.32, 0.30, 0.27, 1)
-    n = nt.nodes.new('ShaderNodeTexNoise'); n.inputs['Scale'].default_value = 0.7
+    n = nt.nodes.new('ShaderNodeTexNoise'); n.inputs['Scale'].default_value = 0.9; n.inputs['Detail'].default_value = 8
     nt.links.new(tc.outputs['Object'], n.inputs['Vector'])
-    col = _mixrgb(nt, 0.35, base, (0.30, 0.29, 0.26, 1)) if t else _mixrgb(nt, n.outputs['Fac'], (0.16, 0.155, 0.14, 1), (0.34, 0.32, 0.29, 1))
-    col = _mixrgb(nt, 1.0, col, (0.72, 0.72, 0.70, 1), 'MULTIPLY')
-    col = _mixrgb(nt, _math(nt, 'MULTIPLY', wetz, 0.7), col, (0.05, 0.05, 0.045, 1))
+    base = _mixrgb(nt, n.outputs['Fac'], (0.13, 0.125, 0.115, 1), (0.30, 0.285, 0.26, 1))
+    col = _mixrgb(nt, 0.6, base, t.outputs['Color'], 'OVERLAY') if t else base
+    # moss/lichen on upward faces above the water
+    geo = nt.nodes.new('ShaderNodeNewGeometry')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(geo.outputs['Normal'], sep.inputs[0])
+    up = _maprange(nt, sep.outputs['Z'], 0.55, 0.95)
+    mn = nt.nodes.new('ShaderNodeTexNoise'); mn.inputs['Scale'].default_value = 2.5; mn.inputs['Detail'].default_value = 6
+    nt.links.new(tc.outputs['Object'], mn.inputs['Vector'])
+    moss = _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', up, _maprange(nt, mn.outputs['Fac'], 0.45, 0.65)), _math(nt, 'SUBTRACT', 1.0, wetz))
+    col = _mixrgb(nt, _math(nt, 'MULTIPLY', moss, 0.75), col, (0.09, 0.12, 0.04, 1))
+    col = _mixrgb(nt, _math(nt, 'MULTIPLY', wetz, 0.8), col, (0.035, 0.035, 0.03, 1))
     nt.links.new(col, _inp(b, 'Base Color'))
-    nt.links.new(_maprange(nt, wetz, 0, 1, 0.85, 0.25), _inp(b, 'Roughness'))
-    d = _tex_or_none(nt, 'mossy_rock', 'disp', mp.outputs[0], False)
-    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.8; bp.inputs['Distance'].default_value = 0.08
-    nt.links.new(d.outputs['Color'] if d else n.outputs['Fac'], bp.inputs['Height'])
+    nt.links.new(_maprange(nt, wetz, 0, 1, 0.8, 0.18), _inp(b, 'Roughness'))
+    d = _tex_or_none(nt, 'rock_face', 'disp', mp.outputs[0], False) or _tex_or_none(nt, 'mossy_rock', 'disp', mp.outputs[0], False)
+    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 1.0; bp.inputs['Distance'].default_value = 0.12
+    vr = nt.nodes.new('ShaderNodeTexVoronoi'); vr.feature = 'DISTANCE_TO_EDGE'; vr.inputs['Scale'].default_value = 1.6
+    nt.links.new(tc.outputs['Object'], vr.inputs['Vector'])
+    hsum = _math(nt, 'ADD', d.outputs['Color'] if d else n.outputs['Fac'], _math(nt, 'MULTIPLY', _maprange(nt, vr.outputs['Distance'], 0.0, 0.08), 0.6))
+    nt.links.new(hsum, bp.inputs['Height'])
     nt.links.new(bp.outputs['Normal'], _inp(b, 'Normal'))
     nt.links.new(b.outputs[0], out.inputs['Surface'])
     return m
