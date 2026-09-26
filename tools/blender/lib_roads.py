@@ -318,15 +318,16 @@ def _asphalt_material():
     patch = b.mul(patch, b.lt(au, b.sub(hw, 0.3)))
     col = b.mix(patch, col, b.mix(cr.outputs['Green'], (0.022, 0.022, 0.024), (0.06, 0.058, 0.055)))
     # --- cracks: alligator clusters, transverse cracks, sealed centre joint (tar snakes)
-    ed = b.voronoi(b.mapping(road_uv, 1.3), 1.0, 'DISTANCE_TO_EDGE', 'Distance')
-    cluster = b.smooth(b.noise(b.mapping(road_uv, 9.0), 1.0, 2.0), b.sub(0.72, b.mul(age, 0.22)), b.sub(0.82, b.mul(age, 0.2)))
-    crack = b.mul(b.lt(ed, 0.035), cluster)
+    # alligator cracking: small cells, in patches, mostly in the wheel paths of old roads
+    ed = b.voronoi(b.mapping(road_uv, 0.32), 1.0, 'DISTANCE_TO_EDGE', 'Distance')
+    cluster = b.smooth(b.noise(b.mapping(road_uv, 7.0), 1.0, 2.0), b.sub(0.78, b.mul(age, 0.16)), b.sub(0.86, b.mul(age, 0.14)))
+    crack = b.mul(b.mul(b.lt(ed, 0.02), cluster), b.gt(age, 0.4))
     tr = b.fract(b.add(b.math('DIVIDE', rs, 13.7), b.mul(b.noise(road_uv, 0.6, 1.0), 0.15)))
     trans = b.mul(b.lt(tr, 0.006), b.gt(age, 0.35))
     joint = b.mul(b.lt(b.absv(b.add(rl, b.mul(b.sub(b.noise(road_uv, 0.8, 1.0), 0.5), 0.1))), 0.05), b.gt(age, 0.25))
     tar = b.mx(b.mx(crack, trans), b.mul(joint, b.lt(mk, 5.5)))
     tar = b.mul(tar, b.lt(au, b.sub(hw, 0.15)))
-    col = b.mix(b.mul(tar, 0.85), col, (0.008, 0.008, 0.009))
+    col = b.mix(b.mul(tar, 0.7), col, (0.012, 0.012, 0.013))
     # --- pavement edge raveling (grey-brown aggregate)
     ravel = b.mul(b.smooth(au, b.sub(hw, 0.45), hw), b.smooth(b.noise(road_uv, 1.3, 3.0), 0.4, 0.62))
     col = b.mix(b.mul(ravel, 0.75), col, (0.12, 0.105, 0.085))
@@ -358,7 +359,6 @@ def _asphalt_material():
     yellow = b.mx(yellow, b.mul(band(au, b.add(uin, 0.08), 0.1), is_(6)))
     # main street parking: T marks every 6.7 m in the parking lanes
     park = b.mul(b.mul(b.lt(b.fract(b.math('DIVIDE', rs, 6.7)), 0.02), b.gt(au, b.add(lw, 0.2))), is_(5))
-    park = b.mx(park, b.mul(band(au, b.add(lw, 0.05), 0.1), is_(5)))
     white = b.mx(white, b.mul(park, b.lt(au, b.sub(hw, 0.2))))
     # stop bars (right half of the approach) and crosswalks at junction mouths
     sa, sbb, xa, xb, ln = b.attr('sa'), b.attr('sb'), b.attr('xa'), b.attr('xb'), b.attr('len')
@@ -420,7 +420,7 @@ def _gravel_material(name='MAT_Road_Gravel', col=(0.15, 0.135, 0.11), aid='grave
     return m
 
 
-def _concrete_material(name='MAT_Road_Concrete', col=(0.42, 0.41, 0.38), joints=1.5):
+def _concrete_material(name='MAT_Road_Concrete', col=(0.3, 0.295, 0.275), joints=1.5):
     m = bpy.data.materials.new(name)
     b = NB(m)
     obj = b.tc.outputs['Object']
@@ -491,7 +491,7 @@ def materials():
         'shoulder': _gravel_material('MAT_Road_GravelShoulder', (0.13, 0.12, 0.1), 'gravel_road', 2.0, col2=(0.11, 0.1, 0.07), ruts=False),
         'clay': _gravel_material('MAT_Road_RedClay', (0.24, 0.105, 0.05), 'red_dirt_mud_01', 3.0, col2=(0.2, 0.1, 0.055)),
         'concrete': _concrete_material(),
-        'sidewalk': _concrete_material('MAT_Road_Sidewalk', (0.46, 0.45, 0.42), 1.5),
+        'sidewalk': _concrete_material('MAT_Road_Sidewalk', (0.27, 0.265, 0.245), 1.5),
         'bridge_concrete': _concrete_material('MAT_Bridge_Concrete', (0.44, 0.43, 0.40), 0.0),
         'verge': _verge_material(),
         'truss': _steel_material('MAT_Bridge_Steel_Truss', (0.36, 0.40, 0.38), 0.5, 0.3),

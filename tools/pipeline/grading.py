@@ -465,8 +465,8 @@ def main():
                     zmin[max(0, k - half):k + half + 1] = np.maximum(zmin[max(0, k - half):k + half + 1], zrail + RAIL_OVER_CLEAR)
                     seps.append({'upper': roads[ow]['properties']['id'], 'lower': rf['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'lower_z': rnd(zrail, 2), 'kind': 'rail', 'angle_deg': rnd(ang, 1)})
                 else:
-                    pins[k] = zrail + 0.53  # road surface flush with the rail heads (ballast +0.3, tie 0.08, rail 0.15)
-                    rail_crossings.append({'road': roads[ow]['properties']['id'], 'rail': rf['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'z': rnd(zrail + 0.53, 2),
+                    pins[k] = zrail + 0.46  # road surface ~7 cm below the rail heads (flangeways; timber crossing panels)
+                    rail_crossings.append({'road': roads[ow]['properties']['id'], 'rail': rf['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'z': rnd(zrail + 0.46, 2),
                                            'angle_deg': rnd(ang, 1), 'road_type': t, 'tracks': tracks})
         # freeway carried over a crossroad (interchanges.json upper='freeway')
         if t == 'freeway':

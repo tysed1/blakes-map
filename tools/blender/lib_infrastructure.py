@@ -620,11 +620,19 @@ def build_signs(coll, net, T, P_):
             c = P[0, :2] + N[0] * u * sgn
             add(kind, c, float(T.at(*w2px(c[0], c[1]))), -Tt[0] * direction)
         if sec['t'] in ('highway', 'rural', 'collector') and not sec['curb']:
-            R = 1.0 / np.maximum(np.abs(k_), 1e-6)
-            for a, b in _runs(R < 175, 12.0, s):
-                left = np.mean(k_[a:b + 1]) > 0
-                put('curve_l' if left else 'curve_r', s[a] - 55, 1)
-                put('curve_r' if left else 'curve_l', s[b] + 55, -1)
+            # warn only where the curve needs a speed below the road's (R < 110 m), one sign
+            # per curve group, not in towns
+            if ch['zone'] is None:
+                R = 1.0 / np.maximum(np.abs(k_), 1e-6)
+                last = -1e9
+                for a, b in _runs(R < 110, 18.0, s):
+                    if s[a] - last < 180:
+                        last = s[b]
+                        continue
+                    left = np.mean(k_[a:b + 1]) > 0
+                    put('curve_l' if left else 'curve_r', s[a] - 55, 1)
+                    put('curve_r' if left else 'curve_l', s[b] + 55, -1)
+                    last = s[b]
         if sec['t'] == 'highway':
             for st in np.arange(140.0, s[-1] - 100, 1600.0):
                 put('speed55', st, 1)
@@ -655,6 +663,34 @@ def build_signs(coll, net, T, P_):
                 tg = np.array([f_(D['T'][:, 0]), f_(D['T'][:, 1])])
                 c = p + nrm * (f_(D['hw']) + _side_offset(e['sec']) * 0.5 + 1.2 + extra) * direction
                 add(kind, c, float(T.at(*w2px(c[0], c[1]))), -tg * direction)
+    print('   signs:', {k: len(v[0]) for k, v in place.items()})
+    # timber crossing panels on the road at every at-grade crossing (between and beside the rails)
+    PM = Mesh()
+    rails = {f['properties']['id']: f for f in load('data/railways/railways.geojson')['features']}
+    for f in load('data/roads/rail_crossings.geojson')['features']:
+        pr = f['properties']
+        e = edge_by_id.get(pr['road'])
+        rf = rails.get(pr['rail'])
+        if e is None or rf is None:
+            continue
+        rc = np.asarray(rf['geometry']['coordinates'], float)
+        X, Y = px2w(rc[:, 0], rc[:, 1])
+        x, y = px2w(*f['geometry']['coordinates'])
+        k = int(np.argmin(np.hypot(X - x, Y - y)))
+        k2 = min(k + 1, len(X) - 1) if k + 1 < len(X) else k - 1
+        td = np.array([X[k2] - X[k], Y[k2] - Y[k]]); td /= max(np.hypot(*td), 1e-9)
+        tn = np.array([-td[1], td[0]])
+        zr_ = float(np.interp(0, [0], [rc[k, 2]]))
+        D = e['_deck']
+        kk = int(np.argmin(np.hypot(D['P'][:, 0] - x, D['P'][:, 1] - y)))
+        half = D['hw'][kk] + 0.8
+        ang = abs(np.dot(td, D['T'][kk]))
+        across = half / max(math.sqrt(max(1 - ang * ang, 0.05)), 0.3)
+        for off, w in ((-1.1, 0.6), (0.0, 1.35), (1.1, 0.6)):
+            c = np.array([x, y]) + tn * off
+            box_at(PM, c, td, tn, across, w / 2, zr_ + 0.39, zr_ + 0.515, 0)
+    if not PM.empty():
+        PM.to_object('INFRA Railroad Crossing Panels', coll, [mats()['wood']], smooth=False)
     n = 0
     for kind, (pts, rz) in place.items():
         if kind in P_:
@@ -741,6 +777,28 @@ def build_culverts(coll, net, T):
                             box_at(M, c + t_ * w * 1.6 + nrm * sgn * 0.6, nrm, t_, 0.7, 0.14, g - 0.6, g + 0.6, 0)
                         box_at(M, c + nrm * sgn * 0.2, t_, nrm, 0.45, 0.05, g - 0.1, g + 0.55, 1)  # pipe mouth (dark)
                     n += 1
+    # cross culverts at every sag of the road profile (where runoff from both sides collects)
+    for ch in chains(net, ('highway', 'rural', 'collector', 'gravel', 'arterial', 'ramp')):
+        if ch['sec']['curb']:
+            continue
+        s, z = ch['s'], ch['P'][:, 2]
+        if len(s) < 20:
+            continue
+        for i in range(8, len(s) - 8):
+            w = (s > s[i] - 45) & (s < s[i] + 45)
+            if z[i] > z[w].min() + 1e-6 or ch['deck'][i] or ch['near'][i]:
+                continue
+            if min(z[w][0], z[w][-1]) - z[i] < 0.6:
+                continue
+            t_ = ch['T'][i]; nrm = ch['N'][i]
+            u = ch['hw'][i] + _side_offset(ch['sec']) + 0.6
+            for sgn in (-1, 1):
+                c = ch['P'][i, :2] + nrm * u * sgn
+                g = float(T.at(*w2px(c[0], c[1])))
+                top = min(float(z[i]) - 0.15, g + 1.2)
+                box_at(M, c, t_, nrm, 1.3, 0.16, g - 0.6, max(top, g + 0.8), 0)
+                box_at(M, c + nrm * sgn * 0.17, t_, nrm, 0.4, 0.02, g - 0.05, g + 0.5, 1)
+            n += 1
     if not M.empty():
         M.to_object('INFRA Culvert Headwalls', coll, [mats()['concrete'], mats()['dark']], smooth=False)
     return n
