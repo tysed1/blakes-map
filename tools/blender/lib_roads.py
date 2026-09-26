@@ -306,10 +306,11 @@ def _asphalt_material():
     oil = b.sub(1.0, b.smooth(b.absv(b.sub(p, 0.5)), 0.03, 0.16))
     oil = b.mul(oil, b.mul(b.smooth(b.noise(road_uv, 0.25, 2.0), 0.35, 0.7), b.lt(au, b.sub(hw, esh))))
     oil = b.mul(oil, b.sub(1.0, b.mul(surf, 0.6)))
-    col = b.mix(b.mul(oil, 0.55), col, (0.012, 0.012, 0.013))
+    traffic = b.add(0.3, b.mul(b.gt(mk, 0.5), 0.7))   # busy roads show oil strips, quiet streets barely
+    col = b.mix(b.mul(oil, b.mul(traffic, 0.35)), col, (0.016, 0.016, 0.017))
     wheel = b.sub(1.0, b.smooth(b.absv(b.sub(b.absv(b.sub(p, 0.5)), 0.27)), 0.05, 0.14))
     wheel = b.mul(wheel, b.lt(au, b.sub(hw, esh)))
-    col = b.mix(b.mul(wheel, b.mul(age, 0.25)), col, b.mix(0.5, col, (0.2, 0.19, 0.17)))
+    col = b.mix(b.mul(wheel, b.mul(age, 0.12)), col, b.mix(0.5, col, (0.2, 0.19, 0.17)))
     # --- rectangular patch repairs aligned with the road (u across, s along)
     pv = b.mapping(road_uv, (1 / 3.4, 1 / 8.5, 1.0))
     cell = b.voronoi(pv, 1.0, 'F1', 'Color')
@@ -1012,6 +1013,22 @@ def build_edge(net, idx, T, ctl, shared=None):
         GB[:, :, 1] = P[:, 1:2] + N[:, 1:2] * prof[None, :, 0]
         GB[:, :, 2] = P[:, 2:3] + prof[None, :, 1] - 0.01
         M.grid(GB, [SLOT['concrete']] * (m - 1), rl=0.0, rs=np.broadcast_to(ss[:, None], (n, m)), **dict(const, mk=0))
+    # rounded ends at intentional dead ends (cul-de-sac / end of pavement), not at the map border
+    for end, r, nid in ((0, 0, e['p']['from']), (1, n - 1, e['p']['to'])):
+        if len(net.legs.get(nid, [])) != 1 or t not in ('residential', 'urban_street', 'collector', 'rural', 'main_street'):
+            continue
+        px_, py_ = w2px(P[r, 0], P[r, 1])
+        if min(px_, py_, W - px_, H - py_) < 3:
+            continue
+        out = -S['T'][r] if end == 0 else S['T'][r]
+        R = hwv[r] * (1.35 if sec['curb'] else 1.0)
+        ang0 = math.atan2(N[r, 1], N[r, 0])
+        sgn_ = 1 if np.cross(np.r_[N[r], 0], np.r_[out, 0])[2] > 0 else -1
+        m_ = 12
+        arc = [P[r, :2] + R * np.array([math.cos(ang0 + sgn_ * math.pi * q / m_), math.sin(ang0 + sgn_ * math.pi * q / m_)]) for q in range(m_ + 1)]
+        V = np.array([[P[r, 0], P[r, 1], P[r, 2]]] + [[a[0], a[1], P[r, 2] - sec['crown'] * R] for a in arc])
+        F = np.array([(0, 1 + q, 2 + q) for q in range(m_)])
+        M.add(V, F, mat_pav, rl=99.0, rs=0.0, **dict(const, mk=0))
     # mouth rows for the junction builder (left/right relative to the outward direction)
     mouths = {}
     for end, r in ((0, 0), (1, n - 1)):

@@ -7,7 +7,7 @@
     1864.14,
     492.71
    ],
-   "lower_z": 290.53,
+   "lower_z": 290.49,
    "kind": "rail",
    "angle_deg": 14.8
   },
@@ -18,13 +18,13 @@
     1958.32,
     555.21
    ],
-   "lower_z": 285.16,
+   "lower_z": 285.14,
    "kind": "rail",
    "angle_deg": 11.9
   },
   {
    "upper": "TV_RD_3185",
-   "lower": "TV_RD_3187",
+   "lower": "TV_RD_3203",
    "at": [
     1818.06,
     342.87
@@ -39,7 +39,7 @@
     307.47,
     415.33
    ],
-   "lower_z": 325.9
+   "lower_z": 326.0
   },
   {
    "upper": "RU_RD_0248",
@@ -48,7 +48,7 @@
     859.33,
     384.27
    ],
-   "lower_z": 353.8,
+   "lower_z": 353.52,
    "kind": "rail",
    "angle_deg": 18.4
   },
@@ -59,7 +59,7 @@
     1881.66,
     153.17
    ],
-   "lower_z": 317.57
+   "lower_z": 317.34
   },
   {
    "upper": "LC_RD_2610",
@@ -68,7 +68,7 @@
     99.27,
     85.47
    ],
-   "lower_z": 335.3
+   "lower_z": 335.27
   },
   {
    "upper": "LC_RD_2610",
@@ -77,7 +77,7 @@
     98.74,
     68.93
    ],
-   "lower_z": 334.71
+   "lower_z": 334.68
   },
   {
    "upper": "LC_RD_2432",
@@ -86,7 +86,7 @@
     401.48,
     523.51
    ],
-   "lower_z": 316.64
+   "lower_z": 316.77
   },
   {
    "upper": "TV_RD_3170",
@@ -95,7 +95,7 @@
     1745.75,
     422.06
    ],
-   "lower_z": 296.25,
+   "lower_z": 296.01,
    "kind": "rail",
    "angle_deg": 47.5
   },
@@ -106,9 +106,20 @@
     1640.76,
     379.2
    ],
-   "lower_z": 299.52,
+   "lower_z": 298.98,
    "kind": "rail",
    "angle_deg": 81.3
+  },
+  {
+   "upper": "RU_RD_0565",
+   "lower": "RR_VALLEY",
+   "at": [
+    1354.24,
+    560.41
+   ],
+   "lower_z": 358.04,
+   "kind": "rail",
+   "angle_deg": 74.4
   }
  ],
  "issues": [
@@ -116,21 +127,21 @@
    "kind": "earthwork",
    "id": "RU_RD_0192",
    "type": "driveway",
-   "cut_m": 13.3,
+   "cut_m": 14.6,
    "fill_m": 3.5
   },
   {
    "kind": "grade",
    "id": "RU_RD_0421",
    "type": "gravel",
-   "max_grade_pct": 83.8,
+   "max_grade_pct": 140.4,
    "limit_pct": 15.0
   },
   {
    "kind": "grade",
    "id": "RU_RD_0565",
    "type": "gravel",
-   "max_grade_pct": 27.4,
+   "max_grade_pct": 140.4,
    "limit_pct": 15.0
   }
  ]

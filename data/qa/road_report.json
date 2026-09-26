@@ -4,8 +4,8 @@
   "short_edge:warn": 2
  },
  "components": 1,
- "edges": 1381,
- "nodes": 1031,
+ "edges": 1380,
+ "nodes": 1030,
  "issues": [
   {
    "kind": "radius",
@@ -171,8 +171,8 @@
    "kind": "radius",
    "severity": "warn",
    "at": [
-    1597.0,
-    412.9
+    1596.8,
+    412.8
    ],
    "msg": "TV_RD_3158 (urban_street) curve radius 9 m < 12 m",
    "ref": "TV_RD_3158"
@@ -212,7 +212,7 @@
    "severity": "warn",
    "at": [
     1808.6,
-    221.8
+    221.9
    ],
    "msg": "TV_RD_2949 (urban_street) curve radius 10 m < 12 m",
    "ref": "TV_RD_2949"
