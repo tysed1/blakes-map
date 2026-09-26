@@ -45,7 +45,7 @@
    "upper": "RU_RD_0248",
    "lower": "RR_VALLEY",
    "at": [
-    859.33,
+    859.32,
     384.27
    ],
    "lower_z": 353.41,
@@ -92,7 +92,7 @@
    "upper": "TV_RD_3170",
    "lower": "RR_TV_YARD",
    "at": [
-    1745.68,
+    1745.69,
     422.08
    ],
    "lower_z": 296.01,
@@ -104,7 +104,7 @@
    "lower": "RR_TV_YARD",
    "at": [
     1640.76,
-    379.2
+    379.21
    ],
    "lower_z": 298.98,
    "kind": "rail",
@@ -112,13 +112,6 @@
   }
  ],
  "issues": [
-  {
-   "kind": "grade",
-   "id": "HR_RD_0318",
-   "type": "collector",
-   "max_grade_pct": 22.5,
-   "limit_pct": 10.0
-  },
   {
    "kind": "grade",
    "id": "RU_RD_0421",
