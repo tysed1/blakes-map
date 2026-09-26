@@ -740,6 +740,18 @@ def region_prefix(pt, zones):
     return REGION_PREFIX[z['settlement'] if z else None]
 
 
+def chaikin(p, n=2):
+    """Corner-cutting smoothing with fixed endpoints (curves for traced local streets)."""
+    p = np.asarray(p, float)
+    for _ in range(n):
+        q = [p[0]]
+        for a, b in zip(p[:-1], p[1:]):
+            q += [0.75 * a + 0.25 * b, 0.25 * a + 0.75 * b]
+        q.append(p[-1])
+        p = np.asarray(q)
+    return rdp(p, 0.08)
+
+
 def write(G, zones):
     wb = load_json(path('data/water/water_bodies.geojson'))
     water = unary_union([shape(f['geometry']) for f in wb['features']])
@@ -758,6 +770,8 @@ def write(G, zones):
     edge_ids = {}
     for u, v, d in sorted(G.edges(data=True), key=lambda e: tuple(np.round(e[2]['pts'][len(e[2]['pts']) // 2]))):
         pts = np.asarray(d['pts'])
+        if d['attrs']['src'] in ('auto', 'auto_gap') and len(pts) > 2:
+            pts = chaikin(pts, 3)
         a_xy = np.asarray(G.nodes[u]['xy'])
         if np.hypot(*(pts[-1] - a_xy)) < np.hypot(*(pts[0] - a_xy)):
             pts = pts[::-1]  # geometry always runs from 'from' to 'to'

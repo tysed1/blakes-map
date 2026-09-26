@@ -1,0 +1,67 @@
+{
+ "classes": [
+  {
+   "id": 0,
+   "name": "none",
+   "color": "#000000"
+  },
+  {
+   "id": 1,
+   "name": "water",
+   "color": "#3b6e8f"
+  },
+  {
+   "id": 2,
+   "name": "forest_hardwood",
+   "color": "#5d7a32"
+  },
+  {
+   "id": 3,
+   "name": "forest_conifer",
+   "color": "#2f5234"
+  },
+  {
+   "id": 4,
+   "name": "farmland",
+   "color": "#b9b56a"
+  },
+  {
+   "id": 5,
+   "name": "meadow",
+   "color": "#8fa55a"
+  },
+  {
+   "id": 6,
+   "name": "rock",
+   "color": "#9a968a"
+  },
+  {
+   "id": 7,
+   "name": "residential",
+   "color": "#a8a37e"
+  },
+  {
+   "id": 8,
+   "name": "commercial",
+   "color": "#9d8f80"
+  },
+  {
+   "id": 9,
+   "name": "industrial",
+   "color": "#8c8a86"
+  },
+  {
+   "id": 10,
+   "name": "rail_yard",
+   "color": "#6f6258"
+  },
+  {
+   "id": 11,
+   "name": "town",
+   "color": "#a3a07a"
+  }
+ ],
+ "raster": "data/landuse/landuse_classes.png",
+ "tree_density": "data/landuse/tree_density.png",
+ "conifer_ratio": "data/landuse/conifer_ratio.png"
+}

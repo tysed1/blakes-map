@@ -10,8 +10,10 @@ python3 tools/pipeline/roads.py
 python3 tools/pipeline/railways.py
 python3 tools/pipeline/terrain.py
 python3 tools/pipeline/grading.py
-[ -f tools/pipeline/buildings.py ] && python3 tools/pipeline/buildings.py
-[ -f tools/pipeline/landuse.py ] && python3 tools/pipeline/landuse.py
+# buildings: deferred (tools/pipeline/buildings.py is a draft, not part of the build yet)
+python3 tools/pipeline/landuse.py
+python3 tools/pipeline/terrain_albedo.py
+python3 tools/pipeline/backdrop.py
 python3 tools/qa/validate_roads.py
 [ -f tools/qa/validate_world.py ] && python3 tools/qa/validate_world.py
 [ -f tools/pipeline/export_web.py ] && python3 tools/pipeline/export_web.py

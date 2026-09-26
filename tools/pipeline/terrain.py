@@ -240,6 +240,11 @@ def main():
     Aeff = A + rel['rock_amplitude_bonus_m'] * rk * (A / 200)
     s0 = rel['base_slope_m_per_px'] + rel['rock_slope_bonus'] * rk
     relief = Aeff * (1 - np.exp(-d * s0 / np.maximum(Aeff, 1)))
+    # round off apexes (distance fields make conical tops): scale-aware smoothing
+    r1 = cv2.GaussianBlur(relief, (0, 0), 4)
+    r2 = cv2.GaussianBlur(relief, (0, 0), 10)
+    wgt = np.clip(d / 40.0, 0, 1)  # the further from lowland (higher), the rounder
+    relief = (relief * (1 - wgt) * 0.3 + r1 * (0.7 - 0.4 * wgt) + r2 * (0.3 + 0.7 * wgt)) / 1.3
     # lowland itself is not perfectly flat: gentle rolling (farmland/town hills)
     dl = ndi.distance_transform_edt(low).astype(np.float32)
     roll = (fbm(7) * 0.5 + 0.5) * np.clip(dl / 25, 0, 1) * 10

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blake's Map · World Planner</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 13 L6 5 L9 9 L11 6 L15 13Z' fill='%23c9a45a'/></svg>" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand"><b>Blake's Map</b><span>world planner · 1974 north Georgia</span></div>
+      <div class="seg" id="viewToggle"><button data-v="2d" class="on">2D Map</button><button data-v="3d">3D World</button></div>
+      <div class="search"><input id="search" placeholder="Search roads, places, IDs…" autocomplete="off" /><div id="results"></div></div>
+      <select id="region"></select>
+      <div class="seg cam" id="camMode"><button data-m="orbit" class="on" title="Orbit camera">Orbit</button><button data-m="top" title="Top-down camera">Top</button><button data-m="free" title="Free fly: WASD, Q/E, drag to look, Shift = fast">Free</button></div>
+    </header>
+    <aside id="panel">
+      <section><h3>Layers</h3><div id="layers"></div></section>
+      <section><h3>Reference / debug</h3>
+        <label class="row"><input type="checkbox" id="debug" /> Alignment mode (traced over source)</label>
+        <label class="row slider">Source map opacity <input type="range" id="baseOpacity" min="0" max="1" step="0.05" value="1" /></label>
+        <label class="row"><input type="checkbox" id="drape" /> 3D: drape source map on terrain</label>
+      </section>
+      <section><h3>Road types</h3><div id="legendRoads" class="legend"></div></section>
+      <section><h3>Land use</h3><div id="legendLand" class="legend"></div></section>
+      <section><h3>Junctions / structures</h3><div id="legendJ" class="legend"></div></section>
+      <section class="stats" id="stats"></section>
+    </aside>
+    <main id="views">
+      <div id="map2d" class="view on"></div>
+      <div id="world3d" class="view"></div>
+      <div id="loading"><div class="spin"></div><span id="loadmsg">loading world…</span></div>
+      <div id="coords"></div>
+      <div id="help3d" class="hint">Orbit: drag to rotate, right-drag to pan, wheel to zoom · Free: WASD, Q/E, drag to look</div>
+    </main>
+    <aside id="inspector"><div class="empty">Click a road, bridge, river, junction, landmark or place to inspect it.</div></aside>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

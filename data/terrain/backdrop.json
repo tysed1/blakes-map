@@ -1,0 +1,19 @@
+{
+ "cell_px": 4,
+ "cell_m": 10.0,
+ "w": 1900,
+ "h": 1566,
+ "origin_px": [
+  -2800,
+  -2800
+ ],
+ "min_m": 274.0,
+ "max_m": 975.0,
+ "map_rect_cells": [
+  700,
+  700,
+  1200,
+  866
+ ],
+ "note": "cell (i,j) centre at source px (origin + (i+0.5)*cell). Inside map_rect the real terrain is used by the viewer instead."
+}
