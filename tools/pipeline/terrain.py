@@ -135,8 +135,17 @@ def lowland_mask(wmask):
     for f in load_json(path('data/roads/roads.geojson'))['features']:
         if f['properties']['type'] in ('freeway', 'ramp'):
             continue
-        cv2.polylines(rr, [np.asarray(f['geometry']['coordinates']).round().astype(np.int32)], False, 1, 3)
+        cv2.polylines(rr, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, 3)
     dev = cv2.GaussianBlur(rr.astype(np.float32), (0, 0), 9)
+    # major routes follow valleys and gaps: their corridors are valley floor
+    corr = np.zeros((H, W), np.uint8)
+    CORR_W = {'freeway': 16, 'highway': 14, 'ramp': 10, 'arterial': 10, 'main_street': 10, 'collector': 9, 'rural': 8}
+    for f in load_json(path('data/roads/roads.geojson'))['features']:
+        wpx_ = CORR_W.get(f['properties']['type'])
+        if wpx_:
+            cv2.polylines(corr, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, wpx_)
+    for f in load_json(path('data/railways/railways.geojson'))['features']:
+        cv2.polylines(corr, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, 10)
     openland = (fd < 0.45) & (rock < 0.10)
     zones = [Polygon(z['pts']) for z in load_json(path('data/manual/zones.json'))['zones'] if z['kind'] not in ('city',)]
     zm = rasterize_polys(zones, (H, W)) > 0
@@ -150,7 +159,7 @@ def lowland_mask(wmask):
     lab, n = ndi.label(~low)
     sz = ndi.sum(~low, lab, range(1, n + 1))
     low |= np.isin(lab, 1 + np.where(sz < 600)[0])
-    low |= wmask
+    low |= wmask | (corr > 0)
     return low, fd, rock
 
 

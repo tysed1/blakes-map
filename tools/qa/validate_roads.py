@@ -44,6 +44,8 @@ def radius_profile(pts):
 
 def main():
     roads = load_json(path('data/roads/roads.geojson'))['features']
+    for f in roads:  # validate in plan (x, y); elevation is checked by grading.py
+        f['geometry']['coordinates'] = [c[:2] for c in f['geometry']['coordinates']]
     nodes = {f['properties']['id']: f for f in load_json(path('data/roads/road_nodes.geojson'))['features']}
     water = unary_union([shape(f['geometry']) for f in load_json(path('data/water/water_bodies.geojson'))['features']])
     G = nx.MultiGraph()

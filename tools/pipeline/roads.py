@@ -380,6 +380,10 @@ def interchange_ramps(manual):
             else:
                 x = np.vstack([x, nxt[::-1][1:]])
         ramps, sep = diamond(ic, f, x, wpx(byid[ic['freeway']][0]['type']) / 2, wpx('ramp') / 2, spec['defaults'])
+        if ic.get('kind') == 'half_diamond':
+            cy = sep['point'][1]
+            side = ic.get('keep_gore_side', 'north')
+            ramps = [r for r in ramps if (r['gore'][1] < cy) == (side == 'north')]
         sep.update(id=ic['id'], lower=ic['freeway'], upper_roads=ic['crossroad'])
         seps.append(sep)
         fname = byid[ic['freeway']][0].get('name', ic['freeway'])
@@ -489,11 +493,46 @@ def build_outputs(lines, pieces, zones):
             G.remove_edge(u, v, k)
     G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0])
     merge_chains(G)
+    trim_traced_at_rivers(G)
     clean_faces(G)
     engineer_pass(G)
     link_ramp_gores(G)
     classify_rural(G)
     write(G, zones)
+
+
+def trim_traced_at_rivers(G, max_wet=3.0):
+    """Only authored roads bridge rivers. Traced/grid streets that run into or
+    across a river are cut back to the bank (creeks < max_wet px stay as culverts)."""
+    from tools.lib import engineer as E
+    wb = load_json(path('data/water/water_bodies.geojson'))
+    water = unary_union([shape(f['geometry']) for f in wb['features']])
+    wbuf = water.buffer(1.5)
+    n_cut = 0
+    for u, v, k, d in list(G.edges(keys=True, data=True)):
+        if d['attrs']['src'] == 'manual':
+            continue
+        g = LineString(d['pts'])
+        if not g.intersects(water) or g.intersection(water).length <= max_wet:
+            continue
+        pts = E.oriented(G, u, v, d)
+        g = LineString(pts)
+        rest = g.difference(wbuf)
+        pieces = [rest] if rest.geom_type == 'LineString' else [q for q in getattr(rest, 'geoms', []) if q.geom_type == 'LineString']
+        G.remove_edge(u, v, k)
+        for q in pieces:
+            c = np.asarray(q.coords)
+            if q.length < 2:
+                continue
+            for node, end in ((u, 0), (v, -1)):
+                nxy = np.asarray(G.nodes[node]['xy'])
+                if np.hypot(*(c[0] - nxy)) < 0.3:
+                    nn = E.new_node(G, c[-1]); G.add_edge(node, nn, pts=c, attrs=d['attrs'], zone=d.get('zone'))
+                elif np.hypot(*(c[-1] - nxy)) < 0.3:
+                    nn = E.new_node(G, c[0]); G.add_edge(nn, node, pts=c, attrs=d['attrs'], zone=d.get('zone'))
+        n_cut += 1
+    G.remove_nodes_from([n for n in list(G.nodes) if G.degree(n) == 0])
+    print('  traced streets cut back at rivers:', n_cut)
 
 
 def link_ramp_gores(G):
@@ -718,7 +757,10 @@ def write(G, zones):
     bridges = []
     edge_ids = {}
     for u, v, d in sorted(G.edges(data=True), key=lambda e: tuple(np.round(e[2]['pts'][len(e[2]['pts']) // 2]))):
-        pts = d['pts']
+        pts = np.asarray(d['pts'])
+        a_xy = np.asarray(G.nodes[u]['xy'])
+        if np.hypot(*(pts[-1] - a_xy)) < np.hypot(*(pts[0] - a_xy)):
+            pts = pts[::-1]  # geometry always runs from 'from' to 'to'
         L = polyline_length(pts)
         mid = resample(pts, 1.0)
         mid = mid[len(mid) // 2]

@@ -29,13 +29,15 @@
   {
    "id": "IC_TV_SR60_RIVERFRONT",
    "name": "SR 60 / Riverfront Pkwy Interchange",
-   "kind": "diamond",
+   "kind": "half_diamond",
    "freeway": "HWY_SR60",
    "crossroad": [
     "TV_RIVERFRONT"
    ],
    "ramp_offset_px": 55,
-   "terminal_offset_px": 15
+   "terminal_offset_px": 15,
+   "keep_gore_side": "north",
+   "note": "Half diamond: the freeway crosses the Tanner immediately south of Riverfront Pkwy, so only the north-side ramps (SB exit, NB entrance) are built."
   }
  ]
 }
