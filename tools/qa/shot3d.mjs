@@ -13,7 +13,7 @@ page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
 await page.goto(get('--url', 'http://localhost:5173/#view=3d'));
 await page.waitForFunction(() => (window).w3d && document.querySelector('#loading')?.style.display === 'none', null, { timeout: 300000 });
 await page.waitForFunction(() => (window).w3d.backdropReady, null, { timeout: 300000 });
-await page.waitForFunction(() => (window).w3d.vegReady !== false && (window).w3d.camsReady !== false, null, { timeout: 300000 });
+await page.waitForFunction(() => (window).w3d.vegReady !== false && (window).w3d.camsReady !== false && (window).w3d.infraReady !== false && ((window).w3d.gcReady ?? true) !== false, null, { timeout: 300000 });
 await page.waitForTimeout(4000); // textures
 const url = await page.evaluate(([x, y, dist, pitch, yaw, mode, ev, cam]) => {
   const w = (window).w3d; w.stop();

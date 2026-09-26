@@ -269,7 +269,7 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     col = gravelCol(P, bxy, tGrav, 1.1, vec3(0.12, 0.115, 0.11), vec3(0.1, 0.085, 0.07), rl, 0.0); rough = 0.97;
   }
   // ACES (web) crushes the toe harder than Blender's AgX: lift the dark pavement albedos to read alike
-  diffuseColor.rgb = col * (kind == 0 ? 1.7 : kind <= 3 || kind == 7 ? 1.35 : 1.0);
+  diffuseColor.rgb = col * (kind == 0 ? 2.0 : kind <= 3 || kind == 7 ? 1.45 : 1.0);
   roughnessFactor = rough;
   metalnessFactor = 0.0;
 }`)
