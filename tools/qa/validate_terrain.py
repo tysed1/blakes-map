@@ -68,11 +68,18 @@ def main():
     for k, (L, p) in lines.items():
         xi = np.clip(L[:, 0].astype(int), 0, W - 1); yi = np.clip(L[:, 1].astype(int), 0, H - 1)
         z = WLn[yi, xi]
-        rise = np.maximum.accumulate(z[::-1])[::-1]  # max of downstream remainder
-        bad = np.nonzero(z[:-1] + 0.05 < rise[1:])[0]
+        # a tributary's last stretch inside its parent's channel takes the parent's surface: skip it
+        par = p.get('flows_into')
+        if par and par in lines:
+            from scipy.spatial import cKDTree
+            dd, _ = cKDTree(lines[par][0]).query(L, k=1)
+            z = np.where(dd > 8, z, np.nan)
+        zz = np.where(np.isfinite(z), z, -1e9)
+        rise = np.maximum.accumulate(zz[::-1])[::-1]  # max of the downstream remainder
+        bad = np.nonzero(np.isfinite(z[:-1]) & (z[:-1] + 0.05 < rise[1:]))[0]
         if len(bad):
             i = int(bad[np.argmax(rise[1:][bad] - z[:-1][bad])])
-            uphill.append({'id': k, 'at': [rnd(L[i, 0], 1), rnd(L[i, 1], 1)], 'rise_m': rnd(float((rise[1:] - z[:-1]).max()), 2), 'samples': int(len(bad))})
+            uphill.append({'id': k, 'at': [rnd(L[i, 0], 1), rnd(L[i, 1], 1)], 'rise_m': rnd(float(np.nanmax(rise[1:][bad] - z[:-1][bad])), 2), 'samples': int(len(bad))})
             marks.append((L[i, 0], L[i, 1], (0, 0, 255)))
         par = p.get('flows_into')
         if par and par in lines:
@@ -159,16 +166,20 @@ def main():
         items, n = clusters(sp)
         add(name, 'warn', items, {'clusters': n})
 
-    # ---------------- developed-zone slopes (graded terrain)
-    gy_, gx_ = np.gradient(cv2.GaussianBlur(TG, (0, 0), 1.0), MPP)
+    # ---------------- developed-zone slopes (raw terrain: the natural ground a town is built on; road
+    #                  corridors and river banks excluded - grading and channel shaping own those)
+    gy_, gx_ = np.gradient(cv2.GaussianBlur(T, (0, 0), 1.0), MPP)
     slope = np.hypot(gx_, gy_)
+    rr = np.zeros((H, W), np.uint8)
+    for f in load_json(path('data/roads/roads.geojson'))['features']:
+        cv2.polylines(rr, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, 9)
     zs = []
     for z in load_json(path('data/manual/zones.json'))['zones']:
         lim = ZONE_SLOPE.get(z['kind'])
         if lim is None:
             continue
         m = rasterize_polys([Polygon(z['pts'])], (H, W)) > 0
-        m &= ~(cv2.dilate(wet.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0)
+        m &= ~(cv2.dilate(wet.astype(np.uint8), np.ones((9, 9), np.uint8)) > 0) & (rr == 0)
         if not m.any():
             continue
         over = m & (slope > lim)

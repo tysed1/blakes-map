@@ -20,10 +20,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 HDRI = os.path.join(ROOT, 'assets/external/polyhaven/kloppenheim_06_puresky/kloppenheim_06_puresky_4k.hdr')
 
 SUN_AZ, SUN_EL = 255.0, 18.0          # compass azimuth / elevation (deg): late afternoon, WSW (sun from the left)
-SUN_COLOR = (1.0, 0.74, 0.50)
+SUN_COLOR = (1.0, 0.80, 0.60)
 FILL_COLOR = (0.62, 0.74, 1.0)
 HAZE_NEAR = (0.62, 0.66, 0.72, 1)     # haze colour mid distance (slightly warm grey-blue)
-HAZE_FAR = (0.50, 0.60, 0.78, 1)      # far ridges: cooler, bluer
+HAZE_FAR = (0.40, 0.52, 0.74, 1)      # far ridges: cooler, bluer
 
 
 def sun_dir(az, el):
@@ -56,7 +56,7 @@ def world(strength=0.8, rot_deg=0.0):
     out = nt.nodes.new('ShaderNodeOutputWorld')
     nt.links.new(tc.outputs['Generated'], mp.inputs['Vector']); nt.links.new(mp.outputs[0], env.inputs['Vector'])
     nt.links.new(env.outputs[0], bg.inputs[0]); nt.links.new(bg.outputs[0], out.inputs['Surface'])
-    w.mist_settings.start = 400; w.mist_settings.depth = 11000; w.mist_settings.falloff = 'LINEAR'
+    w.mist_settings.start = 500; w.mist_settings.depth = 15000; w.mist_settings.falloff = 'LINEAR'
     return w
 
 
@@ -80,39 +80,59 @@ def lights(fill_energy=1.1):
 
 
 def compositor(haze=0.85):
+    """Aerial perspective on geometry only, edge-correct: the film is rendered transparent and the
+    sky comes back from the Environment pass, so silhouettes against the sky are anti-aliased
+    correctly (a depth-threshold sky mask leaves dark un-hazed fringes on far ridges)."""
     sc = bpy.context.scene
     vl = sc.view_layers[0]
-    vl.use_pass_mist = True; vl.use_pass_z = True
+    vl.use_pass_mist = True; vl.use_pass_z = True; vl.use_pass_environment = True
+    sc.render.film_transparent = True
     sc.use_nodes = True
     ct = sc.node_tree
     for n in list(ct.nodes):
         ct.nodes.remove(n)
     N, L = ct.nodes, ct.links
+
+    def mixrgb(op, a, b, fac=1.0):
+        m = N.new('CompositorNodeMixRGB'); m.blend_type = op; m.use_clamp = op in ('SUBTRACT', 'DIVIDE')
+        if isinstance(fac, float):
+            m.inputs[0].default_value = fac
+        else:
+            L.new(fac, m.inputs[0])
+        for sock, v in ((m.inputs[1], a), (m.inputs[2], b)):
+            if isinstance(v, tuple):
+                sock.default_value = v
+            else:
+                L.new(v, sock)
+        return m.outputs[0]
     rl = N.new('CompositorNodeRLayers'); comp = N.new('CompositorNodeComposite')
-    # geometry mask (sky depth ~1e10; far backdrop ridges reach > 30 km): depth 1e6 -> 1..0
-    gm = N.new('CompositorNodeMapRange'); gm.inputs['From Min'].default_value = 1e6; gm.inputs['From Max'].default_value = 1e6 + 1
-    gm.inputs['To Min'].default_value = 1; gm.inputs['To Max'].default_value = 0; gm.use_clamp = True
-    L.new(rl.outputs['Depth'], gm.inputs['Value'])
+    A = rl.outputs['Alpha']
+    one_minus_a = mixrgb('SUBTRACT', (1, 1, 1, 1), A)
+    # mist of the geometry part of the pixel (background mist = 1): (mist - (1 - A)) / A
+    m_geo = mixrgb('DIVIDE', mixrgb('SUBTRACT', rl.outputs['Mist'], one_minus_a), A)
+    bw = N.new('CompositorNodeRGBToBW'); L.new(m_geo, bw.inputs[0])
     # haze amount = mist * strength (the ONLY Math node: render.py --mist sets its 2nd input)
-    k = N.new('CompositorNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = haze
-    L.new(rl.outputs['Mist'], k.inputs[0])
-    amt = N.new('CompositorNodeMixRGB'); amt.blend_type = 'MULTIPLY'; amt.inputs[0].default_value = 1
-    L.new(k.outputs[0], amt.inputs[1]); L.new(gm.outputs[0], amt.inputs[2])
-    # haze colour ramps from near (warm grey) to far (blue)
+    k = N.new('CompositorNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = haze; k.use_clamp = True
+    L.new(bw.outputs[0], k.inputs[0])
+    # haze colour ramps from near (warm grey) to far (blue), premultiplied by coverage
     ramp = N.new('CompositorNodeValToRGB')
     ramp.color_ramp.elements[0].color = HAZE_NEAR; ramp.color_ramp.elements[1].color = HAZE_FAR
-    L.new(rl.outputs['Mist'], ramp.inputs['Fac'])
-    # desaturate with distance first (atmospheric perspective), then blend to the haze colour
+    L.new(bw.outputs[0], ramp.inputs['Fac'])
+    haze_a = mixrgb('MULTIPLY', ramp.outputs['Image'], A)
+    # desaturate with distance (atmospheric perspective), then blend toward the haze colour
     desat = N.new('CompositorNodeHueSat')
     sat_amt = N.new('CompositorNodeMapRange'); sat_amt.inputs['From Min'].default_value = 0; sat_amt.inputs['From Max'].default_value = 1
     sat_amt.inputs['To Min'].default_value = 1.0; sat_amt.inputs['To Max'].default_value = 0.35; sat_amt.use_clamp = True
-    L.new(amt.outputs[0], sat_amt.inputs['Value'])
+    L.new(k.outputs[0], sat_amt.inputs['Value'])
     L.new(rl.outputs['Image'], desat.inputs['Image']); L.new(sat_amt.outputs[0], desat.inputs['Saturation'])
-    mix = N.new('CompositorNodeMixRGB'); mix.blend_type = 'MIX'
-    L.new(amt.outputs[0], mix.inputs[0]); L.new(desat.outputs[0], mix.inputs[1]); L.new(ramp.outputs['Image'], mix.inputs[2])
+    geo = mixrgb('MIX', desat.outputs[0], haze_a, k.outputs[0])
+    # sky back in (environment pass) behind the geometry
+    img = mixrgb('ADD', geo, mixrgb('MULTIPLY', rl.outputs['Env'], one_minus_a))
+    sa = N.new('CompositorNodeSetAlpha'); sa.mode = 'REPLACE_ALPHA'; sa.inputs['Alpha'].default_value = 1.0
+    L.new(img, sa.inputs['Image'])
     # soft glow (golden hour bloom)
     gl = N.new('CompositorNodeGlare'); gl.glare_type = 'FOG_GLOW'; gl.quality = 'MEDIUM'; gl.mix = -0.88; gl.threshold = 0.85; gl.size = 8
-    L.new(mix.outputs[0], gl.inputs['Image'])
+    L.new(sa.outputs[0], gl.inputs['Image'])
     # grade: warm highlights, cool lifted shadows, rich but controlled saturation
     cb = N.new('CompositorNodeColorBalance'); cb.correction_method = 'LIFT_GAMMA_GAIN'
     cb.lift = (0.985, 1.0, 1.035); cb.gamma = (1.02, 1.0, 0.97); cb.gain = (1.07, 1.02, 0.92)

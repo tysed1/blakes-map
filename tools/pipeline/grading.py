@@ -189,10 +189,10 @@ def section_for(p, types, zone_kind):
     sec = dict(types[t].get('section', {}))
     width = p.get('width_m') or types[t]['width_m']
     zk = zone_kind(p)
-    curb = bool(sec.get('curb_in_zones')) and zk in CURB_ZONES or bool(sec.get('curb'))
+    curb = bool(sec.get('curb_in_zones')) and zk in sec.get('curb_zones', CURB_ZONES) or bool(sec.get('curb'))
     if t in ('freeway', 'ramp'):
         curb = False
-    sidewalk = sec.get('sidewalk_m', 0.0) if curb else 0.0
+    sidewalk = sec.get('sidewalk_m', 0.0) if curb and ('sidewalk_zones' not in sec or zk in sec['sidewalk_zones']) else 0.0
     gravel = 0.0 if curb else sec.get('shoulder_gravel_m', 0.0)
     ditch_w = 0.0 if curb else sec.get('ditch_w_m', 0.0)
     ditch_d = 0.0 if curb else sec.get('ditch_d_m', 0.0)

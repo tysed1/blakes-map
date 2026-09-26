@@ -557,7 +557,7 @@ class Net:
         t = p['type']
         sec = dict(self.types[t].get('section', {}))
         hw = p.get('width_m', self.types[t]['width_m']) / 2
-        curb = (bool(sec.get('curb')) or (bool(sec.get('curb_in_zones')) and e['zone'] in CURB_ZONES)) and t not in ('freeway', 'ramp', 'highway')
+        curb = (bool(sec.get('curb')) or (bool(sec.get('curb_in_zones')) and e['zone'] in sec.get('curb_zones', CURB_ZONES))) and t not in ('freeway', 'ramp', 'highway')
         lanes = p.get('lanes') or self.types[t]['lanes']
         lw = sec.get('lane_w', 3.3)
         esh = sec.get('parking_m', sec.get('shoulder_paved_m', 0.0))
@@ -569,7 +569,8 @@ class Net:
             mk = 4
         if t == 'residential' and e['zone'] in ('city', 'downtown'):
             mk = 0
-        return {'t': t, 'hw': hw, 'curb': curb, 'sw': sec.get('sidewalk_m', 1.5) if curb else 0.0,
+        sw = sec.get('sidewalk_m', 1.5) if curb and ('sidewalk_zones' not in sec or e['zone'] in sec['sidewalk_zones']) else 0.0
+        return {'t': t, 'hw': hw, 'curb': curb, 'sw': max(sw, 0.3 if curb else 0.0),
                 'g': 0.0 if curb else sec.get('shoulder_gravel_m', 0.0), 'dw': 0.0 if curb else sec.get('ditch_w_m', 0.0),
                 'dd': 0.0 if curb else sec.get('ditch_d_m', 0.0), 'crown': sec.get('crown', 0.02), 'lw': lw, 'esh': esh,
                 'uin': uin, 'mk': mk, 'age': AGE.get(t, 0.5), 'surf': 1.0 if t == 'rural' else 0.0,

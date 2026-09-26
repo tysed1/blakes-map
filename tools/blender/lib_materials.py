@@ -62,7 +62,7 @@ LAYER = {
     'forest': ('forest_leaves_02', 2.6, 0.8, 0.35, 0.9), 'humus': ('brown_mud_leaves_01', 3.0, 0.7, 0.2, 0.8),
     'pasture': ('leafy_grass', 2.8, 0.45, 0.15, 0.95), 'hay': ('withered_grass', 2.4, 0.5, 0.1, 0.95),
     'plowed': ('farm_soil', 2.5, 0.8, 0.1, 0.95), 'fallow': ('withered_grass', 3.2, 0.55, 0.15, 0.95),
-    'lawn': ('leafy_grass', 2.2, 0.35, 0.1, 0.95), 'meadow': ('aerial_grass_rock', 5.0, 0.45, 0.15, 0.95),
+    'lawn': ('leafy_grass', 2.2, 0.35, 0.1, 0.95), 'meadow': ('leafy_grass', 4.0, 0.45, 0.1, 0.95),
     'verge': ('withered_grass', 2.0, 0.5, 0.15, 0.95), 'gravel': ('gravel_ground_01', 1.8, 0.8, 0.2, 0.9),
     'clay': ('red_mud_stones', 2.5, 0.7, 0.25, 0.9), 'mud': ('brown_mud_02', 2.2, 0.8, 0.2, 0.55),
     'bank': ('river_small_rocks', 2.0, 0.9, 0.2, 0.85), 'talus': ('rocky_trail', 3.0, 0.9, 0.15, 0.9),
@@ -186,8 +186,10 @@ def _detail_layer(nt, pos, key, n_macro, seed):
         nt.links.new(lum, lumc.inputs[i])
     rgb = _mix(nt, 1.0, dm, (1 / max(mean[0], 1e-3), 1 / max(mean[1], 1e-3), 1 / max(mean[2], 1e-3)), 'MULTIPLY')
     det = _mix(nt, chroma, lumc.outputs[0], rgb)
+    cl = nt.nodes.new('ShaderNodeVectorMath'); cl.operation = 'MINIMUM'; cl.inputs[1].default_value = (1.9, 1.9, 1.9)
+    nt.links.new(det, cl.inputs[0])
     g = nt.nodes.new('ShaderNodeGamma'); g.inputs['Gamma'].default_value = dpow
-    nt.links.new(det, g.inputs['Color'])
+    nt.links.new(cl.outputs[0], g.inputs['Color'])
     # palette: two tones by a 60 m noise, accent by a 25 m voronoi-ish noise
     p0, p1, p2 = PAL[key]
     n1 = _noise(nt, pos, 0.012 + 0.002 * seed, 1.5)

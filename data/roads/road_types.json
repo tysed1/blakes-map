@@ -1,5 +1,5 @@
 {
- "_doc": "Road classification for a 1974 north-Georgia setting. Widths are finished surface (edge to edge incl. paved shoulders) in metres; width_px = width_m / 2.5. The 55 mph national limit took effect Jan 1974. material = game-engine material category. 'section' = engineered cross-section used by grading.py and the Blender road builder (tools/blender/lib_roads.py): lane_w, paved/gravel shoulders, curb+sidewalk (curb, or curb_in_zones = only inside town/city zones), parking lanes, side ditch width/depth, crown cross-slope, marking scheme. An edge whose 'lanes' differs from the type default gets width = lanes*lane_w + 2*(paved shoulder or parking).",
+ "_doc": "Road classification for a 1974 north-Georgia setting. Widths are finished surface (edge to edge incl. paved shoulders) in metres; width_px = width_m / 2.5. The 55 mph national limit took effect Jan 1974. material = game-engine material category. 'section' = engineered cross-section used by grading.py and the Blender road builder (tools/blender/lib_roads.py): lane_w, paved/gravel shoulders, curb+sidewalk (curb, or curb_in_zones = only inside town/city zones), parking lanes, side ditch width/depth, crown cross-slope, marking scheme. An edge whose 'lanes' differs from the type default gets width = lanes*lane_w + 2*(paved shoulder or parking). curb_zones / sidewalk_zones restrict curbs and sidewalks to those zone kinds (1974 small-town residential streets: no curbs, no sidewalks).",
  "types": {
   "freeway": {
    "label": "Expressway (4-lane divided)",
@@ -99,7 +99,19 @@
     "sidewalk_m": 2.0,
     "edge_line": null,
     "centre": "double yellow",
-    "lane_line": "white dashed"
+    "lane_line": "white dashed",
+    "curb_zones": [
+     "city",
+     "downtown",
+     "industrial",
+     "town_center",
+     "town"
+    ],
+    "sidewalk_zones": [
+     "downtown",
+     "town_center",
+     "city"
+    ]
    }
   },
   "main_street": {
@@ -147,7 +159,18 @@
     "curb_in_zones": true,
     "sidewalk_m": 1.5,
     "centre": "yellow dashed",
-    "edge_line": null
+    "edge_line": null,
+    "curb_zones": [
+     "city",
+     "downtown",
+     "industrial",
+     "town_center"
+    ],
+    "sidewalk_zones": [
+     "downtown",
+     "town_center",
+     "city"
+    ]
    }
   },
   "urban_street": {
@@ -193,7 +216,17 @@
     "crown": 0.02,
     "curb_in_zones": true,
     "sidewalk_m": 1.2,
-    "centre": null
+    "centre": null,
+    "curb_zones": [
+     "city",
+     "downtown",
+     "industrial",
+     "town_center"
+    ],
+    "sidewalk_zones": [
+     "downtown",
+     "town_center"
+    ]
    }
   },
   "rural": {

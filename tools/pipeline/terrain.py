@@ -48,6 +48,10 @@ except ImportError:  # slow fallback
         return lambda f: f
 
 MPP = 2.5
+# deepest natural gap the terrain itself provides per route type; anything beyond is an engineered cut
+# (grading) or a sign the alignment should change (switchbacks) - reported by grading, not hidden here
+MAX_CUT = {'freeway': 14.0, 'highway': 14.0, 'ramp': 10.0, 'arterial': 10.0, 'main_street': 8.0, 'collector': 10.0,
+           'urban_street': 6.0, 'residential': 6.0, 'rural': 8.0, 'gravel': 5.0, 'dirt': 4.0, 'driveway': 3.0, 'rail': 14.0}
 MAX_GRADE = {'freeway': 0.06, 'highway': 0.08, 'ramp': 0.07, 'arterial': 0.08, 'main_street': 0.08, 'collector': 0.10,
              'urban_street': 0.12, 'residential': 0.12, 'rural': 0.12, 'gravel': 0.15, 'dirt': 0.18, 'driveway': 0.20, 'rail': 0.022}
 
@@ -197,7 +201,7 @@ def channel_fields(lines, prof, steep, feats, wmask):
     return dict(tree=tree, X=X, Y=Y, Z=Z, S=S_, K=K, TX=TX, TY=TY, I=I, C=C)
 
 
-def water_surface(CF, wmask):
+def water_surface(CF, wmask, lines=None, feats=None):
     """Continuous water surface: the centreline profiles are fixed and the level inside each water body is
     the harmonic interpolation between them (Laplace on the water pixels, no-flux at the banks). No
     Voronoi steps across bends or confluences; the fall is spread smoothly over riffles and rapids."""
@@ -209,6 +213,21 @@ def water_surface(CF, wmask):
     fixed_v = np.full(n, np.nan)
     ci = np.clip(CF['X'].astype(int), 0, W - 1); cj = np.clip(CF['Y'].astype(int), 0, H - 1)
     on = idx[cj, ci] >= 0
+    if lines is not None:
+        # inside a parent's channel a tributary's centreline is not a constraint (the mouth blends into the
+        # parent surface instead of imposing its own levels across the confluence)
+        dwi = ndi.distance_transform_edt(wmask)
+        keys = list(lines.keys())
+        start = np.r_[0, np.cumsum([len(lines[k]) for k in keys])]
+        for n_, k in enumerate(keys):
+            par = feats[k]['properties'].get('flows_into')
+            if not par or par not in lines:
+                continue
+            Lp = lines[par]
+            dd, jj = cKDTree(Lp).query(lines[k], k=1)
+            hwp = dwi[np.clip(Lp[jj, 1].astype(int), 0, H - 1), np.clip(Lp[jj, 0].astype(int), 0, W - 1)]
+            near = dd < hwp + 3.0
+            on[start[n_]:start[n_ + 1]] &= ~near
     order = np.argsort(-CF['Z'][on])  # write high first so the lowest ends up stored
     k = idx[cj[on], ci[on]][order]
     fixed_v[k] = CF['Z'][on][order]
@@ -401,15 +420,16 @@ def ridge_field(ridges, V, k=10.0, warp=None):
     crest = np.zeros((H, W), np.float32)
     for rd in ridges:
         hwmax = float(max(rd.hw_l.max(), rd.hw_r.max())) * (1 + max(np.abs(rd.sw_l).max(), np.abs(rd.sw_r).max()))
-        x0 = int(max(0, np.floor(rd.P[:, 0].min() - hwmax))); x1 = int(min(W, np.ceil(rd.P[:, 0].max() + hwmax)))
-        y0 = int(max(0, np.floor(rd.P[:, 1].min() - hwmax))); y1 = int(min(H, np.ceil(rd.P[:, 1].max() + hwmax)))
+        pad = hwmax + 30  # + domain warp + attribute blur margins: the field must reach 0 inside the box
+        x0 = int(max(0, np.floor(rd.P[:, 0].min() - pad))); x1 = int(min(W, np.ceil(rd.P[:, 0].max() + pad)))
+        y0 = int(max(0, np.floor(rd.P[:, 1].min() - pad))); y1 = int(min(H, np.ceil(rd.P[:, 1].max() + pad)))
         if x1 <= x0 or y1 <= y0:
             continue
         yy, xx = np.mgrid[y0:y1, x0:x1]
         q = np.stack([xx.ravel() + 0.5, yy.ravel() + 0.5], 1)
         if warp is not None:
             q = q + np.stack([warp[0][yy, xx].ravel(), warp[1][yy, xx].ravel()], 1)
-        d, i = cKDTree(rd.P).query(q, k=1, distance_upper_bound=hwmax * 1.1)
+        d, i = cKDTree(rd.P).query(q, k=1, distance_upper_bound=hwmax * 1.15)
         ok = np.isfinite(d)
         i = np.where(ok, i, 0)
         d = np.where(ok, d, hwmax * 2)
@@ -457,14 +477,14 @@ def corridor_samples(wmask):
         c = np.asarray(f['geometry']['coordinates'], float)[:, :2]
         if len(c) < 2:
             continue
-        out.append((resample(c, 1.0), MAX_GRADE.get(t, 0.12), f['properties'].get('width_m', 8) / 2 / MPP))
+        out.append((resample(c, 1.0), MAX_GRADE.get(t, 0.12), f['properties'].get('width_m', 8) / 2 / MPP, MAX_CUT.get(t, 6.0)))
     for f in load_json(path('data/railways/railways.geojson'))['features']:
         c = np.asarray(f['geometry']['coordinates'], float)[:, :2]
-        out.append((resample(c, 1.0), MAX_GRADE['rail'], 3.0))
+        out.append((resample(c, 1.0), MAX_GRADE['rail'], 3.0, MAX_CUT['rail']))
     return out
 
 
-def corridor_cap(elev, wmask, cfg):
+def corridor_cap(elev, wmask, cfg, surf=None):
     """Natural gaps for roads/rail: along each route the terrain is capped by its cut-only grade envelope
     (the lowest profile that keeps the design grade without fill), and beside it by a widening V/U-shaped
     allowance. Bridge spans (water) impose nothing. Grading (roads agent) does the engineered cut/fill."""
@@ -473,10 +493,11 @@ def corridor_cap(elev, wmask, cfg):
     gscale = cc.get('grade_frac', 0.8)
     wbuf = cv2.dilate(wmask.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
     XY, P, HW = [], [], []
-    for pts, g, hw in corridor_samples(wmask):
+    for pts, g, hw, mcut in corridor_samples(wmask):
         z0 = bilinear(elev, pts[:, 0], pts[:, 1]).astype(np.float64)
         xi = np.clip(pts[:, 0].astype(int), 0, W - 1); yi = np.clip(pts[:, 1].astype(int), 0, H - 1)
-        z0 = np.where(wbuf[yi, xi], 1e5, z0)
+        wet_s = wbuf[yi, xi]
+        z0 = np.where(wet_s, 1e5, z0)
         ds = np.r_[0, np.hypot(*np.diff(pts, axis=0).T)] * MPP * g * gscale
         p = z0.copy()
         for i in range(1, len(p)):
@@ -484,6 +505,9 @@ def corridor_cap(elev, wmask, cfg):
         for i in range(len(p) - 2, -1, -1):
             p[i] = min(p[i], p[i + 1] + ds[i + 1])
         ok = p < 1e4
+        if ok.sum() > 3:
+            zs_ = ndi.gaussian_filter1d(np.where(ok, z0, np.nan if False else z0), 3, mode='nearest')
+            p = np.where(ok, np.maximum(p, zs_ - mcut), p)
         XY.append(pts[ok]); P.append(p[ok]); HW.append(np.full(ok.sum(), hw))
     XY = np.vstack(XY); P = np.concatenate(P); HW = np.concatenate(HW)
     tree = cKDTree(XY)
@@ -494,9 +518,14 @@ def corridor_cap(elev, wmask, cfg):
     d, i = tree.query(np.stack([xs + 0.5, ys + 0.5], 1), k=6)
     dd = np.maximum(d - HW[i], 0)
     allow = (P[i] + cc.get('tolerance_m', 2.0) + s1 * dd + s2 * dd * dd).min(1)
+    fade = 1 - smoothstep(0.3 * reach, 0.95 * reach, d[:, 0])  # the cap's influence ends smoothly
+    if surf is not None:
+        # never cut a bank below the water beside it (roads along rapids/creeks)
+        wl_hi = cv2.dilate(np.where(wmask, surf, -1e9).astype(np.float32), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31)))
+        allow = np.maximum(allow, wl_hi[ys, xs] + 1.0)
     cur = elev[ys, xs]
     # only where the natural ground stands clearly above the grade envelope (no grooves along flat streets)
-    new = np.minimum(cur, allow)
+    new = cur - np.maximum(cur - allow, 0) * fade
     out = elev.copy()
     out[ys, xs] = new
     return out
@@ -654,7 +683,12 @@ def evolve_landscape(relief, V, wmask, ev, seed=5):
     h, w = H // 2, W // 2
     r2 = cv2.resize(relief, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
     V2 = cv2.resize(V, (w, h), interpolation=cv2.INTER_AREA).astype(np.float64)
-    fixed = (cv2.resize(wmask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0) | (r2 < ev.get('fixed_below_m', 1.0))
+    low = r2 < ev.get('fixed_below_m', 1.0)
+    lab, n = ndi.label(low)
+    if n:
+        sz = ndi.sum(low, lab, np.arange(1, n + 1))
+        low = np.isin(lab, 1 + np.nonzero(sz >= ev.get('min_lowland_cells', 400))[0])  # pockets inside mountains are not outlets
+    fixed = (cv2.resize(wmask.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0) | low
     out = evolve_core(V2, r2, fixed, MPP * 2, ev, seed)
     return cv2.resize(out, (W, H), interpolation=cv2.INTER_CUBIC)
 
@@ -879,7 +913,7 @@ def main():
     wmask = np.load(path('tools/.cache/water_mask.npy'))
     lines, prof, steep, feats = river_profiles(cfg)
     CF = channel_fields(lines, prof, steep, feats, wmask)
-    surf = water_surface(CF, wmask)
+    surf = water_surface(CF, wmask, lines, feats)
 
     # valley floor: harmonic interpolation between the water surfaces
     valley = harmonic_fill(np.nan_to_num(surf), wmask)
@@ -952,7 +986,7 @@ def main():
 
     # ---- road / rail gaps
     _dbg('elev_pre_cap', elev)
-    elev = corridor_cap(elev, wmask, cfg)
+    elev = corridor_cap(elev, wmask, cfg, surf)
 
     # ---- drainage-driven erosion (on a drained surface so flow paths are coherent)
     elev = np.where(wmask, elev, condition_drainage(elev, wmask, cfg['erosion'].get('max_breach_m', 3.0))).astype(np.float32)
@@ -990,7 +1024,7 @@ def main():
         b_ = cv2.GaussianBlur(elev, (0, 0), er.get('round_sigma', 3.0))
         convex = np.clip((elev - b_) / er.get('round_thr_m', 1.5), 0, 1)
         elev = (elev + (b_ - elev) * convex * rmask).astype(np.float32)
-    elev = corridor_cap(elev, wmask, cfg)  # erosion must not re-block the gaps
+    elev = corridor_cap(elev, wmask, cfg, surf)  # erosion must not re-block the gaps
 
     # ---- river channels and banks
     _dbg('elev_pre_channels', elev)
