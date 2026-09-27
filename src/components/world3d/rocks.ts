@@ -148,7 +148,10 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
   })));
 
   // instances sorted by kind; world matrices + tints precomputed
-  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => R[a * S + 4] - R[b * S + 4]);
+  // sorted by (kind, 100 m cell): update() culls whole cells before touching instances
+  const CELLR = 40, ncx = Math.ceil(2000 / CELLR), ncy = Math.ceil(667 / CELLR), NCR = ncx * ncy;
+  const cellOf = (i: number) => Math.min(ncy - 1, Math.max(0, Math.floor(R[i * S + 1] / CELLR))) * ncx + Math.min(ncx - 1, Math.max(0, Math.floor(R[i * S] / CELLR)));
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => (R[a * S + 4] - R[b * S + 4]) * NCR + cellOf(a) - cellOf(b));
   const M = new Float32Array(n * 16), C = new Float32Array(n * 3), P = new Float32Array(n * 3), RAD = new Float32Array(n);
   const kindOf = new Uint8Array(n), varOf = new Uint8Array(n);
   const kStart = new Int32Array(K + 1);
@@ -169,6 +172,16 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
     perKind[kind]++;
   });
   for (let k = 0; k < K; k++) kStart[k + 1] = kStart[k] + perKind[k];
+  // per kind x cell instance ranges + cell vertical extents
+  const cr = new Int32Array(K * NCR * 2).fill(-1), cMinY = new Float32Array(NCR).fill(1e9), cMaxY = new Float32Array(NCR).fill(-1e9);
+  order.forEach((i, k) => {
+    const c = cellOf(i), ri = (kindOf[k] * NCR + c) * 2;
+    if (cr[ri] < 0) cr[ri] = k;
+    cr[ri + 1] = k + 1;
+    cMinY[c] = Math.min(cMinY[c], P[k * 3 + 1] - RAD[k]); cMaxY[c] = Math.max(cMaxY[c], P[k * 3 + 1] + RAD[k]);
+  });
+  const cX0 = (cx: number) => (cx * CELLR - 1000) * 2.5, cZ0 = (cy: number) => (cy * CELLR - 333.5) * 2.5;
+  const cbox = new THREE.Box3();
 
   const group = new THREE.Group(); group.name = 'rocks';
   // meshes[kind][lod][slot]
@@ -213,7 +226,13 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
     st.instances = 0; st.tris = 0; st.draws = 0;
     for (let ki = 0; ki < K; ki++) {
       const far = hi[ki * 3 + 2] + SLACK;
-      for (let k = kStart[ki]; k < kStart[ki + 1]; k++) {
+      for (let c = 0; c < NCR; c++) {
+       const ri = (ki * NCR + c) * 2;
+       if (cr[ri] < 0) continue;
+       const cx = c % ncx, cy = (c - cx) / ncx;
+       cbox.min.set(cX0(cx) - 10, cMinY[c], cZ0(cy) - 10); cbox.max.set(cX0(cx + 1) + 10, cMaxY[c], cZ0(cy + 1) + 10);
+       if (cbox.distanceToPoint(cp) > far || !frustum.intersectsBox(cbox)) continue;
+       for (let k = cr[ri]; k < cr[ri + 1]; k++) {
         const dx = P[k * 3] - cp.x, dy = P[k * 3 + 1] - cp.y, dz = P[k * 3 + 2] - cp.z;
         const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (d > far) continue;
@@ -226,6 +245,7 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
           for (let j = 0; j < 16; j++) am[o * 16 + j] = M[k * 16 + j];
           ac[o * 3] = C[k * 3]; ac[o * 3 + 1] = C[k * 3 + 1]; ac[o * 3 + 2] = C[k * 3 + 2];
         }
+       }
       }
     }
     for (let ki = 0; ki < K; ki++) for (let li = 0; li < 3; li++) for (let s = 0; s < SLOTS[li]; s++) {

@@ -198,6 +198,15 @@ def main(seed=23):
                             var = rng.integers(0, VARIANTS) + (10 if o < half + 6 else 0)
                             out.append(np.array([[q[0], q[1], z, sc, KINDS.index('cliff_block'), var, yaw, rng.normal(0.05, 0.05)]]))
                             ncut += 1; nfall += 1
+    # N's waterfall lip rocks (lib_water.build_falls -> data/water/falls_rocks.json): placed as given, wet,
+    # exempt from the water / pavement keep-outs and the base QA (they stand embedded in the crest water)
+    frp = path('data/water/falls_rocks.json')
+    for fr in (load_json(frp).get('rocks', []) if os.path.exists(frp) else []):
+        if fr.get('kind') not in KINDS:
+            continue
+        out.append(np.array([[fr['x_px'], fr['y_px'], fr['z_m'], fr.get('scale', 1.0), KINDS.index(fr['kind']),
+                              int(rng.integers(0, VARIANTS)) + 10, fr.get('yaw', 0.0), 0.0]]))
+        ncut += 1; nfall += 1
     R = np.concatenate(out).astype(np.float32) if out else np.zeros((0, STRIDE), np.float32)
     # ---- QA: no floating bases, no rock on pavement / shoulders
     #  base (local z = 0) must sit at or below the ground at 8 points around the footprint: lower it
