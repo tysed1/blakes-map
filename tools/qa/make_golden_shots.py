@@ -24,7 +24,7 @@ shots['GS_SouthForkGorge'] = cam(w(925, 515, 90), w(975, 565, 0))
 rc = json.load(open(os.path.join(R, 'data/roads/rail_crossings.geojson')))['features'][0]['properties']
 x, y = rc['at']; shots['GS_RailCrossing'] = cam(w(x - 14, y - 9, 8), w(x, y, 1))
 walls = [f for f in json.load(open(os.path.join(R, 'data/roads/walls.geojson')))['features'] if f['properties'].get('kind') == 'rock_cut']
-wl = max(walls, key=lambda f: f['properties']['height_m'])
+wl = sorted(walls, key=lambda f: -f['properties']['height_m'])[1]  # 2nd tallest: clear of the regraded Railside Lane
 c = np.asarray(wl['geometry']['coordinates'], float)[:, :2]
 a, b = c[0], c[-1]; d = (b - a) / max(np.linalg.norm(b - a), 1e-6); m = (a + b) / 2
 p0 = m - d * 14; zb = wl['properties']['base_z_m']
@@ -39,7 +39,7 @@ for yy in range(260, 440, 2):
     if best: break
 xx, yy, fx, fy = best; n = math.hypot(fx, fy) or 1
 shots['GS_ForestEdge'] = cam(w(xx - fx / n * 12, yy - fy / n * 12, 1.7), w(xx + fx / n * 8, yy + fy / n * 8, 5))
-shots['GS_BaldRidge'] = cam(w(820, 290, 6), w(1050, 330, 40))
+shots['GS_BaldRidge'] = cam(w(812, 296, 28), w(1050, 330, 40))
 shots['GS_US76_SR60'] = cam(w(1830, 215, 140), w(1872, 158, 0))
 json.dump(shots, open(os.path.join(R, 'tools/qa/golden_shots.json'), 'w'), indent=1)
 print(len(shots), 'shots')
