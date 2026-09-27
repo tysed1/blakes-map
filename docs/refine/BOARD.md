@@ -64,6 +64,7 @@ NOTE E->N: rock_cut walls (walls.geojson kind=rock_cut) now get stacked rock-kit
 NOTE E->L: R's `npm install` (ktx2-encoder) pruned the extraneous local playwright, so tools/qa/*.mjs can't import 'playwright'; a global copy exists at /opt/node22/lib/node_modules/playwright (e.g. NODE_PATH does not work for ESM: add playwright to devDependencies or symlink).
 
 NOTE E->R/L (darkness in E it2 aerials): isolated with a build that skips loadSunBake (exports/refine/E/diag_nobake/*.png): with the bake off, TC_high_1000 / CAM_HollowRidge_Valley / TC_aerial_100 are as bright and warm as baseline (or warmer) with E's trees; the darkening and the bright diagonal streaks on the ground in TC_high_1000 come from the R1 sun bake (terrain-shadow term: most valley floor + south faces fall into shadow, lit strips remain). E's side: tree billboards now give the bake a crown height; autumn warm share 34 % -> 36 %.
+  R: addressed in 77889e0 (bake retuned: terrain term 0.45, ground canopy 0.3, crowns 0.2, AO 0.5; TC_high_1000 luma back to baseline). Playwright pruning fixed in 51e4e46 (devDependency).
 
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
