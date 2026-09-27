@@ -1132,6 +1132,11 @@ def build_edge(net, idx, T, ctl, shared=None):
         sgn_ = 1 if np.cross(np.r_[N[r], 0], np.r_[out, 0])[2] > 0 else -1
         m_ = 12
         arc = [P[r, :2] + R * np.array([math.cos(ang0 + sgn_ * math.pi * q / m_), math.sin(ang0 + sgn_ * math.pi * q / m_)]) for q in range(m_ + 1)]
+        # no cap over a drop (a dead end cut back at a ramp / yard edge above a cut): its flat
+        # underside would float as a dark disc
+        tz = [float(T.at(*w2px(a[0], a[1]))) for a in arc] + [float(T.at(*w2px(*(P[r, :2] + out * R * 1.6))))]
+        if min(tz) < P[r, 2] - 1.2:
+            continue
         V = np.array([[P[r, 0], P[r, 1], P[r, 2]]] + [[a[0], a[1], P[r, 2] - sec['crown'] * R] for a in arc])
         F = np.array([(0, 1 + q, 2 + q) for q in range(m_)])
         M.add(V, F, mat_pav, rl=99.0, rs=0.0, **dict(const, mk=0))
