@@ -620,6 +620,12 @@ def build_water(coll, mat=None):
     shore_ok = np.isfinite(hab_px) & (hab_px < 1.5)
     rocks = place_boulders(D)
     wake = boulder_wake(D, rocks)
+    # waterfall faces (surface drop > 0.9 m per 2.5 m cell): the grid surface would read as a
+    # smooth weir ramp - leave them to build_falls' ribbons
+    gy, gx = np.gradient(np.where(np.isfinite(WLf), WLf, np.nan))
+    steep = np.nan_to_num(np.hypot(gx, gy), nan=0.0) > 0.9
+    steep = _dilate(steep, 1)
+    skirt = skirt & ~steep
     objs = []
     for cy in range(math.ceil(H / CHUNK)):
         for cx in range(math.ceil(W / CHUNK)):
@@ -715,6 +721,11 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
             Z = np.interp(st, st[ok], Z[ok])
             Z = np.minimum.accumulate(Z)                       # monotonic downstream
             drop = float(Z[0] - Z[-1])
+            if f.get('kind') == 'plunge' and len(Z) > 4:
+                # a plunge falls free at the ledge: flat crest, one near-vertical drop, pool level below
+                kd = int(np.argmax(-np.diff(Z)))
+                Z[:kd + 1] = Z[0]
+                Z[kd + 1:] = Z[-1]
             if drop < min_drop:
                 print(f"   falls {f['id']}: {drop:.1f} m water drop < {min_drop} m - skipped (needs the terrain step)")
                 continue
@@ -743,7 +754,7 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                     F += [(a, a + 1, a + nu + 2), (a, a + nu + 2, a + nu + 1)]
             if plunge:
                 # lip rocks: in the ribbon gaps and at both ends of the crest
-                kl = int(np.argmin(np.abs(st - s_l)))
+                kl = int(np.argmax(-np.diff(Z))) if len(Z) > 4 else int(np.argmin(np.abs(st - s_l)))   # the crest
                 lr = []
                 for w_, r_ in ((-0.36, 1.5), (0.29, 1.3), (-1.05, 1.8), (1.05, 1.6), (-0.7, 1.0)):
                     lr.append((X[kl] + nx_[kl] * half * w_, Y[kl] + ny_[kl] * half * w_, r_))
