@@ -735,17 +735,6 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                 for u in range(nu):
                     a = k * (nu + 1) + u
                     F += [(a, a + 1, a + nu + 2), (a, a + nu + 2, a + nu + 1)]
-            # plunge-pool / foot: churned water ring around the toe
-            pr = f.get('pool_radius_m', 5.0) / MPP
-            base = len(V)
-            V.append(px2b(X[-1], Y[-1], Z[-1] + 0.05)); dep.append(3.0); foam.append(0.9); flow.append((0.0, 0.0, 0.0))
-            ns = 24
-            for i in range(ns):
-                ang = 2 * math.pi * i / ns
-                V.append(px2b(X[-1] + math.cos(ang) * pr, Y[-1] + math.sin(ang) * pr, Z[-1] + 0.04)); dep.append(2.5)
-                foam.append(0.0); flow.append((math.cos(ang), -math.sin(ang), 0.0))
-            for i in range(ns):
-                F.append((base, base + 1 + i, base + 1 + (i + 1) % ns))
             V = np.array([[v[0], v[1], v[2]] for v in V], float)
             ob = _mesh(f"WATER_Falls_{f['id']}", V, np.array(F), coll, mat,
                        attrs={'depth': ('FLOAT', np.array(dep)), 'foam': ('FLOAT', np.array(foam)), 'wake': ('FLOAT', np.array(foam) * 0.8),

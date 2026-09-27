@@ -295,6 +295,9 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     col = concreteCol(P, vec3(0.27, 0.265, 0.245), rs, 1.5); rough = 0.88;
   } else {
     col = gravelCol(P, bxy, tGrav, 1.1, vec3(0.12, 0.115, 0.11), vec3(0.1, 0.085, 0.07), rl, 0.0); rough = 0.97;
+    if (kind == 7) {   // weathered ballast: dusty grey-brown, creosote / oil stained (not a pale road ribbon)
+      col = mix(col * 0.62, vec3(0.055, 0.05, 0.042), 0.35 * sstep(0.3, 0.7, bn(fbm2(P * 0.12))));
+    }
     if (kind == 7 && hw > 0.5) {
       // far LOD of the instanced ties (culled at 260 m): creosoted tie stripes on the ballast top,
       // coverage-averaged once sub-pixel, plus the dark oil strip between the rails
@@ -304,7 +307,7 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
       float tv = abs(fract(x) - 0.5) * 2.0, aa = fwidth(x) * 2.0 + 1e-4;
       float ties = mix(1.0 - smoothstep(0.38 - aa, 0.38 + aa, tv), 0.38, sstep(0.3, 0.6, fwidth(x)));
       col = mix(col, vec3(0.05, 0.04, 0.032), far * ties * 0.9);
-      col = mix(col, col * 0.7, sstep(80.0, 200.0, dist) * step(abs(rl), hw));
+      col = mix(col, col * 0.6, step(abs(rl), hw));   // oil-dark track bed between the tie ends
     }
   }
   // ACES (web) crushes the toe harder than Blender's AgX: lift the dark pavement albedos to read alike
@@ -757,10 +760,10 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
         void main(){
           float life = fract(uTime * (0.12 + sR.x * 0.1) + sR.y);          // each card rises, spreads, fades
           vec3 c = sP.xyz + vec3((sR.w - 0.5) * 3.0 * life, life * (1.5 + 2.5 * sP.w), (sR.x - 0.5) * 3.0 * life);
-          float size = sR.z * (0.6 + 1.6 * life) * (0.6 + 0.4 * sP.w);
+          float size = sR.z * (0.5 + 1.3 * life) * (0.6 + 0.3 * sP.w);
           vec4 mv = modelViewMatrix * vec4(c, 1.0);
           mv.xy += position.xy * size;
-          vUv = position.xy; vA = sin(3.14159 * life) * (0.10 + 0.06 * sP.w) * (1.0 - smoothstep(250.0, 600.0, -mv.z));
+          vUv = position.xy; vA = sin(3.14159 * life) * (0.022 + 0.018 * min(sP.w, 1.5)) * (1.0 - smoothstep(250.0, 600.0, -mv.z));
           gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying vec2 vUv; varying float vA;
         void main(){ float r = dot(vUv, vUv); if (r > 1.0) discard;
