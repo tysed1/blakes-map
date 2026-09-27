@@ -564,6 +564,11 @@ def build_outputs(lines, pieces, zones):
                 or LineString(es[1][1]['pts']).buffer(4).intersection(short).length > 0.6 * short.length:
             if es[0][1]['attrs']['src'] != 'manual':
                 G.remove_edge(u, v, es[0][0])
+            elif es[1][1]['attrs']['src'] != 'manual':
+                G.remove_edge(u, v, es[1][0])  # a traced loop shadowing an authored road between the same junctions
+        elif es[0][1]['attrs']['src'] == 'manual' and es[1][1]['attrs']['src'] != 'manual' \
+                and LineString(es[1][1]['pts']).hausdorff_distance(short) < 10.0:
+            G.remove_edge(u, v, es[1][0])
     E.prune_dead_ends(G)
     merge_chains(G)
     for _ in range(3):
@@ -884,63 +889,117 @@ def local_radius_px(P, h=6):
     return R
 
 
-def ease_min_radius(pts, rmin_m, keep_px=3.0, _depth=0, max_shift_px=2.4):
-    """Traced / grid local streets: round kinks and hairpins that are tighter than the
-    class minimum (AASHO local street 12 m) with a locally weighted smoothing; the
-    junction ends stay fixed. Returns the eased polyline (or the input if it is fine)."""
-    from scipy.ndimage import gaussian_filter1d
+def ease_min_radius(pts, rmin_m, max_shift_px=4.0, free_end=None):
+    """Traced / grid local streets: kinks and elbows tighter than the class minimum
+    (AASHO local street 12 m centreline radius) become curves. The turning angle is kept
+    but spread along the street until the curvature is <= 1/R (a spiral-ish fillet, no
+    shrinkage of large loops); the ends stay on their junctions. Streets whose fix would
+    move them more than max_shift_px off the trace (true hairpins) are left alone."""
+    if free_end == 0:  # dead end at the start: work from the junction end
+        q = ease_min_radius(np.asarray(pts)[::-1], rmin_m, max_shift_px, 1)
+        return pts if q is not None and len(q) == len(pts) and np.allclose(q, np.asarray(pts)[::-1]) else q[::-1]
     P = resample(np.asarray(pts, float), 1.0)
     if len(P) < 15:
         return pts
-    target = rmin_m * 1.12 / 2.5
-    s = np.r_[0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
-    endw = np.clip(np.minimum(s, s[-1] - s) / keep_px - 1.0, 0, 1)  # 0 at the ends, 1 inside
-    if not (local_radius_px(P) < target).any():
+    if not (local_radius_px(P) < rmin_m * 1.05 / 2.5).any():
         return pts
-    P0 = P.copy()
-    for sig in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0):
-        for _ in range(4):
-            bad = local_radius_px(P) < target
-            if not bad.any():
-                break
-            w = gaussian_filter1d(bad.astype(float), sig * 2.0)
-            w = np.clip(w / max(w.max(), 1e-9) * 2.0, 0, 1) * endw
-            Ps = gaussian_filter1d(P, sig, axis=0, mode='nearest')
-            P = P * (1 - w[:, None]) + Ps * w[:, None]
-            # a fillet, not a re-route: never more than max_shift_px off the traced line
-            dv = P - P0
-            dl = np.hypot(dv[:, 0], dv[:, 1])
-            P = P0 + dv * np.minimum(1.0, max_shift_px / np.maximum(dl, 1e-9))[:, None]
-    P[0], P[-1] = np.asarray(pts[0], float), np.asarray(pts[-1], float)
-    out = rdp(P, 0.04)
-    if _depth < 1 and (local_radius_px(resample(out, 1.0)) < target / 1.06).any():
-        return ease_min_radius(out, rmin_m, keep_px, _depth + 1, 0.6)
-    return out
+    target = rmin_m * 1.3 / 2.5
+    d = np.diff(P, axis=0)
+    step = np.hypot(d[:, 0], d[:, 1])
+    phi = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+    k = np.diff(phi)                     # turning per sample (rad / px)
+    kmax = 1.0 / target * float(np.mean(step))
+    for _ in range(4000):
+        over = np.abs(k) > kmax * 1.0001
+        if not over.any():
+            break
+        ex = np.where(over, k - np.sign(k) * kmax, 0.0)
+        k = k - ex
+        k[1:] += 0.5 * ex[:-1]
+        k[:-1] += 0.5 * ex[1:]
+        # turning pushed off either end is folded back (the end tangents stay put)
+        k[0] += 0.5 * ex[0]
+        k[-1] += 0.5 * ex[-1]
+    phi2 = phi[0] + np.r_[0.0, np.cumsum(k)]
+    Q = np.vstack([P[:1], P[0] + np.cumsum(np.c_[np.cos(phi2), np.sin(phi2)] * step[:, None], axis=0)])
+    s = np.r_[0, np.cumsum(step)]
+    if free_end != 1:
+        Q = Q - (Q[-1] - P[-1]) * (s / s[-1])[:, None]      # close onto the far junction
+    if float(np.hypot(*(Q - P).T).max()) > max_shift_px:
+        return pts
+    Q[0] = P[0]
+    if free_end != 1:
+        Q[-1] = P[-1]
+    return rdp(Q, 0.04)
 
 
 def finalize_geometry(G):
-    """Final plan shape of every edge (chaikin curves for traced streets, minimum-radius
-    easing for non-authored local streets), then drop parallel edges the easing made
-    redundant: a non-authored edge between the same two junctions within 5 px of another."""
-    for u, v, k, d in G.edges(keys=True, data=True):
+    """Final plan shape of every edge: chaikin curves for traced streets, then minimum-
+    radius easing for non-authored local streets. An eased street may move at most a few
+    px, and never onto (duplicate) or across (unjunctioned crossing) another street."""
+    items = list(G.edges(keys=True, data=True))
+    for u, v, k, d in items:
         pts = np.asarray(d['pts'])
         if d['attrs']['src'] in ('auto', 'auto_gap') and len(pts) > 2:
             pts = chaikin(pts, 3)
-        if d['attrs']['src'] != 'manual' and d['attrs']['type'] in MIN_RADIUS_M and len(pts) >= 2:
-            pts = ease_min_radius(pts, MIN_RADIUS_M[d['attrs']['type']])
         d['pts'] = pts
-    n = 0
-    for u, v in {(min(a, b), max(a, b)) for a, b in G.edges() if a != b and G.number_of_edges(a, b) > 1}:
-        es = sorted(G.get_edge_data(u, v).items(), key=lambda kv: (kv[1]['attrs']['src'] == 'manual', -polyline_length(kv[1]['pts'])))
-        for kk, d in es[:-1]:
-            if d['attrs']['src'] == 'manual':
+    geoms = [LineString(d['pts']) for *_, d in items]
+    tree = STRtree(geoms)
+    n_ok = n_skip = 0
+    for i, (u, v, k, d) in enumerate(items):
+        if d['attrs']['src'] == 'manual' or d['attrs']['type'] not in MIN_RADIUS_M or len(d['pts']) < 2:
+            continue
+        g0 = geoms[i]
+        for shift in (4.0, 6.0, 9.0):
+            fe = 0 if G.degree(u) == 1 and G.degree(v) > 1 else (1 if G.degree(v) == 1 and G.degree(u) > 1 else None)
+            if fe is not None and np.hypot(*(np.asarray(d['pts'][0]) - np.asarray(G.nodes[u]['xy']))) > 0.01:
+                fe = 1 - fe  # pts run v -> u
+            q = ease_min_radius(d['pts'], MIN_RADIUS_M[d['attrs']['type']], shift, fe)
+            if q is d['pts']:
                 continue
-            keep = es[-1][1]
-            if LineString(d['pts']).hausdorff_distance(LineString(keep['pts'])) < 5.0:
-                G.remove_edge(u, v, kk)
-                n += 1
-    merge_chains(G)
-    print('  parallel duplicates removed after easing:', n)
+            g = LineString(q)
+            bad = False
+            if fe is not None:  # a moved dead end must not become a near miss
+                e_new = Point(q[-1] if fe == 1 else q[0])
+                e_old = Point(d['pts'][-1] if fe == 1 else d['pts'][0])
+                for j in tree.query(e_new.buffer(7.0)):
+                    if j != i and geoms[j].distance(e_new) < 6.3 and geoms[j].distance(e_new) < geoms[j].distance(e_old):
+                        bad = True
+            for j in tree.query(g.buffer(7.0)):  # nor move next to someone else's dead end
+                if j == i:
+                    continue
+                uj, vj = items[j][0], items[j][1]
+                for nd in (uj, vj):
+                    if G.degree(nd) == 1 and nd not in (u, v):
+                        pe = Point(G.nodes[nd]['xy'])
+                        if g.distance(pe) < 6.3 and g.distance(pe) < g0.distance(pe):
+                            bad = True
+            for j in tree.query(g.buffer(4.0)):
+                if j == i:
+                    continue
+                h = geoms[j]
+                if g.crosses(h) and not g0.crosses(h):
+                    bad = True
+                    break
+                short = min(g.length, h.length)
+                ov = min(g.intersection(h.buffer(3.5)).length, h.intersection(g.buffer(3.5)).length)
+                ov0 = min(g0.intersection(h.buffer(3.5)).length, h.intersection(g0.buffer(3.5)).length)
+                if short >= 6 and ov > 0.5 * short and ov > ov0 + 0.5:
+                    bad = True
+                    break
+            if not bad:
+                d['pts'] = q
+                geoms[i] = g
+                for nd in (u, v):  # a dead end may move with its eased street
+                    if G.degree(nd) == 1:
+                        e0 = q[0] if np.hypot(*(np.asarray(q[0]) - np.asarray(G.nodes[nd]['xy']))) < np.hypot(*(np.asarray(q[-1]) - np.asarray(G.nodes[nd]['xy']))) else q[-1]
+                        G.nodes[nd]['xy'] = (float(e0[0]), float(e0[1]))
+                n_ok += 1
+                break
+        else:
+            if (local_radius_px(resample(np.asarray(d['pts']), 1.0)) < MIN_RADIUS_M[d['attrs']['type']] * 1.05 / 2.5).any():
+                n_skip += 1
+    print(f'  min-radius easing: {n_ok} streets eased, {n_skip} left (would move > 9 px or collide)')
 
 
 def write(G, zones):

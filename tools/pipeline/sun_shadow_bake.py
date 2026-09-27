@@ -5,10 +5,12 @@ The golden-hour sun never moves, so far shadows (terrain self-shadowing, forest 
 low-sun shadows of every tree) are baked once into a world-space texture that every lit material
 samples (src/engine/sunbake.ts). Real-time cascaded shadow maps then only cover the near field.
 
-Encoding (public/world/sunbake.png, RGB8, 2 texels per source px = 1.25 m, flipY-free: row 0 = py 0):
-  R  D_all : how far above the ground a point must be to see the sun, occluders = terrain + canopy
-  G  D_ter : same, terrain only (the near field gets canopy shadows from the CSM instead)
-  B  AO    : ground ambient occlusion (canopy cover + terrain concavity), 255 = open
+Encoding (flipY-free: row 0 = py 0):
+  public/world/sunbake.png     gray, 2 texels per source px (1.25 m):
+      D_all : how far above the ground a point must be to see the sun, occluders = terrain + canopy
+  public/world/sunbake_lo.png  RGB, 1 texel per source px (2.5 m):
+      R D_ter : same, terrain only (the near field gets canopy shadows from the CSM instead)
+      G AO    : ground ambient occlusion (canopy cover + terrain concavity), 255 = open
   D is metres, stored as 255 * sqrt(D / DMAX) (fine steps near the ground where penumbrae live).
 
 For a receiver at world XZ and height h above the ground: lit = 1 - smoothstep(bias, bias + soft, D - h).
@@ -128,12 +130,13 @@ def main():
     ao = np.clip(ao, 0.25, 1.0)
 
     enc = lambda D: np.rint(255.0 * np.sqrt(D / DMAX)).astype(np.uint8)
-    img = np.dstack([enc(Dall), enc(Dter), np.rint(ao * 255).astype(np.uint8)])
-    Image.fromarray(img, 'RGB').save(a.out, optimize=True)
-    print(f'wrote {a.out} {os.path.getsize(a.out) / 1e6:.1f} MB  ({time.time() - t0:.1f}s)')
-    webp = os.path.splitext(a.out)[0] + '.webp'
-    Image.fromarray(img, 'RGB').save(webp, lossless=True, method=6)
-    print(f'wrote {webp} {os.path.getsize(webp) / 1e6:.1f} MB')
+    # full res: D_all (the detailed canopy term); half res (2.5 m): D_ter + AO (both smooth)
+    Image.fromarray(enc(Dall), 'L').save(a.out, optimize=True)
+    lo = os.path.splitext(a.out)[0] + '_lo.png'
+    box = lambda A: A.reshape(H0, f, W0, f).mean(axis=(1, 3))   # texel-centre aligned 2x2 average
+    Dt, Ao = box(Dter), box(ao)
+    Image.fromarray(np.dstack([enc(np.clip(Dt, 0, DMAX)), np.rint(np.clip(Ao, 0, 1) * 255).astype(np.uint8), np.zeros_like(enc(Dt))]), 'RGB').save(lo, optimize=True)
+    print(f'wrote {a.out} {os.path.getsize(a.out) / 1e6:.1f} MB + {lo} {os.path.getsize(lo) / 1e6:.1f} MB  ({time.time() - t0:.1f}s)')
     if a.debug:
         lit = 1.0 - np.clip((Dall - 0.3) / 1.5, 0, 1)
         litT = 1.0 - np.clip((Dter - 0.3) / 1.5, 0, 1)

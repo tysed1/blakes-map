@@ -1,0 +1,3 @@
+high   main calls p50 267 max 389 | shadow calls p50 188 | main tris p50 4.46M max 8.96M | all-pass tris max 21.71M | cull 63.3/101.2 ms | programs 59 | render 118.5/139347.4 ms
+low    main calls p50 180 max 360 | shadow calls p50 0 | main tris p50 3.17M max 7.79M | all-pass tris max 7.79M | cull 14.1/23.2 ms | programs 79 | render 19974.3/148190.3 ms
+load 9 s | download 113 MB | GPU uploads tex 329.3 MB buf 207.9 MB | heap 400 MB | SwiftShader (frame times NOT meaningful; use proxies)

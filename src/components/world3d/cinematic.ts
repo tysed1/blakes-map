@@ -164,7 +164,8 @@ export interface Cinematic {
   setSize(w: number, h: number, dpr: number): void;
   render(): void;
   prepare(scene: THREE.Object3D): void;
-  setShadowQuality(q: ShadowQuality): void;
+  /** casterRange: distance up to which trees cast real-time shadows (the bake's canopy term takes over there) */
+  setShadowQuality(q: ShadowQuality, casterRange?: number): void;
 }
 
 export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunDir: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number): Cinematic {
@@ -189,7 +190,7 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
     if (!c) {
       c = new CSM({
         camera, parent: scene, cascades: n, maxFar: 300, mode: 'practical', shadowMapSize: 2048,
-        lightDirection: sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 2500, lightMargin: 250, shadowBias: -0.00012,
+        lightDirection: sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 2500, lightMargin: 250, shadowBias: -0.00045, // ~1.1 m in depth (as before at lightFar 9000)
       } as any);
       c.fade = true;
       for (const l of c.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.5; }
@@ -249,7 +250,7 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
         if (Array.isArray(mm)) mm.forEach(setup); else setup(mm);
       });
     },
-    setShadowQuality(q) {
+    setShadowQuality(q, casterRange = Infinity) {
       const P = SHADOW_PRESET[q];
       const n = Math.max(1, P.cascades);
       if (n !== csm.cascades) {
@@ -269,7 +270,8 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       // the CSM fades its last cascade out from the cascade's centre; the baked canopy shadows fade in
       // over the same depth range (everywhere when there are no cascades)
       const b = csm.breaks, c0 = on ? ((b.length > 1 ? b[b.length - 2] : 0) + 1) * 0.5 * P.far : 0;
-      sunBake.setNearField(c0, on ? P.far * 1.02 : 1);
+      const end = Math.min(P.far * 1.02, casterRange);
+      sunBake.setNearField(on ? Math.min(c0, end * 0.75) : 0, on ? end : 1);
     },
   };
 }

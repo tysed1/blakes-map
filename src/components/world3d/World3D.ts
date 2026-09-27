@@ -7,11 +7,12 @@ import { bus, Selection } from '../../core/bus';
 import { buildTerrain, CHUNK } from './terrain';
 import { highlightMesh, roadWorldPoints, setGround } from './roads';
 import { buildInfra, Infra } from './infra'; // infra (agent)
-import { buildTrees, Trees } from './trees';
+import { buildTrees, Trees, TREE_QUALITY } from './trees';
 import { assetUrl, bin } from '../../core/data';
 import { buildBackdrop, buildSky } from './backdrop';
 import { installAtmosphere, createCinematic, Cinematic } from './cinematic';
 import { terrainMaterial } from './terrainMaterial';
+import { sunBake } from '../../engine/sunbake';
 import { buildGroundcover, Groundcover } from './groundcover'; // groundcover (agent)
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -50,6 +51,8 @@ export class World3D {
   readonly haze = new THREE.Color().setRGB(0.19, 0.26, 0.38);          // blue ridge haze
   readonly sunHaze = new THREE.Color().setRGB(0.95, 0.66, 0.4);         // golden forward scatter
   cine!: Cinematic;
+  /** baked static-sun shadow / AO controls (QA + tuning) */
+  readonly bake = sunBake;
 
   constructor(private el: HTMLElement, private w: World) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: location.hostname === "localhost", powerPreference: "high-performance" });
@@ -92,7 +95,7 @@ export class World3D {
     const hemi = new THREE.HemisphereLight(0xa9c4ea, 0x4a4630, 0.45);
     this.scene.add(hemi);
     this.cine = createCinematic(this.renderer, this.scene, this.camera, this.sunDir, this.sunColor, this.sunIntensity);
-    this.cine.setShadowQuality(this.quality);
+    this.cine.setShadowQuality(this.quality, this.casterRange(this.quality));
     this.build();
     this.orbit.enabled = false;
     this.heroView();
@@ -276,7 +279,7 @@ export class World3D {
     const Q = QUALITY[q];
     this.veg?.setQuality(q);
     this.capShadowCasters();
-    this.cine.setShadowQuality(q);
+    this.cine.setShadowQuality(q, this.casterRange(q));
     this.cine.bloom.enabled = Q.bloom;
     this.renderScale = 1;
     this.applyScale();
@@ -287,6 +290,7 @@ export class World3D {
    * R1: real-time shadows are near-field only (<= 300 m on High), everything farther is baked, so only
    * the two nearest tree LODs cast (LOD1 ends at 260-450 m depending on preset).
    */
+  private casterRange(q: Quality) { const t = TREE_QUALITY[q]; return t.lodDist[Math.max(0, Math.min(1, t.shadowLod))]; }
   private capShadowCasters() {
     this.veg?.group.traverse((o) => {
       const m = /_lod(\d)$/.exec(o.name);
@@ -354,9 +358,8 @@ export class World3D {
       const F = this.flight;
       F.t = Math.min(1, F.t + dt / F.dur);
       const e = F.t * F.t * (3 - 2 * F.t);
-      const p = F.p0.clone().lerp(F.p1, e);
+      const p = this.camera.position.copy(F.p0).lerp(F.p1, e);
       p.y += Math.sin(Math.PI * e) * Math.min(250, F.p0.distanceTo(F.p1) * 0.12);
-      this.camera.position.copy(p);
       this.camera.quaternion.copy(F.q0).slerp(F.q1, e);
       this.camera.fov = F.f0 + (F.f1 - F.f0) * e; this.camera.updateProjectionMatrix();
       if (F.t >= 1) { this.flight = null; this.syncFly(); }
@@ -365,20 +368,19 @@ export class World3D {
     if (this.tourList.length) {
       // hold each shot with a slow push-in, then move on
       this.tourHold += dt;
-      const d = new THREE.Vector3(); this.camera.getWorldDirection(d);
-      this.camera.position.addScaledVector(d, dt * 4);
+      this.camera.position.addScaledVector(this.camera.getWorldDirection(this._f), dt * 4);
       if (this.tourHold > 7) { this.tourHold = 0; this.tourI = (this.tourI + 1) % this.tourList.length; this.flyTo(this.tourList[this.tourI], 7); }
       return;
     }
-    const f = new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
-    const r = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const f = this._f.set(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+    const r = this._r.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const p = this.camera.position;
     const k = (a: string, b: string) => this.keys.has(a) || this.keys.has(b);
     // speed scales with height above ground: precise near the grass, fast over the ridges
     const px0 = worldToPx(p.x, p.z);
     const agl = Math.max(2, p.y - this.w.terrain.at(Math.min(Math.max(px0.x, 0), IMG_W), Math.min(Math.max(px0.y, 0), IMG_H)));
     const speed = (this.keys.has('shift') ? 4 : 1) * this.flySpeed * THREE.MathUtils.clamp(agl * 0.9, 12, 260);
-    const want = new THREE.Vector3();
+    const want = this._want.set(0, 0, 0);
     if (k('w', 'arrowup')) want.add(f);
     if (k('s', 'arrowdown')) want.sub(f);
     if (k('d', 'arrowright')) want.add(r);
@@ -395,10 +397,11 @@ export class World3D {
     // look smoothing
     this.syaw += (this.yaw - this.syaw) * (1 - Math.exp(-dt * 14));
     this.spitch += (this.pitch - this.spitch) * (1 - Math.exp(-dt * 14));
-    const fs = new THREE.Vector3(-Math.sin(this.syaw) * Math.cos(this.spitch), Math.sin(this.spitch), -Math.cos(this.syaw) * Math.cos(this.spitch));
-    this.camera.lookAt(p.clone().add(fs));
+    this.camera.lookAt(this._f.set(-Math.sin(this.syaw) * Math.cos(this.spitch), Math.sin(this.spitch), -Math.cos(this.syaw) * Math.cos(this.spitch)).add(p));
   }
   private syaw = 0; private spitch = -0.25;
+  // per-frame scratch (R2: no allocations in the frame loop)
+  private _f = new THREE.Vector3(); private _r = new THREE.Vector3(); private _want = new THREE.Vector3();
 
   private bindInput() {
     const dom = this.renderer.domElement;
