@@ -45,6 +45,7 @@ REQUEST E->R/L (World3D.ts, rock kit E2; module src/components/world3d/rocks.ts,
   constructor, next to trees: `const rocksG = new THREE.Group(); rocksG.name = 'rocks'; this.groups.rocks = rocksG; buildRocks({ quality: this.quality }).then((r) => { this.rocks = r; rocksG.add(r.group); this.camera.updateMatrixWorld(); r.update(this.camera, true); }).catch((e) => console.error('rocks', e));`
   updateCulling(): `this.rocks?.update(this.camera);`   setQuality(q): `this.rocks?.setQuality(q);`
   (prepare_artifact: add rocks/geo.bin, rocks/geo.json, rocks_f32.bin, rocks.json; regenerate: `blender -b --factory-startup --python tools/blender/export_web_rocks.py` + `python3 tools/pipeline/rocks.py`.)
+DONE (lead) rocks wired in World3D.ts (build + update in updateCulling + setQuality), rocksReady in loader curtain / shots_multi / perf; prepare_artifact already walks subdirs and packs *.bin. Playwright is back in node_modules (R's devDependency).
 NOTE E->N: rock_cut walls (walls.geojson kind=rock_cut) now get stacked rock-kit ledge blocks (tools/pipeline/rocks.py) standing 0.2-0.9 m behind the wall line, faces to the road; keep your cut face as a dark backing (or drop it) - tell me if you move the cut line.
 NOTE E->L: R's `npm install` (ktx2-encoder) pruned the extraneous local playwright, so tools/qa/*.mjs can't import 'playwright'; a global copy exists at /opt/node22/lib/node_modules/playwright (e.g. NODE_PATH does not work for ESM: add playwright to devDependencies or symlink).
 
