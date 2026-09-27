@@ -81,7 +81,7 @@ SKIP = {'eco_u8.bin', 'trees.bin', 'road_qa.jpg', 'landuse.png'}  # pipeline-onl
 ktx = json.load(open(os.path.join(D, 'world', 'ktx2.json'))) if os.path.exists(os.path.join(D, 'world', 'ktx2.json')) else {}
 SKIP_PATHS = {'world/' + src for src in ktx.values()}
 
-for sub in ('assets', 'world'):
+for sub in ('assets', 'world', 'basis'):
     for dirpath, _, names in os.walk(os.path.join(D, sub)):
         for f in sorted(names):
             if f in SKIP or f.endswith('.gz.b64.txt') or f.endswith('.bin.wasm') or f.endswith('.ktx2.wasm') or f == 'pack.json':

@@ -131,6 +131,8 @@ export class World3D {
     const roads = infraLayer('roads'), bridges = infraLayer('bridges'), rail = infraLayer('rail'), water = infraLayer('water').group;
     albedoP.then((albedo) => buildInfra({ albedo, time: this.time })).then((inf) => {
       this.infra = inf;
+      // small roadside casters (posts, signs, poles, rails' details) only matter in the nearest cascade
+      for (const g of [inf.roads, inf.bridges, inf.rail]) g.traverse((o) => { if (o.castShadow && /^infra_(inst|detail)/.test(o.name)) o.layers.set(NEAR_CASTER_LAYER); });
       roads.group.add(inf.roads); bridges.group.add(inf.bridges); rail.group.add(inf.rail); water.add(inf.water);
       inf.pick.forEach((v, k) => infraPick.set(k, v));
       this.camera.updateMatrixWorld(); inf.update(this.camera);
