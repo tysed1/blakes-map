@@ -84,6 +84,7 @@ PROGRESS 06b7223 (N4a): water reflects banks below the tree line (no grey sky sh
 
 ### N5. Surfaces + verges + rail (N) impact 4, effort 3
 Asphalt ageing by class, tar snakes/patches/oil lines, crisp markings at distance (no shimmer), soft shoulders + gravel strips + grass verges with their own material, ditches; riprap toned down; rails continuous to the horizon (far LOD). Accept: TC_road_driver, TC_hwy_low, GS_RailCrossing, aerials.
+PROGRESS 1e60ca8/06b7223: rails in the always-drawn struct group (continuous to the horizon), crack/tar-line AA fade (no far-pavement sparkle), soft-shoulder weeds + oil-dark joint, riprap toned down. Open: gore chevrons / accel-decel lane marking polish, R3 infra buffer quantization (REQUEST R->N).
 
 ### E3. Fields, ground cover, forest floor (E) impact 4, effort 3
 Fields with direction (hay rows, contour furrows, pasture wear paths), wildflower drifts, forest floor litter/ferns/rocks, riverbank rushes; no grass through props/roads; fix flat-disc flower heads; smoother rock props close up. Accept: TC_field_ped, GS_ForestEdge, TC_forest_ped.
