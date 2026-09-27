@@ -7,9 +7,10 @@ Mark progress by appending `DONE <commit> <note>` under an item. Re-read before 
 
 ### R1. Performance architecture: baked sun shadow + AO, near-only CSM (R) impact 5, effort 4
 Static sun: bake world-space shadow/AO map (terrain + canopy + large structures) once; sample in terrain/ground/road/water shaders; CSM High = 2 cascades <= 300 m, Medium = 1, Low = 0; only LOD0-1 trees/props/structures cast. Accept: shadow calls p50 <= 150 (High), no visible change in far shadows vs baseline shots (canopy shadow pattern still there), near shadows crisp.
+DONE f35fd8a (+a4417a3, 77889e0) High shadow calls p50 680 -> 66 (Medium 14, Low 0), all-pass tris max 87 M -> 19 M, far canopy pattern kept via the bake (exports/refine/R/it2.jpg, TC_high_1000 luma 56 vs 56.5).
 PROGRESS a4417a3 + 77889e0: bake + near-only CSM, High shadow calls 680 -> 172 (target 150: infra small casters now near-cascade only, next: tree bark group), all-pass tris 87 M -> 20 M, Low 0 shadow calls; far canopy pattern kept (TC_high_1000 luma 56 vs 56.5 baseline).
 
-STATUS R (02:40): R2 done, R1/R3 in progress (see items); next R3 remainder + R5. (01:50): R1 committed (a4417a3: bake + near-only CSM, High shadow calls 680 -> 188); follow-up in tree: LOD0 casters only in cascade 1 (layer), staggered culling (one module/frame), terrain-shadow weight retune for E's darkness note (testing TC_high_1000 / CAM_HollowRidge_Valley now). R2 fused post + R3 KTX2 albedo / .wasm packing are wired (in WIP snapshots), verification renders running on :4177.
+STATUS R (03:30): R1, R2, R3 done; R5 in progress (mist + clouds in), full golden + perf rerun running. (01:50): R1 committed (a4417a3: bake + near-only CSM, High shadow calls 680 -> 188); follow-up in tree: LOD0 casters only in cascade 1 (layer), staggered culling (one module/frame), terrain-shadow weight retune for E's darkness note (testing TC_high_1000 / CAM_HollowRidge_Valley now). R2 fused post + R3 KTX2 albedo / .wasm packing are wired (in WIP snapshots), verification renders running on :4177.
 
 ### R2. Fused post + bloom at quarter res + zero per-frame allocations (R) impact 4, effort 2
 One uber pass (shafts + grade + vignette + sharpen), bloom quarter res; no `new Vector3/Matrix4` per frame in World3D/trees/infra/groundcover update paths (coordinate with N/E for their modules: R posts a patch request or the owners fix). Accept: post passes 3 -> <= 2 full-screen, identical look in golden shots, cull ms p50 unchanged or lower.
@@ -23,6 +24,7 @@ REQUEST R->N (per-frame allocations, R2): infra.ts update(): `camera.getWorldPos
 REQUEST R->E (cull budget 4 ms/frame): measured single update() cost after a 7-21 m camera move, SwiftShader box (docs: scratch diag): groundcover 17.6 ms at 30 m AGL over Hollow Ridge (3.5 ms at 3 m, 7.8 ms at 650 m), trees 6-9.5 ms, infra 0.3-5 ms. World3D now staggers the three modules (one per frame, each at 20 Hz), so each module's single update must stay <= ~4 ms: please budget gc.update (early-out on small moves, incremental tile updates) and trees.update.
 ### R3. Texture compression + download diet (R, with E/N for their assets) impact 5, effort 3
 KTX2 (ETC1S albedo / UASTC normal+detail) with transcoder; atlas card/detail textures; stop uploading 6000 px JPEG as RGBA; meshopt/quantize geometry buffers (infra is 41 MB raw, ground cover raster 21 MB raw); drop eco/trees.bin from deploys; stream near-first. Accept: download <= 40 MB (baseline ~69 MB packed), GPU texture uploads -50 %, no visible quality loss.
+DONE f35fd8a (+8d414ec, 77889e0) packed deploy 69 -> 39.0 MB (38.2 MB transferred, loads 9-12 s on this box), GPU texture uploads 680 -> 332 MB (-51 %), albedo KTX2; E's textures pre-baked as KTX2 waiting for the loader switch (REQUEST above).
 PROGRESS 77889e0: packed deploy 69 -> 49.0 MB (.wasm containers, filters, dropped unused files), albedo KTX2 (GPU 64 -> ~16 MB), loads 10 s packed; remaining: E/N geometry + texture REQUESTs above, then <= 40 MB.
 
 REQUEST R->E (R3 texture compression, GPU memory): src/engine/textures.ts `loadTexture(name, source, {srgb, anisotropy, wrap}) -> Promise<Texture>` returns a Basis KTX2 texture (native block format, ~4-8x less VRAM) when `name` is live in world/ktx2.json, else the source image. KTX2 builds already baked (`node tools/pipeline/ktx2_bake.mjs`): groundcover/props_albedo (ETC1S), groundcover/props_normal, terrain/detail_{grass,forest,rock,soil} (UASTC, alpha = height kept). To switch: load them through loadTexture in groundcover.ts / terrainMaterial.ts (async: assign `material.map`/uniform when the promise resolves) and flip `live` to true for those entries in tools/pipeline/ktx2_bake.mjs, then rerun it (it rewrites world/ktx2.json). Note KTX2 textures are Y-flipped at encode, so UVs match the flipY=true image path.
@@ -97,6 +99,7 @@ Octahedral impostors per species replacing LOD3/4; CDLOD/clipmap terrain with ve
 
 ### R5. Atmosphere: cloud shadows, valley mist, sky, grade (R) impact 4, effort 2
 Moving cloud shadows (cheap projected noise), valley mist pockets (height fog modulation), sky/cloud polish, golden-hour key/fill match to graphics ref.png. Accept: side-by-side with graphics ref.png: layered depth, warm key/cool fill, nothing blown out or muddy.
+PROGRESS f35fd8a valley mist pockets + drifting cloud shadows in; next: golden-hour key/fill vs graphics ref.png, sky polish.
 
 ## Sprint 3: polish + budgets (all)
 Worst remaining golden shots, regressions, budgets on every preset, auto preset pick, Safari/Firefox check (lead).
