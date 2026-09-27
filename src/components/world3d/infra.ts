@@ -630,7 +630,7 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
     const cap = Math.min(it.count, /RailTie/.test(it.proto) ? 2400 : 1200);
     const mesh = new THREE.InstancedMesh(g, mats.struct, cap);
     mesh.count = 0; mesh.frustumCulled = false;
-    mesh.castShadow = !/RailTie|Delineator/.test(it.proto); mesh.receiveShadow = true;
+    mesh.castShadow = !/RailTie|Delineator|Sign|FencePost/.test(it.proto); mesh.receiveShadow = true;   // thin plates: no shadow-pass draws
     mesh.name = 'infra_inst_' + it.name;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     (/RailTie/.test(it.proto) ? rail : roads).add(mesh);
