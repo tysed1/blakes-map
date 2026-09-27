@@ -108,6 +108,8 @@ Accept: TC_high_1000, CAM_Ref_Match, GS_BaldRidge horizons show layered blue rid
 
 ### R4. Far-forest impostors + clipmap terrain (R with E) impact 5, effort 5
 Octahedral impostors per species replacing LOD3/4; CDLOD/clipmap terrain with vertex-texture height + geomorph. Accept: main tris p50 -40 %, calls -30 %, no visible quality loss in aerials.
+DONE (d) 023887c LOD4 billboard layer culled per cell + frustum: main tris p50 Low 2.39 -> 1.98 M, Medium 2.71 -> 2.30 M, High 2.88 -> 2.47 M, Ultra 4.07 -> 3.67 M (-0.4 M each), calls / shadow unchanged, cull/frame <= 1.8 ms; zero look change (exports/refine/R/d_before vs d_after at 1600x900, <= 0.06 % px differ). docs/refine/R/perf_d_{before,after}.json.
+NOT DONE impostors 2fbb1aa: unlit albedo + normal + indirect atlases with live sun, coverage matched (within 2 %) but still -4..-14 % luminance, -25 % contrast, no trunks (exports/refine/R/ab_w2): kept opt-in (?impostors), default unchanged. Open: the atlas-normal N.L comes out far below the geometry's.
 PROGRESS (not DONE) R: octahedral impostors for the LOD3 band exist but are opt-in (?impostors): the A/B gate failed (far band darker + sparser; the bake's per-view brightness / coverage needs debugging), so the shipped look is unchanged. Remaining tree cost on High is LOD3 cores 0.27-1.03 M tris + the static LOD4 billboard layer 0.41 M (all 206k instances submitted every frame). Perf High (pre-impostor, 12 samples): main tris p50 2.88 M, calls 179, shadow calls 34, cull/frame 1.3 ms.
 
 ### R5. Atmosphere: cloud shadows, valley mist, sky, grade (R) impact 4, effort 2
