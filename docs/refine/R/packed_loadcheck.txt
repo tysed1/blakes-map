@@ -1,3 +1,3 @@
-ready 9.984 s
+ready 8.849 s
 warning THREE.WebGLRenderer: KHR_parallel_shader_compile extension not supported.
-{"dl":47.6,"albedo":"compressed 36492","bake":1} bad: []
+{"dl":44.6,"albedo":"compressed 36492","bake":1} bad: []

@@ -1,0 +1,104 @@
+{
+ "presets": {
+  "high": {
+   "frames": [
+    {
+     "u": 0,
+     "cullMs": 5.63,
+     "renderMs": 13.2,
+     "calls": 149,
+     "tris": 2599777,
+     "mainCalls": 136,
+     "mainTris": 2336403
+    },
+    {
+     "u": 0.143,
+     "cullMs": 2.77,
+     "renderMs": 30.9,
+     "calls": 261,
+     "tris": 4021453,
+     "mainCalls": 195,
+     "mainTris": 3122542
+    },
+    {
+     "u": 0.286,
+     "cullMs": 101.23,
+     "renderMs": 93280.5,
+     "calls": 350,
+     "tris": 5777125,
+     "mainCalls": 259,
+     "mainTris": 4334758
+    },
+    {
+     "u": 0.429,
+     "cullMs": 24.53,
+     "renderMs": 34.1,
+     "calls": 408,
+     "tris": 7447984,
+     "mainCalls": 283,
+     "mainTris": 5045895
+    },
+    {
+     "u": 0.571,
+     "cullMs": 5.77,
+     "renderMs": 120855.8,
+     "calls": 212,
+     "tris": 3803455,
+     "mainCalls": 184,
+     "mainTris": 3406108
+    },
+    {
+     "u": 0.714,
+     "cullMs": 2.57,
+     "renderMs": 12.7,
+     "calls": 281,
+     "tris": 19385246,
+     "mainCalls": 154,
+     "mainTris": 7845901
+    },
+    {
+     "u": 0.857,
+     "cullMs": 0.93,
+     "renderMs": 10.5,
+     "calls": 128,
+     "tris": 2576003,
+     "mainCalls": 108,
+     "mainTris": 2083743
+    },
+    {
+     "u": 1,
+     "cullMs": 0.5,
+     "renderMs": 6.3,
+     "calls": 174,
+     "tris": 2199291,
+     "mainCalls": 174,
+     "mainTris": 2199291
+    }
+   ],
+   "summary": {
+    "mainCalls_p50": 184,
+    "mainCalls_max": 283,
+    "shadowCalls_p50": 66,
+    "mainTris_p50": 3406108,
+    "mainTris_max": 7845901,
+    "allTris_max": 19385246,
+    "cullMs_p50": 5.63,
+    "cullMs_max": 101.23,
+    "renderMs_p50": 30.9,
+    "renderMs_p99": 120855.8,
+    "programs": 52,
+    "geometries": 539,
+    "textures": 62
+   }
+  }
+ },
+ "gpuUploadMB": {
+  "textures": 332.2,
+  "buffers": 172.4
+ },
+ "downloadMB": 111.4,
+ "heapMB": 374,
+ "loadS": 10.454,
+ "mode": "SwiftShader (frame times NOT meaningful; use proxies)",
+ "errors": []
+}
