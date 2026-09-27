@@ -119,6 +119,13 @@ def main():
     stepm = np.zeros((H, W), bool)
     stepm[:, :-1] |= np.nan_to_num(gx) > STEP_MAX
     stepm[:-1, :] |= np.nan_to_num(gy) > STEP_MAX
+    # authored waterfalls (waterways.json 'falls': lip, tiers, toe) are intended steps
+    for r in load_json(path('data/manual/waterways.json'))['rivers']:
+        for fl in r.get('falls', []):
+            (x0, y0), (x1, y1) = fl['lip'], fl['toe']
+            for t in np.linspace(0, 1, 12):
+                cx, cy = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+                stepm[max(int(cy) - 10, 0):int(cy) + 11, max(int(cx) - 10, 0):int(cx) + 11] = False   # lip pool rim + ledges
     items, n = clusters(stepm)
     add('surface_step', 'warn', items, {'clusters': n, 'max_step_m': rnd(float(max(np.nanmax(gx), np.nanmax(gy))), 2)})
     for it in items:

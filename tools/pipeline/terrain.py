@@ -896,23 +896,44 @@ def shape_falls(elev, surf, fx, wmask, lines, prof):
             D, nt = float(fl['drop_m']), max(1, int(fl.get('tiers', 1)))
             n = len(L); i = np.arange(n)
             tiers = [il] if nt == 1 else np.linspace(il, max(il, it - 1), nt).round().astype(int).tolist()
-            # delta along the channel: +D/2 above the first tier, stepping down D/nt at each tier, -D/2 below the last
-            delta = np.full(n, D / 2)
-            for t_ in tiers:
-                delta[i > t_] -= D / nt
-            up = 1 - smoothstep(0, 60, tiers[0] - i)                      # ease above
-            dn = 1 - smoothstep(0, 60, i - max(tiers[-1], it))             # ease below
-            delta = np.where(i <= tiers[0], delta * up, np.where(i > max(tiers[-1], it), delta * dn, delta))
+            # new profile: -D/nt at each tier; the reach above is lifted and the reach below lowered by D/2 at
+            # the falls, both relaxing onto the original profile as soon as it is monotonic again (a quiet pool
+            # above the lip, a steeper run below) -> never uphill, levels far away unchanged
+            z0 = prof[k].astype(np.float64)
+            zn = z0.copy()
+            zn[tiers[0]] = z0[tiers[0]] + D / 2
+            for j in range(tiers[0] - 1, -1, -1):
+                zn[j] = max(z0[j], zn[j + 1] + 0.01)
+                if zn[j] == z0[j]:
+                    break
+            last = tiers[-1]
+            for j in range(tiers[0] + 1, last + 2):          # the falls: original slope, minus each tier passed
+                zn[j] = min(z0[j] + D / 2 - (D / nt) * sum(1 for t_ in tiers if t_ < j), zn[j - 1] - 0.01)
+            for j in range(last + 2, n):                     # below: stay lowered until the old profile drops past
+                zn[j] = min(z0[j], zn[j - 1] - 0.01)
+                if zn[j] == z0[j]:
+                    break
+            delta = (zn - z0).astype(np.float32)
             # per-pixel nearest sample of this channel within reach
             near = (np.hypot(xx - L[il, 0], yy - L[il, 1]) < 110)
             ys, xs = np.nonzero(near)
             dd, jj = tree.query(np.stack([xs, ys], 1).astype(np.float64), k=1)
             dl = delta[jj]
-            on_ch = dd < 40
+            # this channel's water (not a tributary's) and the land beside it
+            on_ch = np.where(wmask[ys, xs], dd < 9, dd < 40)
             ys, xs, dl, jj, dd = ys[on_ch], xs[on_ch], dl[on_ch], jj[on_ch], dd[on_ch]
             wet = wmask[ys, xs]
-            # water surface + bed follow the delta
+            # water surface + bed follow the delta (fading out in wide water / tributary mouths)
+            ww_ = np.where(wet, 1 - smoothstep(5.0, 9.0, dd), 1.0)
+            dl = dl * ww_
             surf[ys[wet], xs[wet]] += dl[wet]
+            # the centreline pixels in flow order must never rise (pixel walk of a curving line)
+            lo_, hi_ = max(tiers[0] - 80, 0), min(n, max(tiers[-1], it) + 80)
+            run = np.inf
+            for q in L[lo_:hi_]:
+                qx, qy = int(np.clip(q[0], 0, W - 1)), int(np.clip(q[1], 0, H - 1))
+                if wmask[qy, qx]:
+                    run = min(run, float(surf[qy, qx])); surf[qy, qx] = run
             lat_up = 1 - smoothstep(6, 25, dwe[ys, xs])                   # raised reach: floor + banks
             lat_dn = (1 - smoothstep(0.5, 2.0, dwe[ys, xs]))              # lowered reach: channel only
             fac = np.where(dl > 0, np.where(wet, 1.0, lat_up), np.where(wet, 1.0, lat_dn))
@@ -1100,6 +1121,7 @@ def main():
     elev = np.where(wmask, elev, condition_drainage(elev, wmask, cfg['erosion'].get('max_breach_m', 3.0))).astype(np.float32)
     # authored waterfalls last: a local edit (anything earlier re-routes the global drainage / erosion)
     elev, surf, falls_rock = shape_falls(elev, surf, fx, wmask, lines, prof)
+    elev = np.where(wmask, elev, condition_drainage(elev, wmask, cfg['erosion'].get('max_breach_m', 3.0))).astype(np.float32)
 
     # rock exposure (terrain-derived): steep crests/crags, cut banks, rapids banks
     gy, gx = np.gradient(cv2.GaussianBlur(elev, (0, 0), 1.2), MPP)
