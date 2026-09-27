@@ -15,6 +15,7 @@ import { installAtmosphere, createCinematic, Cinematic, NEAR_CASTER_LAYER } from
 import { terrainMaterial } from './terrainMaterial';
 import { sunBake } from '../../engine/sunbake';
 import { initTextures, loadTexture } from '../../engine/textures';
+import { bakeImpostors, impostorMaterial, impostorQuad, ImpostorSet } from '../../engine/impostor';
 import { buildGroundcover, Groundcover } from './groundcover'; // groundcover (agent)
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -92,11 +93,13 @@ export class World3D {
       const pm = new THREE.PMREMGenerator(this.renderer);
       this.scene.environment = pm.fromEquirectangular(t).texture;
       this.scene.environmentIntensity = 0.5;
+      this.envResolve();
       (this.scene as any).environmentRotation = new THREE.Euler(0, Math.atan2(this.sunDir.z, this.sunDir.x) + (0.612 - 0.5) * 2 * Math.PI, 0);
       pm.dispose();
     });
     const hemi = new THREE.HemisphereLight(0x9ab6e8, 0x4a4630, 0.55);   // cool sky fill
     this.scene.add(hemi);
+    this.hemi = hemi;
     initTextures(this.renderer);
     this.cine = createCinematic(this.renderer, this.scene, this.camera, this.sunDir, this.sunColor, this.sunIntensity);
     this.cine.setShadowQuality(this.quality, this.casterRange(this.quality));
@@ -148,8 +151,9 @@ export class World3D {
       trees.add(t.group);
       this.capShadowCasters();
       t.update(this.camera, true);
-      this.vegReady = true;
-    }).catch((e) => { console.error('trees', e); this.vegReady = true; });
+      // R4: far-band impostors, baked from the band's own LOD mesh + material once the sky light is in
+      if (/[?&]impostors\b/.test(location.search)) return this.envReady.then(() => this.installImpostors());
+    }).catch((e) => { console.error('trees', e); }).finally(() => { this.vegReady = true; });
     // --- rocks (E2: crags, cliff bands, scree, rock-cut ledges) ---
     const rocksG = new THREE.Group(); rocksG.name = 'rocks'; this.groups.rocks = rocksG;
     buildRocks({ quality: this.quality }).then((r) => {
@@ -173,6 +177,36 @@ export class World3D {
       .then(([meta, hb, wb]) => { const b = buildBackdrop(meta, hb, wb); this.groups.backdrop = b; this.scene.add(b); this.backdropReady = true; });
   }
   backdropReady = false;
+  private hemi: THREE.HemisphereLight | null = null;
+  private envResolve!: () => void;
+  private envReady = new Promise<void>((r) => { this.envResolve = r; setTimeout(r, 20000); });
+  impostors: ImpostorSet | null = null;
+  /**
+   * R4: the far tree LOD band (LOD 3: crown cores) becomes octahedral impostors: 2 triangles per tree,
+   * rendered from the same mesh + material at load (src/engine/impostor.ts), same cross-fade band.
+   * EXPERIMENTAL, opt-in with `?impostors` (the A/B gate failed: see the R4 board note).
+   */
+  private installImpostors() {
+    // not at visual parity yet (R4 A/B: darker, sparser far band): opt-in with ?impostors until fixed
+    if (!this.veg || !/[?&]impostors\b/.test(location.search)) return;
+    const lod3 = this.veg.group.children.filter((o): o is THREE.InstancedMesh => (o as THREE.InstancedMesh).isInstancedMesh && /_lod3$/.test(o.name));
+    if (!lod3.length) return;
+    const items = lod3.map((im) => ({ geometry: im.geometry, material: im.material as THREE.Material }));
+    const set = bakeImpostors(this.renderer, items, {
+      sunDir: this.sunDir, sunColor: this.sunColor, sunIntensity: this.sunIntensity, hemi: this.hemi,
+      environment: this.scene.environment, envIntensity: this.scene.environmentIntensity, envRotation: (this.scene as any).environmentRotation,
+    });
+    const quad = impostorQuad();
+    for (const im of lod3) {
+      const u = (this.renderer.properties.get(im.material as THREE.Material) as any).uniforms;
+      const tile = set.tiles.get(im.geometry);
+      if (!u?.uFade || !tile) continue;   // material never compiled: keep the geometry LOD
+      im.material = impostorMaterial(set, tile, { uFade: u.uFade, uFar: u.uFar, uCamPos: u.uCamPos });
+      im.geometry = quad;
+      im.castShadow = false; im.customDepthMaterial = undefined;
+    }
+    this.impostors = set;
+  }
   vegReady = false;
   camsReady = false;
   gc: Groundcover | null = null; gcReady = false; // groundcover (agent)
