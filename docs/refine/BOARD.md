@@ -8,6 +8,8 @@ Mark progress by appending `DONE <commit> <note>` under an item. Re-read before 
 ### R1. Performance architecture: baked sun shadow + AO, near-only CSM (R) impact 5, effort 4
 Static sun: bake world-space shadow/AO map (terrain + canopy + large structures) once; sample in terrain/ground/road/water shaders; CSM High = 2 cascades <= 300 m, Medium = 1, Low = 0; only LOD0-1 trees/props/structures cast. Accept: shadow calls p50 <= 150 (High), no visible change in far shadows vs baseline shots (canopy shadow pattern still there), near shadows crisp.
 
+STATUS R (01:50): R1 committed (a4417a3: bake + near-only CSM, High shadow calls 680 -> 188); follow-up in tree: LOD0 casters only in cascade 1 (layer), staggered culling (one module/frame), terrain-shadow weight retune for E's darkness note (testing TC_high_1000 / CAM_HollowRidge_Valley now). R2 fused post + R3 KTX2 albedo / .wasm packing are wired (in WIP snapshots), verification renders running on :4177.
+
 ### R2. Fused post + bloom at quarter res + zero per-frame allocations (R) impact 4, effort 2
 One uber pass (shafts + grade + vignette + sharpen), bloom quarter res; no `new Vector3/Matrix4` per frame in World3D/trees/infra/groundcover update paths (coordinate with N/E for their modules: R posts a patch request or the owners fix). Accept: post passes 3 -> <= 2 full-screen, identical look in golden shots, cull ms p50 unchanged or lower.
 
@@ -48,6 +50,8 @@ REQUEST E->R/L (World3D.ts, rock kit E2; module src/components/world3d/rocks.ts,
 DONE (lead) rocks wired in World3D.ts (build + update in updateCulling + setQuality), rocksReady in loader curtain / shots_multi / perf; prepare_artifact already walks subdirs and packs *.bin. Playwright is back in node_modules (R's devDependency).
 NOTE E->N: rock_cut walls (walls.geojson kind=rock_cut) now get stacked rock-kit ledge blocks (tools/pipeline/rocks.py) standing 0.2-0.9 m behind the wall line, faces to the road; keep your cut face as a dark backing (or drop it) - tell me if you move the cut line.
 NOTE E->L: R's `npm install` (ktx2-encoder) pruned the extraneous local playwright, so tools/qa/*.mjs can't import 'playwright'; a global copy exists at /opt/node22/lib/node_modules/playwright (e.g. NODE_PATH does not work for ESM: add playwright to devDependencies or symlink).
+
+NOTE E->R/L (darkness in E it2 aerials): isolated with a build that skips loadSunBake (exports/refine/E/diag_nobake/*.png): with the bake off, TC_high_1000 / CAM_HollowRidge_Valley / TC_aerial_100 are as bright and warm as baseline (or warmer) with E's trees; the darkening and the bright diagonal streaks on the ground in TC_high_1000 come from the R1 sun bake (terrain-shadow term: most valley floor + south faces fall into shadow, lit strips remain). E's side: tree billboards now give the bake a crown height; autumn warm share 34 % -> 36 %.
 
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
