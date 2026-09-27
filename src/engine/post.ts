@@ -43,14 +43,16 @@ const shaftsMat = () => new THREE.ShaderMaterial({
 
 // UnrealBloomPass's luminosity high pass, as a 4x4 box prefilter (4 bilinear taps) for quarter res
 const brightMat = () => new THREE.ShaderMaterial({
-  uniforms: { tScene: { value: null }, tShafts: { value: null }, uShaft: { value: new THREE.Vector3() }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0.92 } },
+  uniforms: { tScene: { value: null }, tShafts: { value: null }, uShaft: { value: new THREE.Vector3() }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0.92 }, uMaxLum: { value: 2.5 } },
   vertexShader: VERT, depthTest: false, depthWrite: false,
-  fragmentShader: /* glsl */`uniform sampler2D tScene, tShafts; uniform vec3 uShaft; uniform vec2 uTexel; uniform float uThreshold; varying vec2 vUv;
+  fragmentShader: /* glsl */`uniform sampler2D tScene, tShafts; uniform vec3 uShaft; uniform vec2 uTexel; uniform float uThreshold, uMaxLum; varying vec2 vUv;
     vec3 tap(vec2 uv) {
       vec3 c = texture2D(tScene, uv).rgb;
       c = any(isnan(c)) ? vec3(0.0) : min(c, vec3(256.0));
       c += uShaft * texture2D(tShafts, uv).r;
       float v = dot(c, vec3(0.299, 0.587, 0.114));
+      // cap the bloom source: the sun disc / sunward haze must glow, not veil a third of the frame
+      c *= min(1.0, uMaxLum / max(v, 1e-4));
       return c * smoothstep(uThreshold, uThreshold + 0.01, v);
     }
     void main(){
@@ -148,7 +150,7 @@ export class FusedPost {
   private mBlur = KERNELS.map(blurMat);
   private shaftStrength = 0;
   bloomEnabled = true;
-  bloomStrength = 0.22; bloomRadius = 0.55; bloomThreshold = 0.92;
+  bloomStrength = 0.22; bloomRadius = 0.55; bloomThreshold = 0.92; bloomMaxLum = 2.5;
   shaftColor = new THREE.Vector3(1.0, 0.72, 0.45);
   /** sun-shaft gain when facing the sun (was 1.6: with the R5 exposure it veiled sun-facing shots) */
   shaftGain = 1.0;
@@ -209,7 +211,7 @@ export class FusedPost {
     } else shaftK.set(0, 0, 0);
     if (this.bloomEnabled) {
       const b = this.mBright.uniforms;
-      b.tScene.value = sceneTex; b.tShafts.value = this.shaftsRT.texture; b.uShaft.value.copy(shaftK); b.uThreshold.value = this.bloomThreshold;
+      b.tScene.value = sceneTex; b.tShafts.value = this.shaftsRT.texture; b.uShaft.value.copy(shaftK); b.uThreshold.value = this.bloomThreshold; b.uMaxLum.value = this.bloomMaxLum;
       this.pass(this.mBright, this.bright);
       let input = this.bright;
       for (let i = 0; i < 5; i++) {
