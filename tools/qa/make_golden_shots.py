@@ -31,7 +31,8 @@ wl = sorted(walls, key=lambda f: -f['properties']['height_m'])[1]  # 2nd tallest
 c = np.asarray(wl['geometry']['coordinates'], float)[:, :2]
 a, b = c[0], c[-1]; d = (b - a) / max(np.linalg.norm(b - a), 1e-6); m = (a + b) / 2
 p0 = m - d * 14; zb = wl['properties']['base_z_m']
-shots['GS_RockCut'] = cam(w(p0[0], p0[1], z=zb + 1.6), w(m[0] + d[0] * 6, m[1] + d[1] * 6, z=zb + 3))
+zc = max(zb, h(p0[0], p0[1]))  # wall base_z can be stale after terrain edits: never below the graded road
+shots['GS_RockCut'] = cam(w(p0[0], p0[1], z=zc + 1.6), w(m[0] + d[0] * 6, m[1] + d[1] * 6, z=zc + 3))
 lu = np.fromfile(os.path.join(R, 'public/world/landuse_u8.bin'), np.uint8).reshape(H, W)
 best = None
 for yy in range(260, 440, 2):
