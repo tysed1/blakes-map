@@ -228,7 +228,7 @@ def fields(cls, rng, noise):
         tsel = hsh(uid.astype(np.float64), 1.0); ang = hsh(uid.astype(np.float64), 2.0) * math.pi
         # majority class of each field decides the menu
         is_farm = ndi.mean((cls[openr] == FARM).astype(np.float32), labels=inv, index=np.arange(len(uid))) > 0.5
-        t_farm = np.select([tsel < 0.42, tsel < 0.72, tsel < 0.84], [FIELD_TYPES['pasture'], FIELD_TYPES['hay'], FIELD_TYPES['plowed']], FIELD_TYPES['fallow'])
+        t_farm = np.select([tsel < 0.55, tsel < 0.75, tsel < 0.85], [FIELD_TYPES['pasture'], FIELD_TYPES['hay'], FIELD_TYPES['plowed']], FIELD_TYPES['fallow'])
         t_mead = np.select([tsel < 0.45], [FIELD_TYPES['pasture']], FIELD_TYPES['fallow'])
         tt = np.where(is_farm, t_farm, t_mead).astype(np.uint8)
         ftype[openr] = tt[inv]; fang[openr] = ang[inv]
@@ -488,8 +488,10 @@ def scatter(T, cls, seed=7):
     # autumn progress per crown: colour comes first up high, on warm south / south-west faces, on ridges and
     # sunny forest edges; moist coves and creek bottoms stay green; whole stands turn together (~75 m patches)
     n75 = fbm((H, W), 30, seed + 11, 2)
-    aut = (0.3 + 0.55 * elev + 0.28 * np.clip(sun, 0, 1) - 0.1 * np.clip(-sun, 0, 1) + 0.12 * np.clip(tpi, 0, 1)
-           - 0.25 * np.clip(-tpi, 0, 1) * moist - 0.2 * np.exp(-dwater / 25) + 0.1 * np.exp(-np.abs(sdn) / 12) + 0.14 * n75)
+    # forest edges and open-grown trees colour first (full sun: maples / sourwood / sumac edges blaze red-orange)
+    edge_sun = np.exp(-np.abs(sdn) / 15) + 0.6 * ~forest
+    aut = (0.34 + 0.45 * elev + 0.25 * np.clip(sun, 0, 1) - 0.1 * np.clip(-sun, 0, 1) + 0.1 * np.clip(tpi, 0, 1)
+           - 0.25 * np.clip(-tpi, 0, 1) * moist - 0.15 * np.exp(-dwater / 25) + 0.35 * np.clip(edge_sun, 0, 1) + 0.14 * n75)
     aut = np.clip(aut[yi, xi] + rng.normal(0, 0.06, len(X)), 0, 1)
     seed_col = np.round(aut * 100) + rng.random(len(X)) * 0.999
     veg = np.stack([X, Y, Z, SC, S.astype(np.float32), seed_col], 1).astype(np.float32)

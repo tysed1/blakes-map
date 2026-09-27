@@ -68,14 +68,16 @@ def main():
     tall = np.maximum.reduce([pasture, fallow * 0.6, meadow * 0.8]) * op
     tall = np.maximum(tall, np.maximum(bank * 0.9, disturbed * 0.55) * op * (1 - dev))
     tall = np.maximum.reduce([tall, verge * 0.8 * (1 - S(rock, 0.35, 0.75)), hedge * 0.24])
-    w_pasture = tall * (1 - 0.75 * np.maximum(hay, lawn))   # the hay / lawn layers replace it inside those fields
+    # autumn hay fields are aftermath: green regrowth blades through the cut stubble (E3), lawns replace it
+    tall = np.maximum(tall, hay * 0.6 * op)
+    w_pasture = tall * (1 - 0.75 * lawn)
     w_broom = fallow * op
     w_stubble = hay * op
     w_short = np.maximum(np.maximum(lawn, dev * 0.7) * op, plowed * 0.12 * op)
     w_rush = np.maximum(bank, S(moist, 0.7, 0.95)) * (1 - S(rock, 0.35, 0.75))
     w_forest = forest * np.clip(1.1 - canopy, 0, 1)
     w_fern = under * np.clip(0.35 + moist, 0, 1)
-    w_flowers = np.maximum.reduce([fallow * 0.8, pasture * 0.2, verge, hedge]) * op
+    w_flowers = np.maximum.reduce([fallow * 0.8, pasture * 0.25, hay * 0.15, verge, hedge]) * op
     w_weeds = np.maximum.reduce([verge, disturbed, pasture * 0.3]) * op
 
     # weights are quantised to 32 levels (x 8.2) and small values zeroed: 4x smaller gzip, invisible on screen
