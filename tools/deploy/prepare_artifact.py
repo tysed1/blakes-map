@@ -58,14 +58,16 @@ def best_filter(raw):
 # float tables whose precision far exceeds their use: rounded to a grid (so the float bit patterns
 # compress) and stored column-major; filter 'c<N>:<f>' tells bin() to transpose back
 LOSSY = {
-    # x, y, z (source px / m), scale, species, seed  -> 4 cm, 4 cm, 1.6 cm, 0.2 %, exact, 1e-4
-    'vegetation_f32.bin': (6, [1 / 64, 1 / 64, 1 / 64, 1 / 512, 0, 1 / 4096]),
+    # x, y, z (source px / m), scale, species, seed -> 4 cm, 4 cm, 1.6 cm, 0.2 %, exact, exact (the seed
+    # feeds sin-hash tints / rotations: any rounding re-rolls them)
+    'vegetation_f32.bin': (6, [1 / 64, 1 / 64, 1 / 64, 1 / 512, 0, 0]),
 }
 
 
 # u16 rasters: quantized to q units, then a 2D (left + up - upleft) predictor; filter 'p<W>:<f>'
 U16_2D = {
-    'backdrop_u16.bin': (1900, 16),   # distant ridges, 10 m cells: 0.29 m height steps
+    'backdrop_u16.bin': (1900, 32),   # distant ridges (>= 2.5 km away), 10 m cells: 0.59 m height steps
+    'terrain_u16.bin': (2000, 1),     # playable terrain: lossless
 }
 
 
@@ -150,6 +152,17 @@ def segment_pack(raw, secs):
     return segs, b''.join(out)
 
 
+def tree_sections(geo_json, _fname):
+    """trees/geo.json: per species x LOD vertex streams (pos f32 xyz, nrm i8x4, uv u8x2, al u8x2, idx u16)."""
+    out = []
+    for sp in json.load(open(geo_json))['species']:
+        for l in sp['lods']:
+            v = l['vcount']
+            out += [(l['pos'], v * 3, 'f4', 'pos'), (l['nrm'], v * 4, 'i1', 'nrm'), (l['uv'], v * 2, 'u1', 'uv'),
+                    (l['al'], v * 2, 'u1', 'al'), (l['idx'], l['icount'], 'u2', 'idx')]
+    return sorted(out)
+
+
 SEGMENTED = {'infra/infra_roads.bin': 'infra/infra.json', 'infra/infra_struct.bin': 'infra/infra.json', 'infra/infra_water.bin': 'infra/infra.json'}
 
 files, tot, pack = {}, 0, {}
@@ -173,7 +186,10 @@ for sub in ('assets', 'world', 'basis'):
                 src = os.path.join(D, p)
                 rel = os.path.relpath(src, os.path.join(D, 'world')).replace(os.sep, '/')
                 segs = None
-                if rel in SEGMENTED and os.path.exists(os.path.join(D, 'world', SEGMENTED[rel])):
+                if rel == 'trees/geo.bin' and os.path.exists(os.path.join(D, 'world', 'trees', 'geo.json')):
+                    segs, data = segment_pack(round_tree_positions(open(src, 'rb').read()), tree_sections(os.path.join(D, 'world', 'trees', 'geo.json'), f))
+                    filt, z = 'seg', gzip.compress(data, 9, mtime=0)
+                elif rel in SEGMENTED and os.path.exists(os.path.join(D, 'world', SEGMENTED[rel])):
                     segs, data = segment_pack(open(src, 'rb').read(), sections(os.path.join(D, 'world', SEGMENTED[rel]), os.path.basename(rel)))
                     filt, z = 'seg', gzip.compress(data, 9, mtime=0)
                 else:
