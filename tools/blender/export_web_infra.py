@@ -262,6 +262,8 @@ def group_of(obname, matname):
         return 'verge' if GROUND[matname] == 6 else 'ground'
     if obname.startswith(('BRIDGE', 'INFRA Tunnel', 'INFRA Retaining')):
         return 'struct'
+    if matname == 'MAT_Rail_Steel':
+        return 'struct'   # rails stay drawn to the horizon (the ballast is ground): no line ending at 750 m
     return 'detail'
 
 

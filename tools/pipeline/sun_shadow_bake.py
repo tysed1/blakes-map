@@ -6,9 +6,9 @@ low-sun shadows of every tree) are baked once into a world-space texture that ev
 samples (src/engine/sunbake.ts). Real-time cascaded shadow maps then only cover the near field.
 
 Encoding (flipY-free: row 0 = py 0):
-  public/world/sunbake.png     gray, 2 texels per source px (1.25 m):
+  public/world/sunbake.jpg     gray (JPEG q90), 2 texels per source px (1.25 m):
       D_all : how far above the ground a point must be to see the sun, occluders = terrain + canopy
-  public/world/sunbake_lo.png  RGB, 1 texel per source px (2.5 m):
+  public/world/sunbake_lo.webp RGB lossless, 1 texel per source px (2.5 m):
       R D_ter : same, terrain only (the near field gets canopy shadows from the CSM instead)
       G AO    : ground ambient occlusion (canopy cover + terrain concavity), 255 = open
   D is metres, stored as 255 * sqrt(D / DMAX) (fine steps near the ground where penumbrae live).
@@ -19,7 +19,7 @@ trees/geo.json) is a solid dome; the lit-height field is H(p) = max_s(O(p + s*u)
 occluder height field and u the horizontal direction toward the sun, computed with log2 doubling
 steps (each a bilinear shift of the whole grid).
 
-usage: python3 tools/pipeline/sun_shadow_bake.py [--scale 2] [--out public/world/sunbake.png]
+usage: python3 tools/pipeline/sun_shadow_bake.py [--scale 2] [--out public/world/sunbake.jpg]
 Rerun whenever the terrain (terrain_u16.bin) or the vegetation scatter changes.
 """
 import argparse
@@ -54,7 +54,7 @@ def load_terrain():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--scale', type=int, default=2, help='bake texels per source px')
-    ap.add_argument('--out', default=os.path.join(PUB, 'sunbake.png'))
+    ap.add_argument('--out', default=os.path.join(PUB, 'sunbake.jpg'))
     ap.add_argument('--debug', default=None, help='optional preview png (lit shading)')
     a = ap.parse_args()
     t0 = time.time()
@@ -131,11 +131,15 @@ def main():
 
     enc = lambda D: np.rint(255.0 * np.sqrt(D / DMAX)).astype(np.uint8)
     # full res: D_all (the detailed canopy term); half res (2.5 m): D_ter + AO (both smooth)
-    Image.fromarray(enc(Dall), 'L').save(a.out, optimize=True)
-    lo = os.path.splitext(a.out)[0] + '_lo.png'
+    # canopy term as gray JPEG q90 (1.1 MB vs 2.1 MB PNG; D error p99 ~1 m, inside the penumbra width)
+    Image.fromarray(enc(Dall), 'L').save(a.out, quality=90, optimize=True)
+    lo = os.path.splitext(a.out)[0] + '_lo.webp'
     box = lambda A: A.reshape(H0, f, W0, f).mean(axis=(1, 3))   # texel-centre aligned 2x2 average
     Dt, Ao = box(Dter), box(ao)
-    Image.fromarray(np.dstack([enc(np.clip(Dt, 0, DMAX)), np.rint(np.clip(Ao, 0, 1) * 255).astype(np.uint8), np.zeros_like(enc(Dt))]), 'RGB').save(lo, optimize=True)
+    Image.fromarray(np.dstack([enc(np.clip(Dt, 0, DMAX)), np.rint(np.clip(Ao, 0, 1) * 255).astype(np.uint8), np.zeros_like(enc(Dt))]), 'RGB').save(lo, lossless=True, method=6)
+    for old in ('sunbake.png', 'sunbake_lo.png'):   # earlier output names
+        if os.path.exists(os.path.join(os.path.dirname(a.out), old)):
+            os.remove(os.path.join(os.path.dirname(a.out), old))
     print(f'wrote {a.out} {os.path.getsize(a.out) / 1e6:.1f} MB + {lo} {os.path.getsize(lo) / 1e6:.1f} MB  ({time.time() - t0:.1f}s)')
     if a.debug:
         lit = 1.0 - np.clip((Dall - 0.3) / 1.5, 0, 1)

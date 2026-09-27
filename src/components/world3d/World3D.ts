@@ -319,6 +319,9 @@ export class World3D {
       const m = /_lod(\d)$/.exec(o.name);
       if (!m) return;
       if (+m[1] > 1) o.castShadow = false;
+      // understorey (brush, laurel, rhododendron, saplings, dogwood) casts only at LOD0: its shadows are
+      // lost under the canopy past ~55 m, and each species x LOD costs 3 shadow draws per cascade
+      if (+m[1] === 1 && /Brush|Laurel|Rhododendron|Sapling|Dogwood/.test(o.name)) o.castShadow = false;
       // LOD0 (nearest ~55 m) casts into the first cascade only
       if (+m[1] === 0) o.layers.set(NEAR_CASTER_LAYER);
     });

@@ -350,13 +350,14 @@ float sH = 0.5, sBump = 0.0;
     col = mix(stone, vec3(0.42, 0.41, 0.38), mortar);
     col = mix(col, vec3(0.08, 0.1, 0.05), 0.5 * sstep(0.55, 0.8, bn(fbm2(P * 0.6))));
     sH = sstep(0.0, 0.12, c.y); sBump = 0.8;
-  } else if (mode == 5) {     // granite riprap
-    vec3 c = vor3(P / 0.55);
-    vec3 st = mix(vec3(0.11, 0.105, 0.1), vec3(0.24, 0.23, 0.21), c.z);
-    st = mix(st, vec3(0.06, 0.08, 0.035), 0.6 * sstep(0.55, 0.8, bn(fbm2(P * 0.3))));
-    col = mix(st, vec3(0.03, 0.028, 0.024), 0.8 * (1.0 - smoothstep(0.015, 0.05, c.y)));
-    col = mix(col, vec3(0.13, 0.11, 0.08), 0.3 * sstep(0.4, 0.7, fbm2(P * 1.3)));   // soil / silt washed between the stones
-    sH = sstep(0.0, 0.2, c.y); sBump = 1.2;
+  } else if (mode == 5) {     // granite riprap, weathered in: smaller stones, low contrast, silted + mossy
+    vec3 c = vor3(P / 0.4);
+    vec3 st = mix(vec3(0.12, 0.115, 0.105), vec3(0.19, 0.18, 0.165), c.z);
+    st = mix(st, vec3(0.07, 0.085, 0.04), 0.55 * sstep(0.5, 0.8, bn(fbm2(P * 0.3))));
+    col = mix(st, vec3(0.06, 0.055, 0.045), 0.6 * (1.0 - smoothstep(0.015, 0.05, c.y)));
+    col = mix(col, vec3(0.12, 0.105, 0.075), 0.45 * sstep(0.35, 0.7, fbm2(P * 1.3)));   // soil / silt washed between the stones
+    col = mix(col, vec3(0.1, 0.12, 0.05), 0.35 * sstep(0.6, 0.85, bn(fbm2(P * 0.9))) * sstep(0.4, 0.9, vWn.y));   // grass creeping in
+    sH = sstep(0.0, 0.2, c.y); sBump = 0.6;
   } else if (mode == 6) {     // river boulders: granite / gneiss, lichen + moss on dry tops, dark and glossy when wet
     float n = bn(fbm4(P * 0.9));
     vec3 base = mix(vec3(0.13, 0.125, 0.115), vec3(0.30, 0.285, 0.26), n);
@@ -384,7 +385,7 @@ float sH = 0.5, sBump = 0.0;
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   if (sBump > 0.0) normal = bumpN(-vViewPosition, normal, sH, sBump * 0.05);`);
   };
-  m.customProgramCacheKey = () => 'infra-struct-1';
+  m.customProgramCacheKey = () => 'infra-struct-2';
   return m;
 }
 
@@ -473,10 +474,11 @@ float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
   wFoam = sstep(0.0, 0.12, lace - thr) * sstep(0.08, 0.35, famt);
   // body: clear tinted shallows (the bed shows through) -> dark tea-green pools
   float dfac = (1.0 - exp(-depth / 1.1)) * mrange(shore, 0.0, 2.5, 0.35, 0.92);
-  vec3 body = mix(vec3(0.16, 0.2, 0.17), vec3(0.010, 0.030, 0.028), sstep(0.0, 1.0, dfac));
-  float alpha = mix(0.18, 0.93, dfac);
-  diffuseColor = vec4(mix(body, vec3(0.82, 0.85, 0.84), wFoam), mix(alpha, 0.96, wFoam) * (1.0 - wBnd));
-  roughnessFactor = mix(0.04, 0.55, wFoam);
+  // soft, dark tea-brown shallows over the bed -> deep green-black pools (Appalachian tannin water)
+  vec3 body = mix(vec3(0.075, 0.07, 0.05), vec3(0.008, 0.022, 0.02), sstep(0.0, 1.0, dfac));
+  float alpha = mix(0.3, 0.94, dfac);
+  diffuseColor = vec4(mix(body, vec3(0.78, 0.8, 0.78), wFoam), mix(alpha, 0.96, wFoam) * (1.0 - wBnd));
+  roughnessFactor = mix(0.075, 0.55, wFoam);   // no pin-point sun glints / bloom sparkles
   metalnessFactor = 0.0;
 }`)
       .replace('#include <normal_fragment_begin>', `
@@ -484,12 +486,19 @@ float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
   vec3 nW = normalize(vec3(-wGrad.x, 1.0, -wGrad.y));
   vec3 normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
   vec3 nonPerturbedNormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);`)
+      .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+  // valley rivers mirror their banks, not open sky: sky reflection only for rays that clear the
+  // tree line, the rest reflects dark forest / bank (no SSR needed, no bright grey sheen)
+  { vec3 Rw = reflect(normalize(vWp - cameraPosition), normalize(vec3(-wGrad.x, 1.0, -wGrad.y)));
+    float sky = sstep(0.12, 0.55, Rw.y);
+    vec3 bank = vec3(0.045, 0.05, 0.035) * (0.6 + 0.4 * vnoise(vec3(vWp.xz * 0.05, 1.0)));
+    radiance = mix(bank * max(dot(iblIrradiance, vec3(0.333)), 0.35) * 3.0, radiance * 0.85, sky); }`)
       .replace('#include <opaque_fragment>', `
   { vec3 V = normalize(vViewPosition); float F = 0.02 + 0.98 * pow(1.0 - clamp(dot(normal, V), 0.0, 1.0), 5.0);
     diffuseColor.a = clamp(diffuseColor.a + F * (1.0 - diffuseColor.a), 0.0, 1.0) * (1.0 - wBnd); }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'infra-water-1';
+  m.customProgramCacheKey = () => 'infra-water-2';
   return m;
 }
 

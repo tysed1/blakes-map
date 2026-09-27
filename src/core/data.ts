@@ -42,7 +42,12 @@ export class Heightfield {
 
 const BASE = `${import.meta.env.BASE_URL}world/`;
 
+/** World JSON; in the packed deploy the large ones ship gzipped in the same .wasm containers as bin(). */
 async function json<T>(f: string): Promise<T> {
+  if (PACKED) {
+    packIndex ??= fetch(BASE + 'pack.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if ((await packIndex)?.[f]) return JSON.parse(new TextDecoder().decode(await bin(f)));
+  }
   const r = await fetch(BASE + f);
   if (!r.ok) throw new Error(`failed to load ${f}`);
   return r.json();

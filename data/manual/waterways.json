@@ -366,6 +366,68 @@
    "elev_m": [
     425,
     null
+   ],
+   "steps": [
+    [
+     1142.5,
+     262.0,
+     40.0,
+     3.0
+    ],
+    [
+     1041.0,
+     49.0,
+     18.0,
+     2.5
+    ],
+    [
+     1048.0,
+     52.5,
+     14.0,
+     2.0
+    ],
+    [
+     1050.0,
+     69.0,
+     14.0,
+     2.5
+    ]
+   ],
+   "falls": [
+    {
+     "id": "FALLS_HOLLOW",
+     "name": "Hollow Falls",
+     "lip": [
+      1142.5,
+      259.0
+     ],
+     "toe": [
+      1141.0,
+      266.0
+     ],
+     "drop_m": 7.5,
+     "lip_width_m": 13.0,
+     "pool_radius_m": 10.0,
+     "kind": "plunge",
+     "note": "Single plunge over a resistant gneiss ledge, overhung lip, plunge pool below, talus + spray zone; the creek above is a quiet run, below a boulder cascade."
+    },
+    {
+     "id": "FALLS_CREEK_CASCADES",
+     "name": "Falls Creek Cascades",
+     "lip": [
+      1037.0,
+      47.5
+     ],
+     "toe": [
+      1051.0,
+      70.0
+     ],
+     "drop_m": 8.5,
+     "tiers": 3,
+     "lip_width_m": 11.0,
+     "kind": "cascade",
+     "note": "Three stepped ledges (~3 m, ~2.5 m, ~3 m) with sliding sheets and white water between, small pools on each bench."
+    }
    ]
   },
   {
@@ -1132,5 +1194,6 @@
    ]
   }
  ],
- "_elev_doc": "elev_m = [source, mouth] water-surface elevation (m); null = inherit from the parent channel at the junction. Profiles are monotonic downstream."
+ "_elev_doc": "elev_m = [source, mouth] water-surface elevation (m); null = inherit from the parent channel at the junction. Profiles are monotonic downstream.",
+ "_falls_doc": "falls: authored waterfalls on a channel. lip/toe = source px of the crest and the foot on the centreline; drop_m = water-surface drop concentrated there (the terrain needs a matching rock step: terrain.py), lip_width_m = sheet width, kind plunge|cascade, tiers for cascades. lib_water.py builds the falling sheets, foam, spray and plunge-pool water from these."
 }

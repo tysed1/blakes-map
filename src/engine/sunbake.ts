@@ -10,9 +10,9 @@ import { assetUrl } from '../core/data';
  *
  * The golden-hour sun never moves, so terrain self-shadowing and the canopy's long low-sun shadows
  * are baked once into world-space textures:
- *   sunbake.png    (R8, 1.25 m)  D_all: metres a point must rise above the ground to see the sun
+ *   sunbake.jpg    (R8, 1.25 m)  D_all: metres a point must rise above the ground to see the sun
  *                                (terrain + canopy occluders)
- *   sunbake_lo.png (RG8, 2.5 m)  D_ter: same, terrain occluders only; AO: ground ambient occlusion
+ *   sunbake_lo.webp (RG8, 2.5 m) D_ter: same, terrain occluders only; AO: ground ambient occlusion
  *                                (canopy cover + terrain concavity)
  * with D stored as sqrt(D / 64 m). Real-time cascaded shadows only cover the near field (<= ~300 m);
  * there the bake contributes the terrain term only (the CSM has the exact leaf-card canopy), and it
@@ -148,7 +148,7 @@ export function loadSunBake(renderer: THREE.WebGLRenderer): Promise<void> {
       res(t);
     }, undefined, () => { console.warn(`${f} missing: baked sun shadows off`); res(null); });
   });
-  return Promise.all([load('sunbake.png', THREE.RedFormat), load('sunbake_lo.png', THREE.RGFormat)]).then(([a, b]) => {
+  return Promise.all([load('sunbake.jpg', THREE.RedFormat), load('sunbake_lo.webp', THREE.RGFormat)]).then(([a, b]) => {
     if (!a || !b) return;
     uniforms.tSunBake.value = a; uniforms.tSunBakeLo.value = b; uniforms.uSunBakeK.value.w = 1;
   });

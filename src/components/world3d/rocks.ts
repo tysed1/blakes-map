@@ -95,7 +95,7 @@ function rockMaterial(tex: THREE.Texture, fade: { value: THREE.Vector4 }, cam: {
           vec4 t = triR(vRW / 4.2, n);
           vec4 t2 = triR(vRW / 17.0 + 0.37, n);
           // detail_rock mean ~ (0.069, 0.053, 0.037): normalise, then a grey-brown gneiss base
-          vec3 c = mix(vec3(1.0), t.rgb / vec3(0.069, 0.053, 0.037), 0.55) * vec3(0.13, 0.118, 0.1); // tamed contrast
+          vec3 c = mix(vec3(1.0), t.rgb / vec3(0.069, 0.053, 0.037), 0.55) * vec3(0.165, 0.15, 0.128); // tamed contrast
           c *= mix(0.8, 1.2, dot(t2.rgb / vec3(0.069, 0.053, 0.037), vec3(0.333)) * 0.5);
           // lichen (pale grey-green) + moss on ledges facing the sky, darker streaks down vertical faces
           float up = smoothstep(0.45, 0.85, n.y);
@@ -103,7 +103,7 @@ function rockMaterial(tex: THREE.Texture, fade: { value: THREE.Vector4 }, cam: {
           c = mix(c, vec3(0.19, 0.2, 0.15), lich * 0.55);
           c = mix(c, vec3(0.05, 0.07, 0.03), up * (1.0 - lich) * 0.35);
           c *= mix(1.0, 0.78, (1.0 - abs(n.y)) * smoothstep(0.4, 0.6, fract(vRW.x * 0.37 + vRW.z * 0.29 + t.a)));
-          diffuseColor.rgb = c * vTint * (0.35 + 0.75 * vAO);
+          diffuseColor.rgb = c * vTint * (0.55 + 0.55 * vAO);
           rH = t.a + 0.5 * t2.a;
         }`)
       .replace('#include <color_fragment>', '')

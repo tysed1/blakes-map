@@ -3,6 +3,23 @@ import { pxToWorld } from '../../core/coords';
 
 export interface BackdropMeta { cell_px: number; w: number; h: number; origin_px: [number, number]; min_m: number; max_m: number; map_rect_cells: [number, number, number, number] }
 
+/**
+ * Grid lines for the backdrop: 20 m next to the playable map, widening with distance from it
+ * (tensor-product grid, so there are no T-junction cracks): 2 cells up to 800 m out, then the step grows
+ * by one cell every ~600 m past 800 m, capped at 8 cells (80 m: sub-pixel skyline error at 9 km+).
+ */
+function gridLines(n: number, lo: number, hi: number): number[] {
+  const out: number[] = [];
+  let i = 0;
+  while (i < n - 1) {
+    out.push(i);
+    const d = i < lo ? lo - i : i > hi ? i - hi : 0;
+    i += Math.min(8, 2 + Math.floor(Math.max(0, d - 80) / 60));
+  }
+  out.push(n - 1);
+  return out;
+}
+
 /** Distant terrain ring around the playable map (hole where the real terrain is). */
 export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: ArrayBuffer, step = 2): THREE.Group {
   const g = new THREE.Group();
@@ -12,11 +29,12 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
   const H = (i: number, j: number) => meta.min_m + u[Math.min(meta.h - 1, j) * meta.w + Math.min(meta.w - 1, i)] * k;
   const [rx0, ry0, rx1, ry1] = meta.map_rect_cells;
   const inside = (i: number, j: number) => i >= rx0 + 1 && i < rx1 - 1 && j >= ry0 + 1 && j < ry1 - 1;
-  const nx = Math.floor((meta.w - 1) / step) + 1, ny = Math.floor((meta.h - 1) / step) + 1;
+  const XS = gridLines(meta.w, rx0, rx1), YS = gridLines(meta.h, ry0, ry1);
+  const nx = XS.length, ny = YS.length;
   const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3);
   const cForest = new THREE.Color(0x334f2e), cHigh = new THREE.Color(0x4a6340), cRock = new THREE.Color(0x7c7a6c), c = new THREE.Color();
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const ci = i * step, cj = j * step;
+    const ci = XS[i], cj = YS[j];
     const px = meta.origin_px[0] + (ci + 0.5) * meta.cell_px, py = meta.origin_px[1] + (cj + 0.5) * meta.cell_px;
     const h = H(ci, cj);
     const [X, , Z] = pxToWorld(px, py);
@@ -35,7 +53,7 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
   }
   const idx: number[] = [];
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-    if (inside(i * step, j * step) && inside((i + 1) * step, (j + 1) * step)) continue;
+    if (inside(XS[i], YS[j]) && inside(XS[i + 1], YS[j + 1])) continue;
     const a = j * nx + i, b = a + 1, cc = a + nx, d = cc + 1;
     idx.push(a, cc, b, b, cc, d);
   }

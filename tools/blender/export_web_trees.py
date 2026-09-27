@@ -123,11 +123,17 @@ def pack(g):
             groups.append([start, t.size, m])
             idx.append(t.ravel()); start += t.size
     I = np.concatenate(idx) if idx else np.zeros(0, np.uint32)
+    # per-vertex material id in the normal's 4th byte (web: one merged tree material per mesh):
+    # 0 bark, 64 core, 127 leaf card
+    VM = np.zeros(len(P), np.int8)
+    code = {0: 0, 2: 64, 1: 127}
+    for f, m in zip(g.F, g.M):
+        VM[list(f)] = code[m]
     assert len(P) < 65536, len(P)
     return dict(P=P.astype(np.float32), N=np.clip(np.round(Nn * 127), -127, 127).astype(np.int8),
                 UV=np.clip(np.round(UV * 255), 0, 255).astype(np.uint8),
                 AL=np.clip(np.round(np.c_[AO, LV] * 255), 0, 255).astype(np.uint8),
-                I=I.astype(np.uint16), groups=groups,
+                I=I.astype(np.uint16), groups=groups, VM=VM,
                 r=float(np.max(np.linalg.norm(P[:, [0, 2]], axis=1))), h=float(P[:, 1].max()))
 
 
@@ -151,7 +157,7 @@ def main():
             ref = ref or g
             prev = g
             m = pack(g)
-            n4 = np.zeros((len(m['N']), 4), np.int8); n4[:, :3] = m['N']
+            n4 = np.zeros((len(m['N']), 4), np.int8); n4[:, :3] = m['N']; n4[:, 3] = m['VM']
             lods.append(dict(vcount=len(m['P']), icount=len(m['I']), groups=m['groups'],
                              pos=put(m['P']), nrm=put(n4), uv=put(m['UV']), al=put(m['AL']), idx=put(m['I'])))
             if li == 0:

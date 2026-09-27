@@ -76,6 +76,8 @@ def lossy(rel, raw):
 
 files, tot, pack = {}, 0, {}
 SKIP = {'eco_u8.bin', 'trees.bin', 'road_qa.jpg', 'landuse.png'}  # pipeline-only / legacy / QA-only
+# world JSON loaded through src/core/data.ts json() (which reads pack.json): packed like *.bin when large
+PACK_JSON = {'roads.json', 'nodes.json', 'bridges.json', 'rail.json', 'water.json', 'landuse.json', 'regions.json', 'settlements.json', 'landmarks.json', 'qa.json'}
 # a live KTX2 texture (world/ktx2.json: name -> source image) ships only as KTX2; other .ktx2 files
 # (baked but not yet loaded by the viewer) are left out
 ktx = json.load(open(os.path.join(D, 'world', 'ktx2.json'))) if os.path.exists(os.path.join(D, 'world', 'ktx2.json')) else {}
@@ -84,12 +86,12 @@ SKIP_PATHS = {'world/' + src for src in ktx.values()}
 for sub in ('assets', 'world', 'basis'):
     for dirpath, _, names in os.walk(os.path.join(D, sub)):
         for f in sorted(names):
-            if f in SKIP or f.endswith('.gz.b64.txt') or f.endswith('.bin.wasm') or f.endswith('.ktx2.wasm') or f == 'pack.json':
+            if f in SKIP or f.endswith('.gz.b64.txt') or (sub == 'world' and f.endswith('.wasm')) or f == 'pack.json':
                 continue
             p = os.path.relpath(os.path.join(dirpath, f), D).replace(os.sep, '/')
             if p in SKIP_PATHS or (f.endswith('.ktx2') and p[len('world/'):-len('.ktx2')] not in ktx):
                 continue
-            if f.endswith('.bin') or f.endswith('.ktx2'):
+            if f.endswith('.bin') or f.endswith('.ktx2') or (sub == 'world' and p[len('world/'):] in PACK_JSON and os.path.getsize(os.path.join(D, p)) > 20000):
                 src = os.path.join(D, p)
                 rel = os.path.relpath(src, os.path.join(D, 'world')).replace(os.sep, '/')
                 cols, data = lossy(rel, open(src, 'rb').read())

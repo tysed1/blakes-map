@@ -25,6 +25,7 @@ from tools.lib.common import path, load_json, W, H
 from tools.pipeline.vegetation import corridor_edge_distance, clear_zone_distance, fbm, smoothstep, crag_score, MPP, WATER
 
 KINDS = ['cliff_block', 'crag', 'boulder', 'scree']   # tools/blender/lib_rocks.KINDS
+DIMS = {'cliff_block': (6.0, 3.0, 4.2), 'crag': (4.0, 3.4, 3.2), 'boulder': (1.8, 1.5, 1.2), 'scree': (0.55, 0.45, 0.32)}   # lib_rocks.DIMS
 VARIANTS = 4
 STRIDE = 8
 
@@ -163,6 +164,28 @@ def main(seed=23):
                 out.append(np.array([[qx, qy, z, sc_, KINDS.index('cliff_block'), rng.integers(0, VARIANTS), yaw, rng.normal(0.08, 0.04)]]))
                 ncut += 1
     R = np.concatenate(out).astype(np.float32) if out else np.zeros((0, STRIDE), np.float32)
+    # ---- QA: no floating bases, no rock on pavement / shoulders
+    #  base (local z = 0) must sit at or below the ground at 8 points around the footprint: lower it
+    #  where the downhill side would show (the block is then simply set deeper into the slope)
+    dims = np.array([DIMS[k] for k in KINDS], np.float32)
+    kx = R[:, 4].astype(int)
+    hx = dims[kx, 0] * R[:, 3] * 0.42; hz = dims[kx, 1] * R[:, 3] * 0.42
+    gmin = bilinear(T, R[:, 0], R[:, 1])
+    cy, sy = np.cos(R[:, 6]), np.sin(R[:, 6])
+    for ax, az in ((1, 0), (-1, 0), (0, 1), (0, -1), (0.7, 0.7), (-0.7, 0.7), (0.7, -0.7), (-0.7, -0.7)):
+        lx, lz = ax * hx, az * hz                      # local (x along the face, z out of the face), metres
+        wx, wz = lx * cy + lz * sy, -lx * sy + lz * cy  # yaw about +Y (web X east, Z south)
+        gmin = np.minimum(gmin, bilinear(T, R[:, 0] + wx / MPP, R[:, 1] + wz / MPP))
+    # road-cut courses (the last ncut rows) stand against the cut face on purpose: exempt from lowering
+    cut = np.zeros(len(R), bool); cut[len(R) - ncut:] = ncut > 0
+    low = (R[:, 2] > gmin - 0.05) & ~cut
+    lowered = int(low.sum())
+    R[low, 2] = gmin[low] - 0.05
+    rd = s2(road_d, R[:, 0], R[:, 1])
+    on_road = np.where(cut, rd < -0.5, rd < 0.5)
+    R = R[~on_road]
+    print(f'  rocks QA: {lowered} bases lowered to the ground, {int(on_road.sum())} dropped on pavement/shoulder; '
+          f'min road-edge clearance {float(s2(road_d, R[:, 0], R[:, 1]).min()):.2f} m')
     os.makedirs(path('public/world'), exist_ok=True)
     R.astype('<f4').tofile(path('public/world/rocks_f32.bin'))
     cnt = {k: int((R[:, 4] == i).sum()) for i, k in enumerate(KINDS)}

@@ -64,122 +64,101 @@ const FADE_FRAG = `
     if ((vFade < 0.0 ? 1.0 - ign : ign) >= abs(vFade)) discard;
   }`;
 
-function windChunk(leafy: boolean) {
-  return `
-    #ifdef USE_INSTANCING
-      vec3 ip = instanceMatrix[3].xyz;
-      float ph = ip.x * 0.043 + ip.z * 0.031;
-      float hh = max(position.y, 0.0);
-      float sw = uWind * hh * hh * 0.0009;
-      transformed.x += sin(uTime * 0.9 + ph) * sw;
-      transformed.z += cos(uTime * 0.7 + ph * 1.3) * sw * 0.8;
-      ${leafy ? 'transformed += normal * sin(uTime * 3.1 + ph * 7.0 + position.y * 1.7 + position.x) * 0.045 * uWind;' : ''}
-    #endif`;
-}
-
-function patchCommon(s: THREE.WebGLProgramParametersWithUniforms, u: FoliageUniforms, leafy: boolean, f: FadeUniforms) {
-  Object.assign(s.uniforms, u, f);
-  s.vertexShader = s.vertexShader
-    .replace('#include <common>', `#include <common>
-      attribute vec2 al;
-      uniform float uTime; uniform float uWind;
-      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade;
-      ${FADE_VERT_PARS}`)
-    .replace('#include <project_vertex>', `#include <project_vertex>
-      #ifdef USE_INSTANCING
-        vFade = treeFade((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz);
-        if (abs(vFade) < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // outside this LOD's band: collapse
-      #else
-        vFade = 1.0;
-      #endif`)
-    .replace('#include <begin_vertex>', `#include <begin_vertex>
-      vAL = al; vObj = position;
-      #ifdef USE_INSTANCING_COLOR
-        vTint = instanceColor;
-      #else
-        vTint = vec3(1.0);
-      #endif
-      ${windChunk(leafy)}`);
-  s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade;
-      uniform vec3 uSunDir; uniform float uGain;`)
-    .replace('#include <clipping_planes_fragment>', FADE_FRAG + '\n#include <clipping_planes_fragment>')
-    .replace('#include <color_fragment>', ''); // instance tint is applied explicitly (bark is untinted)
-}
-
-/** Leaf cards: MAT_Foliage_<card>. */
-function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u: FoliageUniforms, f: FadeUniforms) {
+/**
+ * One merged material per species mesh (card x bark kind x LOD): bark, crown cores and leaf cards in a
+ * single draw call. The per-vertex material id rides in the normal's 4th byte (export_web_trees.py:
+ * 0 bark, 64 core, 127 card) and selects the shading branch:
+ *   card: card texture x instance tint x LEAF_K x crown AO, per-card value jitter, normal map, crown-volume
+ *         normals (no back-face flip), 32 % warm translucency toward the sun (MAT_Foliage_<card>)
+ *   core: tinted mass with the leaf-card pattern projected on it, silhouette dissolved into leaf clusters
+ *   bark: triplanar bark texture (object coords, Blender box projection) x the species bark tint
+ */
+function treeMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, bark: THREE.Texture, barkTint: [number, number, number],
+  barkScale: number, coreLeaf: THREE.Texture, u: FoliageUniforms, f: FadeUniforms) {
   const m = new THREE.MeshStandardMaterial({
     map, normalMap: nmap, normalScale: new THREE.Vector2(0.55, 0.55), alphaTest: 0.5, side: THREE.DoubleSide,
-    roughness: 0.62, metalness: 0, envMapIntensity: 0.6,
+    roughness: 0.62, metalness: 0, envMapIntensity: 0.55,
   });
   m.alphaToCoverage = true;
   m.defines = { FOLIAGE: '' };
   m.onBeforeCompile = (s) => {
-    patchCommon(s, u, true, f);
+    Object.assign(s.uniforms, u, f, {
+      uBark: { value: bark }, uBarkTint: { value: new THREE.Vector3(...barkTint) }, uBarkScale: { value: barkScale }, tLeaf: { value: coreLeaf },
+    });
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute vec2 al; attribute float mid;
+        uniform float uTime; uniform float uWind;
+        varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade; varying float vMid;
+        ${FADE_VERT_PARS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vAL = al; vObj = position; vMid = mid;
+        #ifdef USE_INSTANCING_COLOR
+          vTint = instanceColor;
+        #else
+          vTint = vec3(1.0);
+        #endif
+        #ifdef USE_INSTANCING
+        {
+          vec3 ip = instanceMatrix[3].xyz;
+          float ph = ip.x * 0.043 + ip.z * 0.031;
+          float hh = max(position.y, 0.0);
+          float sw = uWind * hh * hh * 0.0009;
+          transformed.x += sin(uTime * 0.9 + ph) * sw;
+          transformed.z += cos(uTime * 0.7 + ph * 1.3) * sw * 0.8;
+          transformed += normal * sin(uTime * 3.1 + ph * 7.0 + position.y * 1.7 + position.x) * 0.045 * uWind * step(0.75, mid);
+        }
+        #endif`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        #ifdef USE_INSTANCING
+          vFade = treeFade((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz);
+          if (abs(vFade) < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // outside this LOD's band: collapse
+        #else
+          vFade = 1.0;
+        #endif`);
     s.fragmentShader = s.fragmentShader
-      // crown-volume normals must not flip on back faces (Blender cards: custom normals, no flip)
+      .replace('#include <common>', `#include <common>
+        varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade; varying float vMid;
+        uniform vec3 uSunDir; uniform float uGain;
+        uniform sampler2D uBark, tLeaf; uniform vec3 uBarkTint; uniform float uBarkScale;
+        float gLeaf;`)
+      .replace('#include <clipping_planes_fragment>', FADE_FRAG + '\n#include <clipping_planes_fragment>')
+      .replace('#include <color_fragment>', '')
       .replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;'))
       .replace('#include <map_fragment>', `#include <map_fragment>
-        // card colour x instance tint x LEAF_K x crown AO, per-card value jitter (lib_trees._tinted)
-        diffuseColor.rgb *= vTint * ${leafK.toFixed(3)} * vAL.x * mix(0.85, 1.15, vAL.y) * uGain;`)
-      // 68 % principled + 32 % translucent BSDF with a warm transmission tint (backlit leaves glow);
-      // directLight.color already carries the shadow term
-      .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
-        'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
-        `float back = saturate( dot( - geometryNormal, directLight.direction ) ) * 0.6 + pow( saturate( - dot( geometryViewDir, directLight.direction ) ), 3.0 ) * 0.5;
-        reflectedLight.directDiffuse += ( irradiance * 0.68 + back * directLight.color * vec3( 1.35, 1.2, 0.62 ) * 0.26 ) * BRDF_Lambert( material.diffuseColor );`));
-  };
-  m.customProgramCacheKey = () => 'leaf';
-  return m;
-}
-
-/** Core masses behind the cards: MAT_Foliage_Core (tint x AO, soft voronoi-ish breakup). */
-function coreMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUniforms) {
-  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0, envMapIntensity: 0.5 });
-  m.alphaToCoverage = true;
-  m.onBeforeCompile = (s) => {
-    patchCommon(s, u, false, f);
-    s.uniforms.tLeaf = { value: leafTex };
-    s.fragmentShader = s.fragmentShader
-      .replace('uniform vec3 uSunDir;', 'uniform vec3 uSunDir; uniform sampler2D tLeaf;')
-      .replace('#include <map_fragment>', `#include <map_fragment>
-        {
-          // dense crown interior: leaf-card pattern projected on the core (dark gaps between leaf clusters)
+        gLeaf = step(0.75, vMid);
+        if (vMid > 0.75) {
+          diffuseColor.rgb *= vTint * ${leafK.toFixed(3)} * vAL.x * mix(0.85, 1.15, vAL.y) * uGain;
+        } else if (vMid > 0.25) {
+          // core: dense crown interior, leaf-card pattern projected on it (dark gaps between clusters)
           vec3 q = vObj / 1.35;
           vec3 w = abs(normalize(cross(dFdx(vObj), dFdy(vObj)))); w = pow(w, vec3(3.0)); w /= dot(w, vec3(1.0));
-          vec4 lx = texture2D(tLeaf, q.zy), ly = texture2D(tLeaf, q.xz), lz = texture2D(tLeaf, q.xy);
-          vec4 lf = lx * w.x + ly * w.y + lz * w.z;
+          vec4 lf = texture2D(tLeaf, q.zy) * w.x + texture2D(tLeaf, q.xz) * w.y + texture2D(tLeaf, q.xy) * w.z;
           float lum = dot(lf.rgb, vec3(0.3, 0.55, 0.15)) * 1.9;
           float br = mix(0.28, 1.0, lf.a) * mix(1.0, clamp(lum, 0.6, 1.4), lf.a);
-          diffuseColor.rgb *= vTint * vAL.x * br * uGain;
+          diffuseColor = vec4(vTint * vAL.x * br * uGain, 1.0);
           // dissolve the core's silhouette into leaf clusters (no smooth 'balloon' outline)
           vec3 vn = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
           float rim = 1.0 - abs(dot(vn, normalize(vViewPosition)));
           if (rim > 0.35 && lf.a < smoothstep(0.35, 0.9, rim)) discard;
-        }`);
-  };
-  m.customProgramCacheKey = () => 'core';
-  return m;
-}
-
-/** Bark: triplanar bark texture (object coords, Blender box projection) x species tint. */
-function barkMaterial(tex: THREE.Texture, tint: [number, number, number], scale: number, u: FoliageUniforms, f: FadeUniforms) {
-  const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(tint[0], tint[1], tint[2]), roughness: 0.9, metalness: 0, envMapIntensity: 0.4 });
-  m.onBeforeCompile = (s) => {
-    patchCommon(s, u, false, f);
-    s.uniforms.uBark = { value: tex };
-    s.fragmentShader = s.fragmentShader
-      .replace('uniform vec3 uSunDir;', 'uniform vec3 uSunDir; uniform sampler2D uBark;')
-      .replace('#include <map_fragment>', `#include <map_fragment>
-        {
-          vec3 p = vObj / ${scale.toFixed(2)};
+        } else {
+          vec3 p = vObj / uBarkScale;
           vec3 w = abs(normalize(cross(dFdx(vObj), dFdy(vObj)))); w = pow(w, vec3(4.0)); w /= dot(w, vec3(1.0));
           vec3 t = texture2D(uBark, p.yz * vec2(0.5, 1.0)).rgb * w.x + texture2D(uBark, p.xy * vec2(1.0, 0.5)).rgb * w.z + texture2D(uBark, p.xz).rgb * w.y;
-          diffuseColor.rgb *= t * vAL.x * 1.1;
-        }`);
+          diffuseColor = vec4(uBarkTint * t * vAL.x * 1.1, 1.0);
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (vMid < 0.75) normal = nonPerturbedNormal;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = vMid > 0.75 ? 0.62 : vMid > 0.25 ? 0.85 : 0.9;`)
+      // cards: 68 % principled + 32 % translucent BSDF with a warm transmission tint (backlit leaves glow);
+      // directLight.color already carries the shadow term
+      .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+        'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
+        `float back = ( saturate( dot( - geometryNormal, directLight.direction ) ) * 0.6 + pow( saturate( - dot( geometryViewDir, directLight.direction ) ), 3.0 ) * 0.5 ) * gLeaf;
+        reflectedLight.directDiffuse += ( irradiance * mix( 1.0, 0.68, gLeaf ) + back * directLight.color * vec3( 1.35, 1.2, 0.62 ) * 0.26 ) * BRDF_Lambert( material.diffuseColor );`));
   };
-  m.customProgramCacheKey = () => 'bark' + scale;
+  m.customProgramCacheKey = () => 'tree';
   return m;
 }
 
@@ -272,8 +251,13 @@ function depthMaterial(map: THREE.Texture | null, f: FadeUniforms) {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: map ? 0.5 : 0 });
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, f);
+    // card alpha applies to card vertices only (bark / cores are solid casters)
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vMid;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  if (vMid < 0.75) diffuseColor.a = 1.0;');
     s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${FADE_VERT_PARS}`)
+      .replace('#include <common>', `#include <common>\nattribute float mid; varying float vMid;\n${FADE_VERT_PARS}`)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vMid = mid;')
       .replace('#include <project_vertex>', `#include <project_vertex>
         #ifdef USE_INSTANCING
           if (abs(treeFade((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz)) < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -318,13 +302,13 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   const barkTex: Record<string, THREE.Texture> = { brown: tex('bark_brown.jpg', true), pine: tex('bark_pine.jpg', true) };
   const coreLeaf = tex('card_oak.png', true);
   const fk = (li: number, sm: number) => `${li}:${sm}`;
-  const leaf = (card: string, li: number, sm: number) => cached(`leaf:${card}:${fk(li, sm)}`, () =>
-    leafMaterial(ctex(`card_${card}.png`, true), ctex(`card_${card}_n.jpg`, false), meta.leaf_k, uniforms, fades[sm][li]));
-  const bark = (b: string, li: number, sm: number) => cached(`bark:${b}:${fk(li, sm)}`, () => {
-    const [r, g, bb, t] = BARK_TINT[b] ?? BARK_TINT.brown;
-    return barkMaterial(barkTex[t], [r, g, bb], t === 'pine' ? 0.7 : 0.6, uniforms, fades[sm][li]);
+  // merged material per (card, bark kind, LOD, small-plant fade); snags (no card) borrow the oak card
+  // texture but have no card vertices
+  const treeMat = (card: string | null, b: string, li: number, sm: number) => cached(`tree:${card}:${b}:${fk(li, sm)}`, () => {
+    const c = card ?? 'oak', [r, g, bb, t] = BARK_TINT[b] ?? BARK_TINT.brown;
+    return treeMaterial(ctex(`card_${c}.png`, true), ctex(`card_${c}_n.jpg`, false), meta.leaf_k, barkTex[t], [r, g, bb], t === 'pine' ? 0.7 : 0.6,
+      coreLeaf, uniforms, fades[sm][li]);
   });
-  const core = (li: number, sm: number) => cached(`core:${fk(li, sm)}`, () => coreMaterial(uniforms, coreLeaf, fades[sm][li]));
   const depth = (card: string | null, li: number, sm: number) => cached(`depth:${card}:${fk(li, sm)}`, () =>
     depthMaterial(card ? ctex(`card_${card}.png`, true) : null, fades[sm][li]));
 
@@ -333,15 +317,16 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geoBuf, l.pos, l.vcount * 3), 3));
     const n4 = new Int8Array(geoBuf, l.nrm, l.vcount * 4);
-    g.setAttribute('normal', new THREE.InterleavedBufferAttribute(new THREE.InterleavedBuffer(n4, 4), 3, 0, true));
+    const ib = new THREE.InterleavedBuffer(n4, 4);
+    g.setAttribute('normal', new THREE.InterleavedBufferAttribute(ib, 3, 0, true));
+    g.setAttribute('mid', new THREE.InterleavedBufferAttribute(ib, 1, 3, true)); // material id (0 bark, 0.5 core, 1 card)
     g.setAttribute('uv', new THREE.BufferAttribute(new Uint8Array(geoBuf, l.uv, l.vcount * 2), 2, true));
     g.setAttribute('al', new THREE.BufferAttribute(new Uint8Array(geoBuf, l.al, l.vcount * 2), 2, true));
     g.setIndex(new THREE.BufferAttribute(new Uint16Array(geoBuf, l.idx, l.icount), 1));
-    for (const [start, count, mi] of l.groups) g.addGroup(start, count, mi);
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, sp.height / 2, 0), Math.hypot(sp.radius, sp.height / 2));
     return g;
   }));
-  const matsFor = (sp: SpeciesInfo, li: number, sm: number) => [bark(sp.bark, li, sm), sp.card ? leaf(sp.card, li, sm) : bark(sp.bark, li, sm), core(li, sm)];
+  const matsFor = (sp: SpeciesInfo, li: number, sm: number) => treeMat(sp.card, sp.bark, li, sm);
 
   // instances sorted by (species, cell)
   const S = 6, V = new Float32Array(vegBuf), n = V.length / S;
