@@ -462,8 +462,8 @@ def scatter(T, cls, seed=7):
     # autumn progress per crown: colour comes first up high, on warm south / south-west faces, on ridges and
     # sunny forest edges; moist coves and creek bottoms stay green; whole stands turn together (~75 m patches)
     n75 = fbm((H, W), 30, seed + 11, 2)
-    aut = (0.2 + 0.6 * elev + 0.28 * np.clip(sun, 0, 1) - 0.12 * np.clip(-sun, 0, 1) + 0.12 * np.clip(tpi, 0, 1)
-           - 0.3 * np.clip(-tpi, 0, 1) * moist - 0.25 * np.exp(-dwater / 25) + 0.1 * np.exp(-np.abs(sdn) / 12) + 0.14 * n75)
+    aut = (0.3 + 0.55 * elev + 0.28 * np.clip(sun, 0, 1) - 0.1 * np.clip(-sun, 0, 1) + 0.12 * np.clip(tpi, 0, 1)
+           - 0.25 * np.clip(-tpi, 0, 1) * moist - 0.2 * np.exp(-dwater / 25) + 0.1 * np.exp(-np.abs(sdn) / 12) + 0.14 * n75)
     aut = np.clip(aut[yi, xi] + rng.normal(0, 0.06, len(X)), 0, 1)
     seed_col = np.round(aut * 100) + rng.random(len(X)) * 0.999
     veg = np.stack([X, Y, Z, SC, S.astype(np.float32), seed_col], 1).astype(np.float32)

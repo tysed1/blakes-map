@@ -461,6 +461,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   for (let i = 0; i <= ncx; i++) cellX[i] = pxToWorld(i * CELL, 0)[0];
   for (let i = 0; i <= ncy; i++) cellZ[i] = pxToWorld(0, i * CELL)[2];
   const cellMask = new Uint8Array(NC), prevMask = new Uint8Array(NC).fill(255), cellDmin = new Float32Array(NC);
+  const active = new Int32Array(NC); let nActive = 0; // cells with any LOD this pass
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), box = new THREE.Box3();
   const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3(), dir = new THREE.Vector3();
   const cnt = new Int32Array(5);
@@ -493,6 +494,8 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
       cellMask[c] = m;
       if (m !== prevMask[c]) changed = true;
     }
+    nActive = 0;
+    for (let c = 0; c < NC; c++) if (cellMask[c]) active[nActive++] = c;
     if (!changed) return;
     prevMask.set(cellMask);
     visible = 0; tris = 0;
@@ -503,9 +506,8 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
       const sp = meta.species[si], sm = small[si];
       const lm = meshes[si];
       cnt.fill(0);
-      for (let c = 0; c < NC; c++) {
-        const m = cellMask[c];
-        if (!m) continue;
+      for (let ai = 0; ai < nActive; ai++) {
+        const c = active[ai], m = cellMask[c];
         const ri = (si * NC + c) * 2, a = range[ri];
         if (a < 0) continue;
         if (sm && cellDmin[c] > smallFar) continue; // shrubs / saplings dissolve into the canopy with distance

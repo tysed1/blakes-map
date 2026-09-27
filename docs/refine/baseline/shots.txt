@@ -11,3 +11,4 @@ TC_forest_ped 404s
 TC_aerial_100 64s
 TC_high_1000 40s
 GS_HollowFalls 312s
+GS_FallsCreekCascades 133s
