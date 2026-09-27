@@ -43,12 +43,24 @@ function bounds(g: THREE.BufferGeometry) {
 
 export interface ImpostorEnv { sunDir: THREE.Vector3; sunColor: THREE.Color; sunIntensity: number; hemi: THREE.HemisphereLight | null; environment: THREE.Texture | null; envIntensity: number; envRotation: THREE.Euler }
 
+export const fadeOf = new WeakMap<THREE.Material, ImpostorFade>();
+
 /** The tree's own material, patched to output a bake channel right before lighting. */
-function channelMaterial(m: THREE.Material, ch: 'albedo' | 'normal') {
+function channelMaterial(m: THREE.Material, ch: 'albedo' | 'normal' | 'indirect') {
   const c = m.clone();
   const obc = m.onBeforeCompile, key = m.customProgramCacheKey.bind(m);
   c.onBeforeCompile = (s, r) => {
     obc.call(m, s, r);
+    // the tree material's shared LOD cross-fade uniforms (the impostor reuses its band)
+    if (s.uniforms.uFade) fadeOf.set(m, { uFade: s.uniforms.uFade, uFar: s.uniforms.uFar, uCamPos: s.uniforms.uCamPos } as ImpostorFade);
+    // indirect: diffuse sky/env irradiance per unit albedo (rgb, tint-independent) + env specular
+    // luminance (a, untinted in the tree material too)
+    if (ch === 'indirect') {
+      s.fragmentShader = s.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>
+        gl_FragColor = vec4(reflectedLight.indirectDiffuse / max(diffuseColor.rgb, vec3(0.02)) * 0.25,
+          clamp(dot(reflectedLight.indirectSpecular, vec3(0.2126, 0.7152, 0.0722)) * 4.0, 0.0, 1.0)); return;`);
+      return;
+    }
     s.fragmentShader = s.fragmentShader.replace('#include <lights_fragment_begin>', ch === 'albedo'
       ? 'gl_FragColor = vec4(sqrt(clamp(diffuseColor.rgb * 0.5, 0.0, 1.0)), 1.0); return;\n#include <lights_fragment_begin>'
       : `{
@@ -76,9 +88,9 @@ export function bakeImpostors(renderer: THREE.WebGLRenderer, items: BakeItem[], 
     rt.texture.generateMipmaps = false; rt.texture.minFilter = THREE.NearestFilter; rt.texture.magFilter = THREE.NearestFilter;
     return rt;
   };
-  const rtA = mk(false), rtN = mk(false), rtI = mk(true);
+  const rtA = mk(false), rtN = mk(false), rtI = mk(false);
   const scene = new THREE.Scene();
-  const hemi = env.hemi ? new THREE.HemisphereLight(env.hemi.color, env.hemi.groundColor, env.hemi.intensity / K) : null;
+  const hemi = env.hemi ? new THREE.HemisphereLight(env.hemi.color, env.hemi.groundColor, env.hemi.intensity) : null;
   if (hemi) scene.add(hemi);
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
   const mesh = new THREE.Mesh();
@@ -90,18 +102,18 @@ export function bakeImpostors(renderer: THREE.WebGLRenderer, items: BakeItem[], 
   sunBake.uniforms.uSunBakeK.value.w = 0;
   renderer.autoClear = false;
   renderer.setClearColor(0x000000, 0);
-  const chan = new Map<THREE.Material, [THREE.Material, THREE.Material]>();
+  const chan = new Map<THREE.Material, [THREE.Material, THREE.Material, THREE.Material]>();
   const d = new THREE.Vector3();
   for (const pass of [0, 1, 2] as const) {
     const rt = [rtA, rtN, rtI][pass];
     scene.environment = pass === 2 ? env.environment : null;
-    scene.environmentIntensity = env.envIntensity / K;
+    scene.environmentIntensity = env.envIntensity;
     (scene as any).environmentRotation = env.envRotation;
     renderer.setRenderTarget(rt);
     renderer.clear(true, true, true);
     items.forEach((it, k) => {
-      if (!chan.has(it.material)) chan.set(it.material, [channelMaterial(it.material, 'albedo'), channelMaterial(it.material, 'normal')]);
-      mesh.geometry = it.geometry; mesh.material = pass === 2 ? it.material : chan.get(it.material)![pass];
+      if (!chan.has(it.material)) chan.set(it.material, [channelMaterial(it.material, 'albedo'), channelMaterial(it.material, 'normal'), channelMaterial(it.material, 'indirect')]);
+      mesh.geometry = it.geometry; mesh.material = chan.get(it.material)![pass];
       const { c, r } = bounds(it.geometry);
       const tx = (k % COLS) * G * T, ty = Math.floor(k / COLS) * G * T;
       if (pass === 0) tiles.set(it.geometry, new THREE.Vector4(tx / W, ty / H, c.y, r));
@@ -122,7 +134,7 @@ export function bakeImpostors(renderer: THREE.WebGLRenderer, items: BakeItem[], 
     });
     rt.scissorTest = false; rt.viewport.set(0, 0, W, H); rt.scissor.set(0, 0, W, H);
   }
-  chan.forEach(([a, b]) => { a.dispose(); b.dispose(); });
+  chan.forEach((l) => l.forEach((x) => x.dispose()));
   renderer.setRenderTarget(prev.target);
   renderer.shadowMap.enabled = prev.shadow;
   renderer.autoClear = prev.autoClear;
@@ -136,7 +148,7 @@ export function bakeImpostors(renderer: THREE.WebGLRenderer, items: BakeItem[], 
 }
 
 /** Shared calibration (tuned against the geometry LOD, see the R4 A/B). */
-export const impostorTune = { cut: { value: 0.25 }, gain: { value: 2.75 }, quad: { value: 1.08 }, dir: { value: 1.0 } };
+export const impostorTune = { cut: { value: 0.25 }, gain: { value: 2.75 }, quad: { value: 1.08 }, dir: { value: 1.0 }, wrap: { value: 0.0 } };
 
 /** Uniforms of the tree LOD being replaced (cross-fade band) + per-species tile. */
 export interface ImpostorFade { uFade: { value: THREE.Vector4 }; uFar: { value: THREE.Vector2 }; uCamPos: { value: THREE.Vector3 } }
@@ -194,7 +206,7 @@ export function impostorMaterial(set: ImpostorSet, tile: THREE.Vector4, fade: Im
       #include <common>
       #include <fog_pars_fragment>
       uniform sampler2D tA, tN, tI;
-      uniform vec4 uTile; uniform vec2 uTileSize; uniform float uCut, uGainI, uDirK;
+      uniform vec4 uTile; uniform vec2 uTileSize; uniform float uCut, uGainI, uDirK, uWrap;
       uniform vec3 uSunDirI, uSunCol;
       varying vec2 vQ; varying vec2 vOct; varying vec3 vTint; varying float vFade; varying vec3 vW; varying float vH; varying mat3 vR;
       ${SUNBAKE_PARS}
@@ -209,11 +221,11 @@ export function impostorMaterial(set: ImpostorSet, tile: THREE.Vector4, fade: Im
         vec2 g0 = floor(g), f = g - g0, g1 = min(g0 + 1.0, G_VIEWS - 1.0);
         vec2 c[4]; c[0] = g0; c[1] = vec2(g1.x, g0.y); c[2] = vec2(g0.x, g1.y); c[3] = g1;
         float w[4]; w[0] = (1.0 - f.x) * (1.0 - f.y); w[1] = f.x * (1.0 - f.y); w[2] = (1.0 - f.x) * f.y; w[3] = f.x * f.y;
-        vec3 sa = vec3(0.0), si = vec3(0.0); vec4 sn = vec4(0.0); float cov = 0.0;
+        vec3 sa = vec3(0.0); vec4 si = vec4(0.0), sn = vec4(0.0); float cov = 0.0;
         for (int k = 0; k < 4; k++) {
           vec4 ak = view(tA, c[k]);
           float ck = w[k] * step(0.5, ak.a);
-          sa += ak.rgb * ak.rgb * ck; sn += view(tN, c[k]) * ck; si += view(tI, c[k]).rgb * ck; cov += ck;
+          sa += ak.rgb * ak.rgb * ck; sn += view(tN, c[k]) * ck; si += view(tI, c[k]) * ck; cov += ck;
         }
         if (cov < uCut) discard;
         sa /= cov; si /= cov; sn /= cov;
@@ -223,11 +235,13 @@ export function impostorMaterial(set: ImpostorSet, tile: THREE.Vector4, fade: Im
         float lit, ao;
         sunBakeEval(vW, vH, -(viewMatrix * vec4(vW, 1.0)).z, lit, ao);
         float leaf = sn.a;
-        float ndl = max(dot(N, uSunDirI), 0.0);
+        // wrapped N.L: the atlas normals are point-sampled per view, harsher than the geometry's smooth crowns
+        float ndl = max((dot(N, uSunDirI) + uWrap) / (1.0 + uWrap), 0.0);
         // leaf material: 68 % Lambert + 32 % warm translucency (backlit crowns glow)
         float back = (max(dot(-N, uSunDirI), 0.0) * 0.6 + pow(max(-dot(V, uSunDirI), 0.0), 3.0) * 0.5) * leaf;
         vec3 direct = uSunCol * lit * (ndl * mix(1.0, 0.68, leaf) + back * vec3(1.35, 1.2, 0.62) * 0.26) * alb * RECIPROCAL_PI;
-        vec3 col = uGainI * (direct * uDirK + si * K_SCALE * vTint * ao * (2.0 - uDirK));
+        vec3 indirect = si.rgb * 4.0 * alb * ao + si.a * 0.25 * vec3(0.8, 0.9, 1.1);
+        vec3 col = uGainI * (direct * uDirK + indirect * (2.0 - uDirK));
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
       }`,
@@ -235,7 +249,7 @@ export function impostorMaterial(set: ImpostorSet, tile: THREE.Vector4, fade: Im
   Object.assign(m.uniforms, sunBake.uniforms, fade, {
     tA: { value: set.atlasA }, tN: { value: set.atlasN }, tI: { value: set.atlasI }, uTile: { value: tile },
     uSunDirI: { value: set.env.sunDir.clone().normalize() }, uSunCol: { value: new THREE.Vector3(set.env.sunColor.r, set.env.sunColor.g, set.env.sunColor.b).multiplyScalar(set.env.sunIntensity) },
-    uCut: impostorTune.cut, uGainI: impostorTune.gain, uQuad: impostorTune.quad, uDirK: impostorTune.dir,
+    uCut: impostorTune.cut, uGainI: impostorTune.gain, uQuad: impostorTune.quad, uDirK: impostorTune.dir, uWrap: impostorTune.wrap,
     uTileSize: { value: new THREE.Vector2(T / set.atlasA.image.width, T / set.atlasA.image.height) },
   });
   return m;

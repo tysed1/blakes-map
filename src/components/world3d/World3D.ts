@@ -15,7 +15,7 @@ import { installAtmosphere, createCinematic, Cinematic, NEAR_CASTER_LAYER } from
 import { terrainMaterial } from './terrainMaterial';
 import { sunBake } from '../../engine/sunbake';
 import { initTextures, loadTexture } from '../../engine/textures';
-import { bakeImpostors, impostorMaterial, impostorQuad, ImpostorSet, impostorTune } from '../../engine/impostor';
+import { bakeImpostors, impostorMaterial, impostorQuad, ImpostorSet, impostorTune, fadeOf } from '../../engine/impostor';
 import { buildGroundcover, Groundcover } from './groundcover'; // groundcover (agent)
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -199,9 +199,9 @@ export class World3D {
     });
     const quad = impostorQuad();
     for (const im of lod3) {
-      const u = (this.renderer.properties.get(im.material as THREE.Material) as any).uniforms;
+      const u = fadeOf.get(im.material as THREE.Material);
       const tile = set.tiles.get(im.geometry);
-      if (!u?.uFade || !tile) continue;   // material never compiled: keep the geometry LOD
+      if (!u || !tile) continue;   // no fade band found: keep the geometry LOD
       im.userData.geo = { geometry: im.geometry, material: im.material, depth: im.customDepthMaterial, cast: im.castShadow };
       im.userData.imp = { geometry: quad, material: impostorMaterial(set, tile, { uFade: u.uFade, uFar: u.uFar, uCamPos: u.uCamPos }) };
     }
