@@ -163,6 +163,11 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       c.fade = true;
       for (const l of c.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.5; }
       c.lights[0].shadow.camera.layers.enable(NEAR_CASTER_LAYER);
+      // uniform arrays always padded to the largest cascade count: three reuses a material's cached
+      // program when its key comes back (quality switched away and back) WITHOUT re-running
+      // onBeforeCompile, so the live CSM_cascades array may belong to another rig
+      const ext = (c as any).getExtendedBreaks.bind(c);
+      (c as any).getExtendedBreaks = (t: THREE.Vector2[]) => { ext(t); while (t.length < 3) t.push(t[t.length - 1]?.clone() ?? new THREE.Vector2()); };
       c.remove();
       rigs.set(n, c);
     }
@@ -223,6 +228,12 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
         csm = rig(n);
         attach(csm);
         hooked.forEach(hook);
+        // re-register each material's live uniforms with the active rig so its breaks stay current
+        hooked.forEach((m) => {
+          const u = (renderer.properties.get(m) as any).uniforms;
+          if (u?.CSM_cascades) (csm as any).shaders.set(m, { uniforms: u });
+        });
+        (csm as any).updateUniforms?.();
       }
       const on = P.cascades > 0;
       if (renderer.shadowMap.enabled !== on) { renderer.shadowMap.enabled = on; hooked.forEach((m) => (m.needsUpdate = true)); }
