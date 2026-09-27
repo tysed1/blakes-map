@@ -74,8 +74,8 @@ async function ensure3D() {
   const perf = $('#perf');
   w3d.onStats = (s) => { if (!perf.hidden) perf.textContent = `${s.fps} fps  ${s.ms.toFixed(1)} ms cpu\n${(s.tris / 1e6).toFixed(2)} M tris  ${s.calls} calls\n${s.trees.toLocaleString()} plants  res ×${s.scale.toFixed(2)}`; };
   const qsel = $<HTMLSelectElement>('#quality');
-  let q0 = 'high';
-  try { q0 = localStorage.getItem('bm-quality') || 'high'; } catch { /* storage blocked */ }
+  let q0 = 'high', stored = false;
+  try { const v = localStorage.getItem('bm-quality'); if (v) { q0 = v; stored = true; } } catch { /* storage blocked */ }
   qsel.value = q0; w3d.setQuality(q0 as any);
   qsel.onchange = () => { w3d!.setQuality(qsel.value as any); try { localStorage.setItem('bm-quality', qsel.value); } catch { /* ignore */ } };
   const shots = $<HTMLSelectElement>('#shots');
@@ -99,9 +99,32 @@ async function ensure3D() {
   });
   $('#loadmsg').textContent = 'compiling shaders…';
   await w3d.warmup();
+  if (!stored && !navigator.webdriver) autoQuality(w3d, qsel);
   $('#loading').classList.add('fade');
   setTimeout(() => { $('#loading').style.display = 'none'; $('#loading').classList.remove('fade'); }, 900);
   return w3d;
+}
+
+/**
+ * First run: a 2 s benchmark on High (after a short settle, adaptive resolution paused) picks the
+ * preset: >= 50 fps High, >= 32 Medium, else Low; stored like a manual choice. Skipped for
+ * automation (QA renders stay on the default).
+ */
+function autoQuality(w: NonNullable<typeof w3d>, qsel: HTMLSelectElement) {
+  const prev = w.onStats, fps: number[] = [];
+  const t0 = performance.now();
+  w.autoScale = false;
+  w.onStats = (s) => {
+    prev?.(s);
+    const t = performance.now() - t0;
+    if (t > 1500 && view === '3d') fps.push(s.fps);
+    if (t < 3600 || fps.length < 4) return;
+    w.onStats = prev; w.autoScale = true;
+    const f = fps.sort((a, b) => a - b)[Math.floor(fps.length / 2)];
+    const q = f >= 50 ? 'high' : f >= 32 ? 'medium' : 'low';
+    if (q !== w.quality) { w.setQuality(q as any); qsel.value = q; }
+    try { localStorage.setItem('bm-quality', q); } catch { /* ignore */ }
+  };
 }
 
 async function switchView(v: '2d' | '3d', keepFocus = true) {
