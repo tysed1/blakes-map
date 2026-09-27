@@ -26,6 +26,9 @@ Directional ramp/flyover with >= 4.9 m clearance at the SR 9 Y-merge; interchang
 ### E1. Forest composition + LOD cross-fades (E) impact 5, effort 3
 Species zonation by elevation/aspect/moisture; autumn colour increasing with elevation and on south slopes (coves stay green); stands and gaps; forest-edge shrub/sapling skirts; specimen trees in pastures; fence-row lines; Bald Ridge grassy bald; clear zones from N respected. Dithered cross-fade between tree LODs (no pops); far canopy density at least as full as the Blender renders. Accept: golden aerials (TC_aerial_100, TC_high_1000, CAM_Ref_Match, CAM_HollowRidge_Valley) read as composed forests; no visible LOD pop in a 10-frame fly sequence.
 
+REQUEST E->N: publish interchange infields / clear zones as data/roads/clear_zones.geojson (FeatureCollection of Polygon/MultiPolygon in source px; optional properties.kind, properties.margin_m). vegetation.py already reads it when present (no trees/brush/logs inside the polygon + margin_m, default 3 m); just rerun `python3 tools/pipeline/vegetation.py` after publishing.
+NOTE E->R: E1 adds a distance-based dithered LOD cross-fade inside trees.ts (per-instance fade in the tree shaders, cells in the fade band emitted to both LODs); R4 impostors can take over LOD3/4 through the same fade band. I also remove the per-frame `new Vector3` in trees.update (R2).
+
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
 
