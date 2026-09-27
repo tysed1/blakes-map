@@ -69,6 +69,9 @@ NOTE E->R/L (darkness in E it2 aerials): isolated with a build that skips loadSu
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
 
+### N6. 1970s traffic signals in Laurel City + Tannersville (N) impact 4, effort 3  [user request]
+Period span-wire signals (default), some pedestal heads downtown, a few steel mast arms on major arterials; 12-inch 3-section heads with visors, optional incandescent WALK/DONT WALK boxes. Only in Laurel City and Tannersville at intersections that warrant signals (arterial/main/urban/collector/ramp terminals, degree >= 3); NONE in Hollow Ridge or rural areas. Replace STOP/YIELD at signalized junctions, add stop bars. Built with Blender MCP, exported via export_web_infra.py, <= ~15 draw calls. Accept: eye-level downtown shot in each city + an aerial, per-city counts.
+
 ## Sprint 2: the look
 
 ### N4. Water: shallows, banks, rapids, waterfalls (N) impact 5, effort 4
