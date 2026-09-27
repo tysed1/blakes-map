@@ -205,7 +205,7 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       sp.copy(sunDir).multiplyScalar(10000).add(camera.position).project(camera);
       camera.getWorldDirection(fwd);
       const facing = fwd.dot(sunDir);
-      post.setShafts(sunUv.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5), THREE.MathUtils.smoothstep(facing, 0.1, 0.6) * 1.6, camera.aspect);
+      post.setShafts(sunUv.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5), THREE.MathUtils.smoothstep(facing, 0.1, 0.6) * post.shaftGain, camera.aspect);
       post.render(scene, camera);
     },
     prepare(root) {

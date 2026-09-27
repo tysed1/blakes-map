@@ -11,9 +11,7 @@
   "water_level_f32": "data/terrain/water_level_f32.bin",
   "water_fx_u8": "data/terrain/water_fx_u8.bin",
   "rock_exposure_u8": "data/terrain/rock_exposure_u8.png",
-  "ridge_skeleton": "data/terrain/ridge_skeleton.geojson",
-  "height_graded_f32": "data/terrain/height_graded_f32.bin",
-  "height_graded_u16": "data/terrain/height_graded_u16.png"
+  "ridge_skeleton": "data/terrain/ridge_skeleton.geojson"
  },
  "water_fx_u8": {
   "layout": "uint8 [5][667][2000]",
@@ -32,29 +30,25 @@
  },
  "stats": {
   "min_m": 276.9,
-  "max_m": 578.6,
-  "mean_m": 353.2
+  "max_m": 578.1,
+  "mean_m": 353.1
  },
  "river_profiles_m": {
-  "WTR_C02": [
-   346.0,
-   318.0
-  ],
   "WTR_R08": [
    300.0,
    281.0
   ],
-  "WTR_C05": [
-   316.0,
+  "WTR_R01": [
+   332.0,
    300.0
   ],
-  "WTR_R05": [
-   352.0,
-   316.0
+  "WTR_C04": [
+   315.0,
+   297.9
   ],
-  "WTR_R04": [
-   362.0,
-   347.9
+  "WTR_C01": [
+   309.9,
+   309.9
   ],
   "WTR_R06": [
    304.0,
@@ -64,6 +58,34 @@
    296.2,
    296.2
   ],
+  "WTR_C02": [
+   346.0,
+   318.0
+  ],
+  "WTR_R05": [
+   352.0,
+   316.0
+  ],
+  "WTR_C05": [
+   316.0,
+   300.0
+  ],
+  "WTR_R07": [
+   318.0,
+   303.7
+  ],
+  "WTR_R06C": [
+   285.1,
+   281.0
+  ],
+  "WTR_R04": [
+   362.0,
+   347.9
+  ],
+  "WTR_R06D": [
+   300.0,
+   285.2
+  ],
   "WTR_C03": [
    334.0,
    301.6
@@ -72,38 +94,10 @@
    425.0,
    357.4
   ],
-  "WTR_R01": [
-   332.0,
-   300.0
-  ],
-  "WTR_C01": [
-   309.9,
-   309.9
-  ],
   "WTR_C06": [
    440.0,
-   408.8
-  ],
-  "WTR_C04": [
-   315.0,
-   297.9
-  ],
-  "WTR_R06D": [
-   300.0,
-   285.2
-  ],
-  "WTR_R06C": [
-   285.1,
-   281.0
-  ],
-  "WTR_R07": [
-   318.0,
-   303.7
+   406.8
   ]
  },
- "note": "Designed from the map geography + ridge skeleton (data/manual/ridges.json), not survey data. Rebuild with tools/pipeline/terrain.py; road cut/fill is applied by tools/pipeline/grading.py.",
- "u16_graded_decode": {
-  "min_m": 276.0,
-  "max_m": 579.0
- }
+ "note": "Designed from the map geography + ridge skeleton (data/manual/ridges.json), not survey data. Rebuild with tools/pipeline/terrain.py; road cut/fill is applied by tools/pipeline/grading.py."
 }

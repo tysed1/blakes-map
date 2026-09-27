@@ -150,9 +150,12 @@ export class FusedPost {
   bloomEnabled = true;
   bloomStrength = 0.22; bloomRadius = 0.55; bloomThreshold = 0.92;
   shaftColor = new THREE.Vector3(1.0, 0.72, 0.45);
+  /** sun-shaft gain when facing the sun (was 1.6: with the R5 exposure it veiled sun-facing shots) */
+  shaftGain = 1.0;
   readonly grade: GradeParams = {
-    sat: 1.12, contrast: 1.08, vignette: 0.32, lift: 0.012, sharpen: 0.18,
-    shadowTint: new THREE.Vector3(-0.012, 0.0, 0.03), highTint: new THREE.Vector3(0.035, 0.012, -0.03),
+    // R5 golden-hour grade (graphics ref.png): warm highlights, cool shadows, a touch richer
+    sat: 1.18, contrast: 1.1, vignette: 0.32, lift: 0.012, sharpen: 0.18,
+    shadowTint: new THREE.Vector3(-0.02, 0.0, 0.04), highTint: new THREE.Vector3(0.06, 0.025, -0.045),
   };
 
   constructor(private renderer: THREE.WebGLRenderer) {

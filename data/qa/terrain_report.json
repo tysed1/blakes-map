@@ -8,9 +8,9 @@
   },
   "warn": {
    "perched_river": 9,
-   "surface_step": 0,
+   "surface_step": 4,
    "ridge_crossing": 0,
-   "spike_raw": 5,
+   "spike_raw": 11,
    "spike_graded": 20,
    "zone_slope": 7
   },
@@ -46,17 +46,17 @@
     },
     {
      "id": "WTR_R03",
-     "samples": 4,
-     "worst_m": -1.4,
+     "samples": 1,
+     "worst_m": -0.72,
      "at": [
-      1138.3,
-      256.1
+      1188.6,
+      324.9
      ]
     },
     {
      "id": "WTR_R04",
      "samples": 4,
-     "worst_m": -1.31,
+     "worst_m": -1.33,
      "at": [
       1338.0,
       577.6
@@ -65,7 +65,7 @@
     {
      "id": "WTR_R05",
      "samples": 1,
-     "worst_m": -1.15,
+     "worst_m": -1.17,
      "at": [
       844.5,
       394.8
@@ -83,7 +83,7 @@
     {
      "id": "WTR_C03",
      "samples": 5,
-     "worst_m": -3.24,
+     "worst_m": -3.26,
      "at": [
       1583.6,
       515.7
@@ -110,7 +110,7 @@
     {
      "id": "WTR_C06",
      "samples": 13,
-     "worst_m": -5.63,
+     "worst_m": -5.88,
      "at": [
       827.5,
       42.0
@@ -120,10 +120,39 @@
   },
   "surface_step": {
    "severity": "warn",
-   "count": 0,
-   "items": [],
-   "clusters": 0,
-   "max_step_m": 0.78
+   "count": 4,
+   "items": [
+    {
+     "px": 48,
+     "at": [
+      1142.7,
+      258.3
+     ]
+    },
+    {
+     "px": 6,
+     "at": [
+      1051.0,
+      68.0
+     ]
+    },
+    {
+     "px": 5,
+     "at": [
+      1036.0,
+      47.0
+     ]
+    },
+    {
+     "px": 4,
+     "at": [
+      1050.2,
+      54.8
+     ]
+    }
+   ],
+   "clusters": 4,
+   "max_step_m": 7.5
   },
   "ridge_crossing": {
    "severity": "warn",
@@ -359,13 +388,13 @@
   },
   "spike_raw": {
    "severity": "warn",
-   "count": 5,
+   "count": 11,
    "items": [
     {
      "px": 2,
      "at": [
-      1279.5,
-      316.0
+      1049.5,
+      75.0
      ]
     },
     {
@@ -385,19 +414,61 @@
     {
      "px": 1,
      "at": [
-      759.0,
-      267.0
+      1070.0,
+      83.0
      ]
     },
     {
      "px": 1,
      "at": [
-      637.0,
-      102.0
+      1055.0,
+      79.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      1053.0,
+      55.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      1052.0,
+      51.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      1050.0,
+      51.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      1048.0,
+      81.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      1044.0,
+      61.0
+     ]
+    },
+    {
+     "px": 1,
+     "at": [
+      763.0,
+      261.0
      ]
     }
    ],
-   "clusters": 5
+   "clusters": 11
   },
   "spike_graded": {
    "severity": "warn",
@@ -554,77 +625,77 @@
      "zone": "industrial",
      "kind": "industrial",
      "limit": 0.08,
-     "frac_over": 0.04,
-     "p95_slope": 0.071,
+     "frac_over": 0.042,
+     "p95_slope": 0.074,
      "at": [
-      80.3,
-      396.3
+      85.3,
+      398.3
      ]
     },
     {
      "zone": "downtown",
      "kind": "downtown",
      "limit": 0.1,
-     "frac_over": 0.125,
+     "frac_over": 0.124,
      "p95_slope": 0.163,
      "at": [
-      1788.4,
-      241.8
+      1788.2,
+      242.2
      ]
     },
     {
      "zone": "industrial",
      "kind": "industrial",
      "limit": 0.08,
-     "frac_over": 0.302,
+     "frac_over": 0.299,
      "p95_slope": 0.141,
      "at": [
-      1732.9,
-      443.5
+      1734.0,
+      444.0
      ]
     },
     {
      "zone": "town_center",
      "kind": "town_center",
      "limit": 0.1,
-     "frac_over": 0.091,
-     "p95_slope": 0.118,
+     "frac_over": 0.068,
+     "p95_slope": 0.108,
      "at": [
-      1076.9,
-      361.1
+      1075.7,
+      366.0
      ]
     },
     {
      "zone": "town",
      "kind": "town",
      "limit": 0.18,
-     "frac_over": 0.042,
-     "p95_slope": 0.17,
+     "frac_over": 0.051,
+     "p95_slope": 0.181,
      "at": [
-      1085.6,
-      309.6
+      1099.5,
+      289.1
      ]
     },
     {
      "zone": "city",
      "kind": "city",
      "limit": 0.25,
-     "frac_over": 0.314,
-     "p95_slope": 0.548,
+     "frac_over": 0.312,
+     "p95_slope": 0.541,
      "at": [
-      169.4,
-      409.6
+      172.8,
+      417.4
      ]
     },
     {
      "zone": "city",
      "kind": "city",
      "limit": 0.25,
-     "frac_over": 0.405,
-     "p95_slope": 0.837,
+     "frac_over": 0.403,
+     "p95_slope": 0.841,
      "at": [
-      1699.0,
-      327.5
+      1697.6,
+      329.2
      ]
     }
    ]
@@ -645,57 +716,57 @@
    "severity": "info",
    "count": 0,
    "items": [],
-   "mean_abs_m": 0.99,
-   "p95_abs_m": 3.96,
-   "max_abs_m": 12.6,
+   "mean_abs_m": 1.27,
+   "p95_abs_m": 4.93,
+   "max_abs_m": 20.7,
    "by_type": {
     "collector": {
-     "mean_abs_m": 0.9,
-     "p95_abs_m": 3.13
+     "mean_abs_m": 1.05,
+     "p95_abs_m": 3.25
     },
     "freeway": {
-     "mean_abs_m": 1.99,
-     "p95_abs_m": 6.77
+     "mean_abs_m": 2.79,
+     "p95_abs_m": 11.07
     },
     "residential": {
-     "mean_abs_m": 0.8,
-     "p95_abs_m": 2.76
+     "mean_abs_m": 1.13,
+     "p95_abs_m": 4.03
     },
     "urban_street": {
-     "mean_abs_m": 0.53,
-     "p95_abs_m": 1.33
+     "mean_abs_m": 0.56,
+     "p95_abs_m": 1.64
     },
     "ramp": {
-     "mean_abs_m": 2.54,
-     "p95_abs_m": 5.73
+     "mean_abs_m": 3.3,
+     "p95_abs_m": 7.76
     },
     "arterial": {
-     "mean_abs_m": 1.6,
-     "p95_abs_m": 5.92
+     "mean_abs_m": 1.66,
+     "p95_abs_m": 6.2
     },
     "highway": {
-     "mean_abs_m": 2.1,
-     "p95_abs_m": 6.43
+     "mean_abs_m": 2.27,
+     "p95_abs_m": 6.85
     },
     "gravel": {
-     "mean_abs_m": 0.92,
-     "p95_abs_m": 3.53
+     "mean_abs_m": 1.41,
+     "p95_abs_m": 5.4
     },
     "driveway": {
-     "mean_abs_m": 0.44,
-     "p95_abs_m": 1.39
+     "mean_abs_m": 0.88,
+     "p95_abs_m": 3.06
     },
     "rural": {
-     "mean_abs_m": 1.22,
-     "p95_abs_m": 4.0
+     "mean_abs_m": 1.51,
+     "p95_abs_m": 4.65
     },
     "dirt": {
      "mean_abs_m": 0.82,
      "p95_abs_m": 1.46
     },
     "main_street": {
-     "mean_abs_m": 0.33,
-     "p95_abs_m": 0.7
+     "mean_abs_m": 1.45,
+     "p95_abs_m": 3.33
     }
    },
    "grading_issues": {}

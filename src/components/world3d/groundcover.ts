@@ -442,7 +442,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   const m4 = new THREE.Matrix4(), qt = new THREE.Quaternion(), eu = new THREE.Euler(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
   // new decor tiles are generated at most GEN_BUDGET per relist (spreads the cost over frames; the
   // relist repeats next update until every tile in range exists)
-  const GEN_BUDGET = 6;
+  const GEN_BUDGET = 2; // ~1 ms each; at 20 Hz relists that is 40 tiles/s (driving speed)
   let genLeft = GEN_BUDGET, decorPending = false;
   const lastGen = new THREE.Vector3(1e9, 0, 0);
   function decorTile(ix: number, iz: number): DTile | null {
@@ -512,6 +512,12 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   for (let i = 0; i < NP; i++) {
     const k = PV[i * 6 + 4] | 0, pk = meta.prop_kinds[k];
     if (!pk || !pk.protos.length) continue;
+    // never on pavement, shoulders, ballast or decks, even if the scatter predates a road edit: plane-0
+    // distance fields (road / rail+bridge edge, m = v * 3.1875, clamped at 3 m) against the prop's radius
+    {
+      const x = PV[i * 6], y = PV[i * 6 + 1], rr = 0.6 + 0.5 * Math.min(2.5, PV[i * 6 + 3]);
+      if (sample(0, 0, x, y) * 3.1875 < rr || sample(0, 1, x, y) * 3.1875 < rr) continue;
+    }
     const sd = PV[i * 6 + 5];
     pProto[i] = pk.protos[Math.floor(((Math.sin(sd * 91.7 + i * 0.013) * 43758.5453) % 1 + 1) % 1 * pk.protos.length)];
     pCell[i] = Math.min(ncy - 1, Math.floor(PV[i * 6 + 1] / PCELL)) * ncx + Math.min(ncx - 1, Math.floor(PV[i * 6] / PCELL));
@@ -562,6 +568,10 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3();
   const dir = new THREE.Vector3();
   const st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0 };
+  // grass tile height ranges over the whole map (lazy, NaN = not yet sampled)
+  const TX0 = Math.floor(-1000 * MPP / TILE) - 1, TZ0 = Math.floor(-333.5 * MPP / TILE) - 1;
+  const TNX = Math.ceil(IMG_W * MPP / TILE) + 3, TNZ = Math.ceil(IMG_H * MPP / TILE) + 3;
+  const tMin = new Float32Array(TNX * TNZ).fill(NaN), tMax = new Float32Array(TNX * TNZ);
   // relist scratch (no allocation per relist; R2)
   const gcnt = [0, 0, 0];
   const arrs = grassLods.map((l) => l.tiles.array as Float32Array);
@@ -592,10 +602,15 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         // cheap reject before the 5 height taps: horizontal distance / height above the tile centre
         const hx = Math.max(Math.abs(cp.x - (x0 + TILE / 2)) - TILE / 2, 0), hz = Math.max(Math.abs(cp.z - (z0 + TILE / 2)) - TILE / 2, 0);
         if (hx * hx + hz * hz > q.fade[1] * q.fade[1]) continue;
-        const dyc = Math.max(Math.abs(cp.y - groundAt(px0 + k / 2, py0 + k / 2)) - 8, 0);
+        // tile height range, cached per tile (5 taps once)
+        const ti = (iz - TZ0) * TNX + (ix - TX0);
+        if (Number.isNaN(tMin[ti])) {
+          const ha = groundAt(px0, py0), hb = groundAt(px0 + k, py0), hc = groundAt(px0, py0 + k), hd = groundAt(px0 + k, py0 + k), he = groundAt(px0 + k / 2, py0 + k / 2);
+          tMin[ti] = Math.min(ha, hb, hc, hd, he); tMax[ti] = Math.max(ha, hb, hc, hd, he);
+        }
+        const dyc = Math.max(cp.y - tMax[ti] - 1.3, tMin[ti] - 0.2 - cp.y, 0);
         if (hx * hx + hz * hz + dyc * dyc > q.fade[1] * q.fade[1]) continue;
-        const ha = groundAt(px0, py0), hb = groundAt(px0 + k, py0), hc = groundAt(px0, py0 + k), hd = groundAt(px0 + k, py0 + k), he = groundAt(px0 + k / 2, py0 + k / 2);
-        box.min.set(x0, Math.min(ha, hb, hc, hd, he) - 0.2, z0); box.max.set(x0 + TILE, Math.max(ha, hb, hc, hd, he) + 1.3, z0 + TILE);
+        box.min.set(x0, tMin[ti] - 0.2, z0); box.max.set(x0 + TILE, tMax[ti] + 1.3, z0 + TILE);
         const d = box.distanceToPoint(cp);
         if (d > q.fade[1]) continue;
         box.getBoundingSphere(sph);

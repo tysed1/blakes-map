@@ -49,8 +49,8 @@ export class World3D {
   flySpeed = 1;
   onSpeed?: (v: number) => void;
   readonly sunDir = new THREE.Vector3(-1400, 360, -560).normalize();   // ~13.5 deg above the WSW horizon
-  readonly sunColor = new THREE.Color().setRGB(1.0, 0.72, 0.46);
-  readonly sunIntensity = 8;
+  readonly sunColor = new THREE.Color().setRGB(1.0, 0.68, 0.40);   // R5: warmer key (graphics ref.png)
+  readonly sunIntensity = 9;
   readonly haze = new THREE.Color().setRGB(0.19, 0.26, 0.38);          // blue ridge haze
   readonly sunHaze = new THREE.Color().setRGB(0.95, 0.66, 0.4);         // golden forward scatter
   cine!: Cinematic;
@@ -79,7 +79,7 @@ export class World3D {
     // golden-hour look (graphics ref.png): low warm sun from the WSW, blue aerial perspective with
     // warm forward scatter toward the sun, HDRI sky + image-based ambient, cascaded shadows, filmic post
     installAtmosphere({ sunDir: this.sunDir, haze: this.haze, sunHaze: this.sunHaze, baseHeight: 330, falloff: 0.0028, mist: /[?&]nomist\b/.test(location.search) ? undefined : { base: 300, scale: 18, density: 0.0013 } });
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.25;
     this.scene.fog = new THREE.FogExp2(this.haze, 0.00016);
     this.scene.background = this.haze;
     this.sky = buildSky(this.sunDir, null, this.haze, this.sunHaze);
@@ -95,7 +95,7 @@ export class World3D {
       (this.scene as any).environmentRotation = new THREE.Euler(0, Math.atan2(this.sunDir.z, this.sunDir.x) + (0.612 - 0.5) * 2 * Math.PI, 0);
       pm.dispose();
     });
-    const hemi = new THREE.HemisphereLight(0xa9c4ea, 0x4a4630, 0.45);
+    const hemi = new THREE.HemisphereLight(0x9ab6e8, 0x4a4630, 0.55);   // cool sky fill
     this.scene.add(hemi);
     initTextures(this.renderer);
     this.cine = createCinematic(this.renderer, this.scene, this.camera, this.sunDir, this.sunColor, this.sunIntensity);

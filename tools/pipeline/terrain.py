@@ -871,6 +871,68 @@ def carve_channels(elev, V, surf, wmask, CF, cfg):
     return elev, fx
 
 
+def shape_falls(elev, surf, fx, wmask, lines, prof):
+    """Authored waterfalls (data/manual/waterways.json 'falls'), applied LOCALLY after the whole terrain is
+    built (a change in the channel profile before erosion would re-shape the entire map):
+      * water surface: a step of drop_m at the lip (plunge) or equal tiers between lip and toe (cascade);
+        the reach above is raised by drop/2 and the reach below lowered by drop/2, both easing back to the
+        original profile over ~60 px, so levels far up/downstream are unchanged
+      * terrain: the raised upper reach lifts its floor and banks with it (lateral fade ~25 px); below the
+        lip only the channel is lowered, so the untouched banks become gorge walls (old bank + drop/2 +
+        the lowering); a plunge pool ~2 m deeper at the toe
+      * rock: ledge across the channel at the lip / tiers and the gorge walls -> rock_exposure (E2 rock kit)."""
+    man = {r['id']: r for r in load_json(path('data/manual/waterways.json'))['rivers']}
+    rock = np.zeros((H, W), np.float32)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    dwe = ndi.distance_transform_edt(~wmask).astype(np.float32)        # px to water
+    for k, r in man.items():
+        if k not in lines or not r.get('falls'):
+            continue
+        L = lines[k]
+        tree = cKDTree(L)
+        for fl in r['falls']:
+            il = int(np.argmin(np.hypot(*(L - fl['lip']).T))); it = int(np.argmin(np.hypot(*(L - fl['toe']).T)))
+            il, it = min(il, it), max(il, it)
+            D, nt = float(fl['drop_m']), max(1, int(fl.get('tiers', 1)))
+            n = len(L); i = np.arange(n)
+            tiers = [il] if nt == 1 else np.linspace(il, max(il, it - 1), nt).round().astype(int).tolist()
+            # delta along the channel: +D/2 above the first tier, stepping down D/nt at each tier, -D/2 below the last
+            delta = np.full(n, D / 2)
+            for t_ in tiers:
+                delta[i > t_] -= D / nt
+            up = 1 - smoothstep(0, 60, tiers[0] - i)                      # ease above
+            dn = 1 - smoothstep(0, 60, i - max(tiers[-1], it))             # ease below
+            delta = np.where(i <= tiers[0], delta * up, np.where(i > max(tiers[-1], it), delta * dn, delta))
+            # per-pixel nearest sample of this channel within reach
+            near = (np.hypot(xx - L[il, 0], yy - L[il, 1]) < 110)
+            ys, xs = np.nonzero(near)
+            dd, jj = tree.query(np.stack([xs, ys], 1).astype(np.float64), k=1)
+            dl = delta[jj]
+            on_ch = dd < 40
+            ys, xs, dl, jj, dd = ys[on_ch], xs[on_ch], dl[on_ch], jj[on_ch], dd[on_ch]
+            wet = wmask[ys, xs]
+            # water surface + bed follow the delta
+            surf[ys[wet], xs[wet]] += dl[wet]
+            lat_up = 1 - smoothstep(6, 25, dwe[ys, xs])                   # raised reach: floor + banks
+            lat_dn = (1 - smoothstep(0.5, 2.0, dwe[ys, xs]))              # lowered reach: channel only
+            fac = np.where(dl > 0, np.where(wet, 1.0, lat_up), np.where(wet, 1.0, lat_dn))
+            elev[ys, xs] += dl * fac
+            # rock: ledges across the channel + the gorge walls below the lip
+            for t_ in tiers:
+                p = L[t_]
+                rock = np.maximum(rock, np.clip(1 - np.hypot(xx - p[0], yy - p[1]) / 6.0, 0, 1) * 0.95)
+            wall = (~wet) & (dl < -0.5) & (dwe[ys, xs] <= 7) & (jj <= max(tiers[-1], it) + 25)
+            rock[ys[wall], xs[wall]] = np.maximum(rock[ys[wall], xs[wall]], 0.9 * np.clip(-dl[wall] / (D / 2), 0, 1))
+            # plunge pool below the toe
+            pr = fl.get('pool_radius_m', 8.0) / MPP
+            pt = L[it]
+            pool = (np.clip(1 - np.hypot(xx - pt[0], yy - pt[1]) / pr, 0, 1) ** 0.7 * wmask).astype(np.float32)
+            elev -= 2.0 * pool
+            fx[0] = fx[0] + 2.0 * pool
+            print(f'  falls {fl["id"]}: drop {D} m in {len(tiers)} step(s), upper pool {float(prof[k][max(tiers[0] - 2, 0)] + D / 2):.1f} m, pool r {pr:.1f} px')
+    return elev.astype(np.float32), surf, rock
+
+
 @njit(cache=True)
 def _breach(z, order, rec, eps):
     """Lower downstream cells so every cell drains (least-effort carving along the flood tree)."""
@@ -1036,12 +1098,15 @@ def main():
     _dbg('elev_channels', elev)
     # ---- hydrology guarantee: every land cell drains (shallow pits breached, deeper ones filled)
     elev = np.where(wmask, elev, condition_drainage(elev, wmask, cfg['erosion'].get('max_breach_m', 3.0))).astype(np.float32)
+    # authored waterfalls last: a local edit (anything earlier re-routes the global drainage / erosion)
+    elev, surf, falls_rock = shape_falls(elev, surf, fx, wmask, lines, prof)
 
     # rock exposure (terrain-derived): steep crests/crags, cut banks, rapids banks
     gy, gx = np.gradient(cv2.GaussianBlur(elev, (0, 0), 1.2), MPP)
     slope = np.hypot(gx, gy)
     rex = np.clip((slope - 0.55) / 0.5, 0, 1) * (0.35 + 0.65 * np.clip(crest * 1.6, 0, 1))
     rex = np.maximum(rex, np.clip(fx[4], 0, 1) * (~wmask) * 0.8)
+    rex = np.maximum(rex, falls_rock)   # waterfall ledges + gorge walls: bare rock for the rock kit
     rex = cv2.GaussianBlur(rex.astype(np.float32), (0, 0), 0.8)
 
     os.makedirs(path('data/terrain'), exist_ok=True)
