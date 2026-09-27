@@ -1,0 +1,44 @@
+{
+ "_doc": "Waterfall lip rocks (N, lib_water.build_falls): source px + crest-relative z (base 0.6 m below the crest water level, i.e. embedded); kind/scale in the rock kit (tools/pipeline/rocks.py KINDS/DIMS); downstream = unit flow direction in px (the exposed face should look downstream); yaw = atan2(dx, dy).",
+ "rocks": [
+  {
+   "falls": "FALLS_HOLLOW",
+   "x_px": 1143.94,
+   "y_px": 261.13,
+   "z_m": 384.76,
+   "kind": "crag",
+   "scale": 0.55,
+   "downstream": [
+    -0.06,
+    0.998
+   ],
+   "yaw": -0.06
+  },
+  {
+   "falls": "FALLS_HOLLOW",
+   "x_px": 1142.72,
+   "y_px": 261.06,
+   "z_m": 384.76,
+   "kind": "boulder",
+   "scale": 1.25,
+   "downstream": [
+    -0.06,
+    0.998
+   ],
+   "yaw": -0.06
+  },
+  {
+   "falls": "FALLS_HOLLOW",
+   "x_px": 1141.36,
+   "y_px": 260.98,
+   "z_m": 384.76,
+   "kind": "crag",
+   "scale": 0.6,
+   "downstream": [
+    -0.06,
+    0.998
+   ],
+   "yaw": -0.06
+  }
+ ]
+}

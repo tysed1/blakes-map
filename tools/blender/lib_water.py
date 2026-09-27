@@ -703,6 +703,7 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
     except Exception:
         return []
     objs = []
+    falls_rocks = []
     for r in man.get('rivers', []):
         C = ww.get(r['id'])
         if C is None:
@@ -774,19 +775,15 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                 lr = []
                 for w_, r_ in ((-0.36, 1.5), (0.29, 1.3), (-1.05, 1.8), (1.05, 1.6), (-0.7, 1.0)):
                     lr.append((X[kl] + nx_[kl] * half * w_, Y[kl] + ny_[kl] * half * w_, r_))
-                if mrock is not None:
-                    for q_, (rx, ry, rr) in enumerate(lr):
-                        rb = build_boulders(D, [(rx, ry, rr)], coll, mrock, seed=31 + q_)
-                        if rb is None:
-                            continue
-                        # the rock stands proud of the crest (breaks the silhouette), base below the water
-                        co = np.array([v.co[:] for v in rb.data.vertices])
-                        zc = co[:, 2].mean()
-                        co[:, 2] = zc + (co[:, 2] - zc) * 1.8          # taller blocks rooted in the ledge, not caps
-                        co[:, 2] += (Z[0] + 0.4 * rr) - co[:, 2].max()
-                        rb.data.vertices.foreach_set('co', co.ravel().astype(np.float32))
-                        rb.name = f"WATER_FallsRocks_{f['id']}_{q_}"
-                        objs.append(rb)
+                # lip rocks come from E's rock kit (angular, lit like the crags): N publishes the
+                # placements, tools/pipeline/rocks.py instances them (data/water/falls_rocks.json)
+                dn = np.array([tx_[kl], ty_[kl]]) / tl[kl]
+                for q_, (w_, sc_, kind_) in enumerate(((-0.36, 0.55, 'crag'), (0.29, 1.25, 'boulder'), (1.02, 0.6, 'crag'))):
+                    falls_rocks.append({'falls': f['id'], 'x_px': round(float(X[kl] + nx_[kl] * half * w_ - dn[0] * 0.4), 2),
+                                        'y_px': round(float(Y[kl] + ny_[kl] * half * w_ - dn[1] * 0.4), 2),
+                                        'z_m': round(float(Z[0]) - 0.6, 2), 'kind': kind_, 'scale': sc_,
+                                        'downstream': [round(float(dn[0]), 3), round(float(dn[1]), 3)],
+                                        'yaw': round(math.atan2(float(dn[0]), float(dn[1])), 3)})
                 # aerated plunge: bright foam patch where the ribbons land, fading over ~5 m
                 tx0, ty0 = X[min(kd_ + 2, len(X) - 1)], Y[min(kd_ + 2, len(Y) - 1)]
                 zp = Z[-1] + 0.06
@@ -825,4 +822,10 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
             ob['spray'] = [float(v) for k in em for v in (*px2b(X[kk(k)], Y[kk(k)], Z[kk(k)]), half * MPP * 0.8, float(dz[k]) * 4)]
             objs.append(ob)
             print(f"   falls {f['id']}: {drop:.1f} m over {(s_t - s_l) * MPP:.0f} m, {len(F)} faces, {len(em)} spray emitters")
+    import json as _json
+    with open(P('data/water/falls_rocks.json'), 'w') as fh:
+        _json.dump({'_doc': 'Waterfall lip rocks (N, lib_water.build_falls): source px + crest-relative z (base 0.6 m below the '
+                            'crest water level, i.e. embedded); kind/scale in the rock kit (tools/pipeline/rocks.py KINDS/DIMS); '
+                            'downstream = unit flow direction in px (the exposed face should look downstream); yaw = atan2(dx, dy).',
+                    'rocks': falls_rocks}, fh, indent=1)
     return objs
