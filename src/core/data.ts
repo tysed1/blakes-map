@@ -63,7 +63,29 @@ async function json<T>(f: string): Promise<T> {
 const PACKED = import.meta.env.VITE_PACKED_BIN === '1';
 type Filter = 'raw' | 'sh2' | 'sh4' | 'd16sh2' | 'd32sh4';
 /** filter: a Filter, optionally prefixed 'c<N>:' = N 32-bit columns stored column-major */
-interface PackEntry { file: string; filter: Filter | string; size: number }
+interface PackEntry { file: string; filter: Filter | string; size: number; segs?: [number, number, 'r' | 's4' | 'd', number][] }
+
+/** 'seg' packing (tools/deploy/prepare_artifact.py segment_pack): per-section inverse transforms. */
+function unsegment(pay: Uint8Array, size: number, segs: NonNullable<PackEntry['segs']>): ArrayBuffer {
+  const out = new Uint8Array(size);
+  let p = 0;
+  for (const [o, nb, mode, c] of segs) {
+    if (mode === 'r') out.set(pay.subarray(p, p + nb), o);
+    else if (mode === 's4') { const m = nb / 4; for (let j = 0; j < 4; j++) { const q = p + j * m; for (let i = 0; i < m; i++) out[o + i * 4 + j] = pay[q + i]; } }
+    else {
+      // u16, c component planes, each delta coded; stored as low-byte plane then high-byte plane
+      const m = nb / 2, k = m / c;
+      const u16 = new Uint16Array(m);   // little-endian platforms (all WebGL targets)
+      for (let pl = 0; pl < c; pl++) {
+        let acc = 0;
+        for (let i = 0, q = p + pl * k; i < k; i++, q++) { acc = (acc + (pay[q] | (pay[q + m] << 8))) & 0xffff; u16[i * c + pl] = acc; }
+      }
+      out.set(new Uint8Array(u16.buffer), o);
+    }
+    p += nb;
+  }
+  return out.buffer;
+}
 let packIndex: Promise<Record<string, PackEntry> | null> | null = null;
 
 function unshuffle(src: Uint8Array, k: number): Uint8Array {
@@ -72,14 +94,25 @@ function unshuffle(src: Uint8Array, k: number): Uint8Array {
   return out;
 }
 export function unfilter(b: Uint8Array, spec: string): ArrayBuffer {
-  const m = /^c(\d+):(.*)$/.exec(spec);
-  const filter = (m ? m[2] : spec) as Filter;
-  const out = unfilterBytes(b, filter);
+  // optional pre-transform prefix: 'c<N>:' N 32-bit columns stored column-major,
+  // 'p<W>:' u16 raster of width W stored as 2D-predictor residuals
+  const m = /^([cp])(\d+):(.*)$/.exec(spec);
+  const out = unfilterBytes(b, (m ? m[3] : spec) as Filter);
   if (!m) return out;
-  // column-major -> row-major (32-bit columns)
-  const n = +m[1], src = new Uint32Array(out), rows = src.length / n, dst = new Uint32Array(src.length);
-  for (let c = 0; c < n; c++) { const o = c * rows; for (let r = 0; r < rows; r++) dst[r * n + c] = src[o + r]; }
-  return dst.buffer;
+  const n = +m[2];
+  if (m[1] === 'c') {
+    const src = new Uint32Array(out), rows = src.length / n, dst = new Uint32Array(src.length);
+    for (let c = 0; c < n; c++) { const o = c * rows; for (let r = 0; r < rows; r++) dst[r * n + c] = src[o + r]; }
+    return dst.buffer;
+  }
+  const a = new Uint16Array(out), W = n, H = a.length / W;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!x && !y) continue;
+    const i = y * W + x;
+    const p = !y ? a[i - 1] : !x ? a[i - W] : a[i - 1] + a[i - W] - a[i - W - 1];
+    a[i] = (a[i] + p) & 0xffff;
+  }
+  return out;
 }
 function unfilterBytes(b: Uint8Array, filter: Filter): ArrayBuffer {
   if (filter === 'raw') return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
@@ -113,7 +146,8 @@ export async function bin(f: string): Promise<ArrayBuffer> {
   if (e) {
     const r = await fetch(BASE + e.file);
     if (!r.ok) throw new Error(`failed to load ${e.file}`);
-    return unfilter(await gunzip(wasmPayload(await r.arrayBuffer())), e.filter);
+    const pay = await gunzip(wasmPayload(await r.arrayBuffer()));
+    return e.segs ? unsegment(pay, e.size, e.segs) : unfilter(pay, e.filter);
   }
   const r = await fetch(BASE + f + '.gz.b64.txt');
   if (!r.ok) throw new Error(`failed to load ${f}`);

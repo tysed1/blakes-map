@@ -48,7 +48,7 @@ export function installAtmosphere(p: AtmosphereParams) {
   #define ATM_SUN ${v3(p.sunDir)}
   #define ATM_SUNHAZE ${v3(p.sunHaze)}
   ${p.mist ? `#define ATM_MIST vec3(${p.mist.base.toFixed(1)}, ${p.mist.scale.toFixed(1)}, ${p.mist.density.toFixed(5)})
-  #define ATM_MISTCOL vec3(0.46, 0.5, 0.56)` : ''}
+  #define ATM_MISTCOL vec3(0.36, 0.4, 0.46)` : ''}
   vec3 atmosphere(vec3 col, vec3 viewPos) {
     vec3 rd = transpose(mat3(viewMatrix)) * viewPos;      // world-space camera -> fragment
     float dist = length(rd);
@@ -86,7 +86,9 @@ export function installAtmosphere(p: AtmosphereParams) {
       float pocket = 0.25 + 0.75 * smoothstep(0.3, 0.75, nz);
       float odm = ATM_MIST.z * dist * fm * pocket;
       float em = 1.0 - exp(-odm);
-      vec3 mc = mix(ATM_MISTCOL, ATM_SUNHAZE * 1.25, clamp(pow(mu, 4.0) * 0.8, 0.0, 1.0));
+      // lit from above-behind: a soft cool white, only mildly warmer toward the sun (no sun-side bloom)
+      vec3 mc = mix(ATM_MISTCOL, ATM_SUNHAZE * 0.75, clamp(pow(mu, 8.0) * 0.45, 0.0, 1.0));
+      em *= smoothstep(-2.0, 25.0, hc + 40.0 * (1.0 - pocket));   // thinner when the camera is inside the layer
       col = col * (1.0 - em) + mc * em;
     }
     #endif

@@ -105,7 +105,7 @@ void sunBakeEval(vec3 wp, float h, float viewDepth, out float lit, out float ao)
   // drifting cloud shadows (sampled at the ground point under the fragment, along the sun ray)
   vec2 cp = (wp.xz - uSunBakeDir.xy * (h / max(uSunBakeDir.z, 0.05)) + uCloud.xy) * uCloud.w;
   float cl = texture2D(tCloud, cp).r * 0.7 + texture2D(tCloud, cp * 2.7 + 0.37).r * 0.3;
-  lit *= 1.0 - uCloud.z * smoothstep(0.52, 0.68, cl);
+  lit *= 1.0 - uCloud.z * smoothstep(0.47, 0.62, cl);
   ao = mix(1.0, mix(s.b, 1.0, smoothstep(0.5, 6.0, h)), uSunBakeDir.w);
 }
 `;

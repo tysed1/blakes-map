@@ -78,7 +78,7 @@ export class World3D {
 
     // golden-hour look (graphics ref.png): low warm sun from the WSW, blue aerial perspective with
     // warm forward scatter toward the sun, HDRI sky + image-based ambient, cascaded shadows, filmic post
-    installAtmosphere({ sunDir: this.sunDir, haze: this.haze, sunHaze: this.sunHaze, baseHeight: 330, falloff: 0.0028, mist: { base: 300, scale: 18, density: 0.0022 } });
+    installAtmosphere({ sunDir: this.sunDir, haze: this.haze, sunHaze: this.sunHaze, baseHeight: 330, falloff: 0.0028, mist: /[?&]nomist\b/.test(location.search) ? undefined : { base: 300, scale: 18, density: 0.0013 } });
     this.renderer.toneMappingExposure = 1.1;
     this.scene.fog = new THREE.FogExp2(this.haze, 0.00016);
     this.scene.background = this.haze;

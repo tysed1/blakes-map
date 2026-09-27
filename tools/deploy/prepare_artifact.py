@@ -63,7 +63,35 @@ LOSSY = {
 }
 
 
+# u16 rasters: quantized to q units, then a 2D (left + up - upleft) predictor; filter 'p<W>:<f>'
+U16_2D = {
+    'backdrop_u16.bin': (1900, 16),   # distant ridges, 10 m cells: 0.29 m height steps
+}
+
+
+def round_tree_positions(raw):
+    """trees/geo.bin: LOD vertex positions rounded to 2 mm (layout unchanged, float bits compress)."""
+    g = json.load(open(os.path.join(D, 'world', 'trees', 'geo.json')))
+    b = bytearray(raw)
+    for sp in g['species']:
+        for l in sp['lods']:
+            p = np.frombuffer(b, np.float32, l['vcount'] * 3, l['pos']).copy()
+            b[l['pos']:l['pos'] + p.nbytes] = (np.round(p * 512) / 512).astype(np.float32).tobytes()
+    return bytes(b)
+
+
 def lossy(rel, raw):
+    """-> (filter prefix or None, payload)"""
+    if rel == 'trees/geo.bin':
+        return None, round_tree_positions(raw)
+    if rel in U16_2D:
+        W, q = U16_2D[rel]
+        a = (np.round(np.frombuffer(raw, np.uint16) / q) * q).clip(0, 65535).astype(np.int64).reshape(-1, W)
+        pred = np.zeros_like(a)
+        pred[1:, 1:] = a[1:, :-1] + a[:-1, 1:] - a[:-1, :-1]
+        pred[0, 1:] = a[0, :-1]
+        pred[1:, 0] = a[:-1, 0]
+        return f'p{W}', ((a - pred) % 65536).astype(np.uint16).tobytes()
     if rel not in LOSSY:
         return None, raw
     n, steps = LOSSY[rel]
@@ -71,8 +99,58 @@ def lossy(rel, raw):
     for c, st in enumerate(steps):
         if st:
             a[:, c] = np.round(a[:, c] / st) * st
-    return n, a.T.copy().tobytes()
+    return f'c{n}', a.T.copy().tobytes()
 
+
+# ---- section-aware packing for binaries described by a JSON index of {f, o, n, t} sections (infra):
+# u16 sections are delta coded per component plane (xyz positions de-interleaved), 32-bit sections
+# byte-shuffled, then split into low/high byte planes; bin() reverses it from pack.json 'segs'
+SZ = {'u1': 1, 'i1': 1, 'u2': 2, 'i2': 2, 'f4': 4, 'u4': 4}
+
+
+def sections(index_json, fname):
+    out = []
+
+    def walk(x, key=None):
+        if isinstance(x, dict):
+            if {'f', 'o', 'n', 't'} <= set(x):
+                if x['f'] == fname:
+                    out.append((x['o'], x['n'], x['t'], key))
+                return
+            for k, v in x.items():
+                walk(v, k)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v, key)
+    walk(json.load(open(index_json)))
+    return sorted(out)
+
+
+def segment_pack(raw, secs):
+    """-> (segs [[offset, bytes, mode, comps]], payload)"""
+    segs, out, pos = [], [], 0
+    for o, n, t, key in secs:
+        nb = n * SZ[t]
+        if o < pos:
+            continue   # overlapping / duplicate reference
+        if o > pos:
+            segs.append([pos, o - pos, 'r', 1]); out.append(raw[pos:o])
+        if SZ[t] == 2:
+            c = 3 if key == 'pos' and n % 3 == 0 else 1
+            a = np.frombuffer(raw, np.uint16, n, o).reshape(-1, c).T
+            d = np.ascontiguousarray(np.diff(a.astype(np.int32), axis=1, prepend=0).astype(np.uint16))
+            segs.append([o, nb, 'd', c]); out.append(d.view(np.uint8).reshape(-1, 2).T.tobytes())
+        elif SZ[t] == 4:
+            segs.append([o, nb, 's4', 1]); out.append(np.frombuffer(raw, np.uint8, nb, o).reshape(-1, 4).T.tobytes())
+        else:
+            segs.append([o, nb, 'r', 1]); out.append(raw[o:o + nb])
+        pos = o + nb
+    if pos < len(raw):
+        segs.append([pos, len(raw) - pos, 'r', 1]); out.append(raw[pos:])
+    return segs, b''.join(out)
+
+
+SEGMENTED = {'infra/infra_roads.bin': 'infra/infra.json', 'infra/infra_struct.bin': 'infra/infra.json', 'infra/infra_water.bin': 'infra/infra.json'}
 
 files, tot, pack = {}, 0, {}
 SKIP = {'eco_u8.bin', 'trees.bin', 'road_qa.jpg', 'landuse.png'}  # pipeline-only / legacy / QA-only
@@ -94,14 +172,21 @@ for sub in ('assets', 'world', 'basis'):
             if f.endswith('.bin') or f.endswith('.ktx2') or (sub == 'world' and p[len('world/'):] in PACK_JSON and os.path.getsize(os.path.join(D, p)) > 20000):
                 src = os.path.join(D, p)
                 rel = os.path.relpath(src, os.path.join(D, 'world')).replace(os.sep, '/')
-                cols, data = lossy(rel, open(src, 'rb').read())
-                filt, z = best_filter(data)
-                if cols:
-                    filt = f'c{cols}:{filt}'
+                segs = None
+                if rel in SEGMENTED and os.path.exists(os.path.join(D, 'world', SEGMENTED[rel])):
+                    segs, data = segment_pack(open(src, 'rb').read(), sections(os.path.join(D, 'world', SEGMENTED[rel]), os.path.basename(rel)))
+                    filt, z = 'seg', gzip.compress(data, 9, mtime=0)
+                else:
+                    pre, data = lossy(rel, open(src, 'rb').read())
+                    filt, z = best_filter(data)
+                    if pre:
+                        filt = f'{pre}:{filt}'
 
                 p += '.wasm'
                 open(os.path.join(D, p), 'wb').write(wasm_container(z))
                 pack[rel] = {'file': rel + '.wasm', 'filter': filt, 'size': os.path.getsize(src)}
+                if segs:
+                    pack[rel]['segs'] = segs
             files[p] = os.path.join(D, p)
             tot += os.path.getsize(files[p])
 json.dump(pack, open(os.path.join(D, 'world', 'pack.json'), 'w'), indent=1)

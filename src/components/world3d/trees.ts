@@ -40,7 +40,7 @@ export interface TreeQuality { lodDist: [number, number, number, number]; smallF
 export const TREE_QUALITY: Record<string, TreeQuality> = {
   low: { lodDist: [30, 90, 220, 450], smallFar: 110, shadowLod: -1 },
   medium: { lodDist: [40, 120, 280, 580], smallFar: 150, shadowLod: 0 },
-  high: { lodDist: [45, 150, 340, 720], smallFar: 190, shadowLod: 1 },
+  high: { lodDist: [38, 130, 320, 700], smallFar: 180, shadowLod: 1 },
   ultra: { lodDist: [80, 230, 500, 1000], smallFar: 280, shadowLod: 1 },
 };
 

@@ -217,9 +217,14 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     // cracks: alligator clusters, transverse cracks, sealed centre joint
     vec3 ce = vor2(ruv / 0.32);
     float cluster = sstep(0.78 - age * 0.16, 0.86 - age * 0.14, bn(fbm2(vec3(ruv / 7.0, 3.0))));
-    float crack = step(ce.y, 0.04) * cluster * step(0.4, age);
+    // thin tar lines: anti-aliased, faded out once they are sub-pixel (no sparkle / shimmer at distance)
+    float fw = length(fwidth(ruv));
+    float far = 1.0 - sstep(0.03, 0.1, fw);
+    float cw = max(fwidth(ce.y), 1e-4);
+    float crack = (1.0 - smoothstep(0.04 - cw, 0.04 + cw, ce.y)) * cluster * step(0.4, age) * far;
     float tr = fract(rs / 13.7 + fbm2(vec3(ruv * 0.6, 5.0)) * 0.15);
-    float trans = step(tr, 0.006) * step(0.35, age);
+    float tw = max(fwidth(tr), 1e-4);
+    float trans = (1.0 - smoothstep(0.006 - tw, 0.006 + tw, tr)) * step(0.35, age) * far;
     float joint = step(abs(rl + (fbm2(vec3(ruv * 0.8, 9.0)) - 0.5) * 0.1), 0.05) * step(0.25, age);
     float tar = max(max(crack, trans), joint * step(mk, 5.5)) * step(au, hw - 0.15);
     col = mix(col, vec3(0.012, 0.012, 0.013), tar * 0.7);
@@ -263,6 +268,11 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     col = gravelCol(P, bxy, tClay, 3.0, vec3(0.24, 0.105, 0.05), vec3(0.2, 0.1, 0.055), rl, 1.0); rough = 0.97;
   } else if (kind == 3) {
     col = gravelCol(P, bxy, tGrav, 2.0, vec3(0.13, 0.12, 0.1), vec3(0.11, 0.1, 0.07), rl, 0.0); rough = 0.97;
+    // soft shoulder: oil-darkened joint at the pavement edge, weeds and grass creeping in from the verge
+    float so = clamp((abs(rl) - hw) / 1.2, 0.0, 1.0);
+    float weeds = sstep(0.5, 0.8, bn(fbm2(P * 0.9)) + so * 0.45) * sstep(0.2, 0.9, so);
+    col = mix(col, vec3(0.07, 0.08, 0.035), weeds * 0.75);
+    col = mix(col, col * 0.72, (1.0 - sstep(0.0, 0.18, so)) * 0.45);
   } else if (kind == 4) {
     col = concreteCol(P, vec3(0.3, 0.295, 0.275), rs, 1.5); rough = 0.88;
   } else if (kind == 5) {
@@ -278,7 +288,7 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   normal = bumpN(-vViewPosition, normal, gHeight, gBumpS * 0.06);`);
   };
-  m.customProgramCacheKey = () => 'infra-ground-1';
+  m.customProgramCacheKey = () => 'infra-ground-2';
   return m;
 }
 
