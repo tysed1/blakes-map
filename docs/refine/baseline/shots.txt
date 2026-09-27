@@ -10,3 +10,4 @@ TC_field_ped 159s
 TC_forest_ped 404s
 TC_aerial_100 64s
 TC_high_1000 40s
+GS_HollowFalls 312s

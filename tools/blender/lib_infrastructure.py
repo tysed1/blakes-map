@@ -297,7 +297,7 @@ def build_prototypes(root):
     # --- JCT assemblies: 'JCT' plate over the route marker
     for route in ('19', '76', '129', '400', '60', '9'):
         M = Mesh(); _copy_proto(P['route_' + route], M)
-        _post(M, 2.85, S_['galv'])
+        box_at(M, (0, 0.07), (1, 0), (0, 1), 0.03, 0.03, 1.9, 2.85, S_['galv'])   # post extension behind the plates
         _plate(M, [(-0.3, 2.64), (0.3, 2.64), (0.3, 2.85), (-0.3, 2.85)], S_['white'], back_mat=S_['signback'])
         _text_mesh(M, 'JCT', 0.13, (0.0, 2.745), S_['black'], depth=0.003)
         P['jct_' + route] = proto_object(f'A2_PROTO_Sign_Jct{route}', M, sl, root)

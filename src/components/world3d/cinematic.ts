@@ -96,6 +96,13 @@ export const SHADOW_PRESET: Record<ShadowQuality, { cascades: number; far: numbe
   ultra: { cascades: 3, far: 500, size: 2048 },
 };
 
+/**
+ * Objects on this layer (and not on layer 0) cast only into the nearest cascade: the nearest tree
+ * LOD is drawn within ~55 m, where the first cascade covers everything; skipping it in the farther
+ * cascades saves ~60 shadow draw calls per cascade. The main camera renders the layer as usual.
+ */
+export const NEAR_CASTER_LAYER = 5;
+
 export interface Cinematic {
   post: FusedPost;
   /** bloom on/off (quality presets) */
@@ -112,6 +119,7 @@ export interface Cinematic {
 }
 
 export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunDir: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number): Cinematic {
+  camera.layers.enable(NEAR_CASTER_LAYER);
   const post = new FusedPost(renderer);
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   post.setSize(size.x, size.y);
@@ -130,6 +138,7 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       } as any);
       c.fade = true;
       for (const l of c.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.5; }
+      c.lights[0].shadow.camera.layers.enable(NEAR_CASTER_LAYER);
       c.remove();
       rigs.set(n, c);
     }
