@@ -53,7 +53,7 @@
    "angle_deg": 18.4
   },
   {
-   "upper": "TV_RD_3006",
+   "upper": "TV_RD_3238",
    "lower": "TV_RD_3009",
    "at": [
     1881.66,
@@ -63,21 +63,32 @@
   },
   {
    "upper": "LC_RD_2610",
-   "lower": "LC_RD_0047",
-   "at": [
-    99.27,
-    85.47
-   ],
-   "lower_z": 335.63
-  },
-  {
-   "upper": "LC_RD_2610",
    "lower": "LC_RD_0080",
    "at": [
     98.74,
     68.93
    ],
-   "lower_z": 335.25
+   "lower_z": 334.73
+  },
+  {
+   "upper": "LC_RD_2610",
+   "lower": "LC_RD_2871",
+   "at": [
+    98.84,
+    88.06
+   ],
+   "lower_z": 337.67,
+   "kind": "road"
+  },
+  {
+   "upper": "LC_RD_2610",
+   "lower": "LC_RD_2881",
+   "at": [
+    99.63,
+    82.85
+   ],
+   "lower_z": 337.11,
+   "kind": "road"
   },
   {
    "upper": "LC_RD_2432",
@@ -109,6 +120,17 @@
    "lower_z": 298.98,
    "kind": "rail",
    "angle_deg": 81.3
+  },
+  {
+   "upper": "LC_RD_2881",
+   "lower": "LC_RD_2874",
+   "at": [
+    172.98,
+    137.3
+   ],
+   "lower_z": 331.48,
+   "kind": "road",
+   "angle_deg": 26.2
   }
  ],
  "issues": []

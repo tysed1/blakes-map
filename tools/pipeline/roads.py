@@ -355,7 +355,7 @@ def load_grid(zones):
     return out
 
 
-def clear_freeway_corridors(autos, fw):
+def clear_freeway_corridors(autos, fw, clip=True):
     """Local streets may pass under/over a freeway at a clean angle, but never
     touch ramps or run inside the freeway right-of-way."""
     ramps = unary_union([LineString(l['pts']).buffer(wpx('ramp') / 2 + 2.5) for l in fw if l['type'] == 'ramp'])
@@ -363,9 +363,17 @@ def clear_freeway_corridors(autos, fw):
     out = []
     for l in autos:
         g = LineString(l['pts'])
-        if g.intersects(ramps):
-            continue
         if g.intersection(row).length > 14:
+            continue
+        if g.intersects(ramps):
+            if not clip:
+                continue
+            # cut back to the ramp fence (dead ends), never an at-grade crossing of a ramp
+            rest = g.difference(ramps)
+            parts = [rest] if rest.geom_type == 'LineString' else [q for q in getattr(rest, 'geoms', []) if q.geom_type == 'LineString']
+            for q in parts:
+                if q.length >= 8:
+                    out.append(dict(l, pts=resample(np.asarray(q.coords), 1.0)))
             continue
         out.append(l)
     return out
@@ -417,6 +425,8 @@ def interchange_ramps(manual):
     byid = {r['id']: (r, np.asarray(p)) for r, p in manual}
     out, seps = [], []
     for ic in spec['interchanges']:
+        if ic.get('kind') == 'wye':
+            continue  # freeway splits: wye_ramps()
         f = byid[ic['freeway']][1]
         xs = [byid[i][1] for i in ic['crossroad']]
         x = xs[0]
@@ -451,6 +461,105 @@ def interchange_ramps(manual):
     return out
 
 
+def _oriented_from(pts, xy):
+    pts = np.asarray(pts, float)
+    return pts if np.hypot(*(pts[0] - xy)) <= np.hypot(*(pts[-1] - xy)) else pts[::-1]
+
+
+def _offset_path(line, stations, offs, sgn_right):
+    """Points along `line` at `stations` (px from its start) with lateral offsets (px);
+    positive offsets on the side -sgn_right * right-normal (image coords: right of (dx,dy) = (-dy,dx))."""
+    from scipy.interpolate import PchipInterpolator
+    ks = np.array([o[0] for o in offs], float)
+    vs = np.array([o[1] for o in offs], float)
+    order = np.argsort(ks)
+    f = PchipInterpolator(ks[order], vs[order])
+    out = []
+    for st in stations:
+        a = np.asarray(line.interpolate(max(st - 1.5, 0)).coords[0]); b = np.asarray(line.interpolate(min(st + 1.5, line.length)).coords[0])
+        t = (b - a) / max(np.hypot(*(b - a)), 1e-9)
+        rn = np.array([-t[1], t[0]])
+        out.append(np.asarray(line.interpolate(st).coords[0]) - rn * float(f(np.clip(st, ks.min(), ks.max()))) * sgn_right)
+    return np.asarray(out)
+
+
+def wye_ramps(mlines):
+    """Freeway wye (interchanges.json kind 'wye'): the branch freeway keeps only its outer part
+    (from `branch_split_px`); inside, its carriageways are one-way directional roadways -
+    a right exit from the trunk that runs beside the through freeway and flies over it
+    (layer 1) into the branch's right carriageway, and the branch's other carriageway kept on
+    the old alignment as an added lane on the trunk. Modifies mlines in place."""
+    spec = load_json(path('data/manual/interchanges.json'))
+    out = []
+    by = {l.get('def_id'): l for l in mlines}
+    for ic in spec['interchanges']:
+        if ic.get('kind') != 'wye':
+            continue
+        tr, th, br = by[ic['trunk']], by[ic['through']], by[ic['branch']]
+        ends = [(np.hypot(*(np.asarray(a) - np.asarray(b))), a) for a in (tr['pts'][0], tr['pts'][-1]) for b in (br['pts'][0], br['pts'][-1])]
+        node = np.asarray(min(ends, key=lambda e: e[0])[1], float)
+        T = _oriented_from(tr['pts'], node)          # node -> trunk end
+        N = _oriented_from(th['pts'], node)          # node -> through branch end
+        B = LineString(_oriented_from(br['pts'], node))
+        Tl = LineString(T)
+        co = (width_for('freeway', 4) / 2 - 3.6 - 1.4) / 2.5 + 0.2   # carriageway centre offset (px)
+        bs = float(ic.get('branch_split_px', 20))
+        cut = substring(B, bs, B.length)
+        bp = np.asarray(cut.coords)
+        br['pts'] = bp if np.hypot(*(br['pts'][0] - node)) > np.hypot(*(br['pts'][-1] - node)) else bp[::-1]
+        br['no_snap'] = True
+
+        def bpt(b, side):
+            p0 = np.asarray(B.interpolate(b).coords[0])
+            t = np.asarray(B.interpolate(min(b + 1, B.length)).coords[0]) - np.asarray(B.interpolate(max(b - 1, 0)).coords[0])
+            t /= np.hypot(*t)
+            return p0 + np.array([-t[1], t[0]]) * co * side, t   # side +1: right of travel away from the node
+        # flyover: trunk stations from the diverge down to the split (positive offsets north-east),
+        # a straight run past the split beside the through freeway, then onto the branch's right carriageway
+        fo = ic['flyover_offsets_px']
+        p1 = _offset_path(Tl, np.arange(max(o[0] for o in fo), min(o[0] for o in fo) - 0.01, -1.0), fo, +1)
+        ext, eo = ic.get('flyover_ext_px', [0, fo[-1][1]])
+        tt = np.asarray(Tl.interpolate(3).coords[0]) - node; tt /= np.hypot(*tt)       # node -> trunk
+        rn = np.array([-tt[1], tt[0]])                                               # right of SE travel
+        pe = np.array([node - tt * e + rn * (-eo) for e in np.arange(1.0, ext + 0.01, 1.0)]) if ext > 0 else np.zeros((0, 2))
+        pl, tl = bpt(bs, +1)
+        p2 = bezier_pts((pe[-1] if len(pe) else p1[-1]), -tt, pl, tl)
+        p3 = np.array([bpt(b, +1)[0] for b in np.arange(bs, bs + 6.01, 1.0)])
+        fly = resample(np.vstack([p1, pe, p2[1:], p3[1:]]), 1.0)
+        fly = resample(chaikin(rdp(fly, 0.05), 2), 1.0)
+        fly[0] = p1[0]
+        # merge: the branch's other carriageway on its old alignment, outside the flyover, then an
+        # added lane on the trunk's south-west side
+        mo = ic['merge_offsets_px']
+        q2 = np.array([bpt(b, -1)[0] for b in np.arange(bs, 4.0 - 0.01, -1.0)])
+        q1 = _offset_path(Tl, np.arange(min(o[0] for o in mo), max(o[0] for o in mo) + 0.01, 1.0), mo, +1)
+        keep = [q for q in q2 if Point(q).distance(LineString(q1)) > 3.0 or np.hypot(*(q - q2[0])) < 3]
+        mer = resample(chaikin(rdp(np.vstack([keep, q1]), 0.05), 2), 1.0)
+        mer[0] = q2[0]
+        zone = zone_of(node, load_zones())
+        for k, (pts, nm, layer) in enumerate(((fly, 'SR 9 NW westbound flyover (from SR 9 northbound)', 1),
+                                               (mer, 'SR 9 NW eastbound (to SR 9 southbound)', 0))):
+            out.append({'pts': pts, 'src': 'manual', 'type': 'ramp', 'name': nm, 'route': None, 'def_id': f"{ic['id']}_R{k + 1}",
+                        'lanes': 1, 'layer': layer, 'zone': zone, 'oneway': True, 'no_snap': True, 'interchange': ic['id'],
+                        'min_radius_m': rnd(ramp_min_radius_m(pts), 1)})
+        print(f"  wye {ic['id']}: flyover {polyline_length(fly) * 2.5:.0f} m, merge {polyline_length(mer) * 2.5:.0f} m, "
+              f"min R {out[-2]['min_radius_m']:.0f} / {out[-1]['min_radius_m']:.0f} m")
+    return out
+
+
+def bezier_pts(p0, t0, p1, t1, k=0.4):
+    d = float(np.hypot(*(np.asarray(p1) - np.asarray(p0))))
+    c0, c1 = p0 + t0 * d * k, p1 - t1 * d * k
+    t = np.linspace(0, 1, max(8, int(d * 2)))[:, None]
+    return ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * c0 + 3 * (1 - t) * t * t * c1 + (t ** 3) * p1
+
+
+def ramp_min_radius_m(pts):
+    P = resample(np.asarray(pts), 1.0)
+    R = local_radius_px(P)
+    return float(R[12:-12].min() * 2.5) if len(R) > 30 else float('inf')
+
+
 # ------------------------------------------------------------------ main
 def classify_auto(l, P, mask_dt):
     z = l['zone']
@@ -477,6 +586,7 @@ def main():
                        'layer': r.get('layer', 0), 'zone': zone_of(pts[len(pts) // 2], zones),
                        'oneway': r.get('oneway', False), 'no_snap': r.get('no_snap', False)})
     mlines += interchange_ramps(manual)
+    mlines += wye_ramps(mlines)
     autos = auto_lines(edits, zones)
     autos = bridge_gaps(autos)
     grid = load_grid(zones)
@@ -484,7 +594,7 @@ def main():
     autos = suppress_covered(autos, gridman)
     autos = clear_freeway_corridors(autos, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
     grid = suppress_covered(grid, manual)
-    grid = clear_freeway_corridors(grid, [l for l in mlines if l['type'] in ('freeway', 'ramp')])
+    grid = clear_freeway_corridors(grid, [l for l in mlines if l['type'] in ('freeway', 'ramp')], clip=False)
     rails = [(r, pts) for r, pts in design_alignments(all_traced()) if r['type'] == 'rail']
     grid = clip_rail_corridors(grid, rails, zones)
     autos = clip_rail_corridors(autos, rails, zones)
@@ -661,12 +771,17 @@ def engineer_pass(G, rounds=4):
             bar.append(LineString(pts).buffer((4.5 + 4.0 * (rr.get('tracks', 1) - 1)) / 5.0 + 1.0))
         elif rr['type'] == 'freeway':
             bar.append(LineString(pts).buffer(wpx('freeway') / 2 + 1.0))
+    for u, v, d in G.edges(data=True):
+        if d['attrs']['type'] == 'ramp' and not d['attrs'].get('virtual'):
+            bar.append(LineString(d['pts']).buffer(wpx('ramp') / 2 + 0.5))
     barriers = unary_union(bar)
     for r in range(rounds):
         st = dict(loops=E.fix_loops(G), near=E.connect_near_misses(G, water=barriers), short=E.contract_short(G, max_len=4.2),
-                  sharp=E.fix_sharp_angles(G), dup=E.remove_duplicates(G), dead=E.prune_dead_ends(G),
-                  comp=E.prune_components(G))
+                  sharp=E.fix_sharp_angles(G), dup=E.remove_duplicates(G), dead=E.prune_dead_ends(G))
+        # try to reconnect a cut-off piece (e.g. a neighbourhood whose link was clipped at a new
+        # ramp) before discarding unconnected traced fragments
         st['conn'] = E.connect_components(G, barriers=barriers)
+        st['comp'] = E.prune_components(G)
         merge_chains(G)
         print('  engineer pass', r + 1, st)
         if not any(st.values()):
@@ -1020,12 +1135,16 @@ def write_clear_zones(feats):
         lines = [g for p, g in geo if g.intersects(area)]
         faces = [f for f in polygonize(unary_union(lines)) if 30 < f.area < 25000]
         rset = unary_union(rg)
+        fset = unary_union([g for p, g in grade_sep if p['type'] == 'freeway' and g.intersects(area)] or [Point(-1e6, -1e6)])
         pav = unary_union([g.buffer(wpx(p['type']) / 2 + 1.0) for p, g in geo if g.intersects(area)])
         keep = []
+        near = unary_union([g for p, g in grade_sep if g.intersects(area)]).buffer(22)
         for f in faces:
-            if f.boundary.intersection(rset.buffer(0.6)).length < 8:
-                continue  # not bounded by a ramp: an ordinary block
-            q = f.difference(pav)
+            rb = f.boundary.intersection(rset.buffer(0.6)).length
+            fb = f.boundary.intersection(fset.buffer(0.6)).length
+            if rb < 8 or rb < 0.25 * f.length or fb < 0.6 * rb:
+                continue  # not between ramps and the freeway: an ordinary block / neighbourhood
+            q = f.intersection(near).difference(pav)
             if q.area > 20:
                 keep.append(q)
         if keep:

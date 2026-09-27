@@ -22,7 +22,7 @@ import cv2
 from scipy import ndimage as ndi
 from PIL import Image
 from tools.lib.common import path, load_json, W, H
-from tools.pipeline.vegetation import corridor_edge_distance, fbm, smoothstep, crag_score, MPP, WATER
+from tools.pipeline.vegetation import corridor_edge_distance, clear_zone_distance, fbm, smoothstep, crag_score, MPP, WATER
 
 KINDS = ['cliff_block', 'crag', 'boulder', 'scree']   # tools/blender/lib_rocks.KINDS
 VARIANTS = 4
@@ -67,12 +67,14 @@ def main(seed=23):
     br = [f for f in load_json(path('data/roads/bridges.geojson'))['features'] if f['geometry']['coordinates']]
     bridge_d, _, _ = corridor_edge_distance(br, lambda f: ((f['properties'].get('deck_width_m') or 10) / 2, 0, 0))
 
+    cz_d = clear_zone_distance()   # N's interchange infields etc.
+
     def s2(a, x, y):
         return a[np.clip((y * 2).astype(int), 0, H * 2 - 1), np.clip((x * 2).astype(int), 0, W * 2 - 1)]
 
     def clear(x, y, margin):
         xi, yi = np.clip(x.astype(int), 0, W - 1), np.clip(y.astype(int), 0, H - 1)
-        return (s2(road_d, x, y) > 2.5 + margin) & (s2(rail_d, x, y) > 3 + margin) & (s2(bridge_d, x, y) > 4 + margin) & (dwater[yi, xi] > 1.5) & ~wet[yi, xi]
+        return (s2(road_d, x, y) > 2.5 + margin) & (s2(rail_d, x, y) > 3 + margin) & (s2(bridge_d, x, y) > 4 + margin) & (dwater[yi, xi] > 1.5) & ~wet[yi, xi] & (s2(cz_d, x, y) > margin)
 
     out = []
 
@@ -94,7 +96,7 @@ def main(seed=23):
     crag = crag_score(rexp, slope, dwater, T) * np.clip(0.6 + 0.5 * n12, 0, 1)
     x, y, xi, yi = jitter(1.7, rng, np.clip(crag * 1.1, 0, 1).astype(np.float32))
     ok = clear(x, y, 7); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]   # road cuts get their own courses below
-    sc = np.exp(rng.normal(0, 0.2, len(x))) * (0.75 + 0.45 * rexp[yi, xi])
+    sc = np.exp(rng.normal(0, 0.2, len(x))) * (0.9 + 0.8 * rexp[yi, xi])   # big ledges read from the valley
     pitch = np.clip(np.arctan(slope[yi, xi]) * 0.35, 0, 0.45) + rng.normal(0, 0.05, len(x))
     # the steeper the ground, the deeper the block is set (its downhill base must never show)
     sink = sc * (0.9 + 1.4 * np.clip(slope[yi, xi] - 0.7, 0, 1.5))
@@ -154,6 +156,8 @@ def main(seed=23):
                 sc_ = rng.uniform(0.8, 1.05)
                 back = 1.5 * sc_ - 0.4 + 0.35 * j   # front face ~0.4 m proud of the cut line; courses step back
                 qx, qy = px - nrm * back / MPP
+                if s2(cz_d, np.array([qx]), np.array([qy]))[0] <= 0:
+                    continue
                 z = base - 0.6 + j * (hgt / nst)
                 yaw = math.atan2(nrm[0], nrm[1]) + rng.normal(0, 0.08)
                 out.append(np.array([[qx, qy, z, sc_, KINDS.index('cliff_block'), rng.integers(0, VARIANTS), yaw, rng.normal(0.08, 0.04)]]))

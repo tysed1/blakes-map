@@ -37,12 +37,13 @@ const uniforms = {
   uSunBakeXf: { value: new THREE.Vector4(1 / (IMG_W * MPP), 1 / (IMG_H * MPP), ORIGIN_PX[0] / IMG_W, ORIGIN_PX[1] / IMG_H) },
   // x, y: view depth where the canopy bake fades in (end of the real-time shadows); z: terrain-shadow
   // weight; w: 1 = bake loaded
-  uSunBakeK: { value: new THREE.Vector4(120, 160, 0.8, 0) },
+  uSunBakeK: { value: new THREE.Vector4(120, 160, 0.45, 0) },
   // xy: horizontal unit vector toward the sun (world XZ), z: tan(sun elevation), w: AO strength
   uSunBakeDir: { value: new THREE.Vector4(0, 0, 0, 1) },
-  // x: canopy shadow strength (leaf-card crowns let light through), y: crown receiver bias per metre
-  // above the ground (sun-side crown tops stay lit inside a closed canopy), z: crown lookup shift (m)
-  uSunBakeT: { value: new THREE.Vector4(0.65, 0.5, 5, 0) },
+  // x: canopy shadow strength on the ground (leaf-card crowns let light through), y: crown receiver
+  // bias per metre above the ground (sun-side crown tops stay lit inside a closed canopy), z: crown
+  // lookup shift (m), w: canopy shadow strength on crowns
+  uSunBakeT: { value: new THREE.Vector4(0.3, 0.8, 5, 0.2) },
 };
 
 export const SUNBAKE_PARS = /* glsl */`
@@ -72,7 +73,8 @@ void sunBakeEval(vec3 wp, float h, float viewDepth, out float lit, out float ao)
   float bias = 0.25 + uSunBakeT.y * h * crown;
   vec2 L = 1.0 - smoothstep(vec2(bias), vec2(bias) + soft, D - h);
   float litTer = mix(1.0, L.y, uSunBakeK.z);
-  float canopy = 1.0 - uSunBakeT.x * (1.0 - (L.y > 0.02 ? clamp(L.x / L.y, 0.0, 1.0) : 1.0));
+  // canopy shadow strength: ground (x) vs crowns (w; crowns already carry their own crown AO)
+  float canopy = 1.0 - mix(uSunBakeT.x, uSunBakeT.w, crown) * (1.0 - (L.y > 0.02 ? clamp(L.x / L.y, 0.0, 1.0) : 1.0));
   float far = smoothstep(uSunBakeK.x, uSunBakeK.y, viewDepth);
   lit = litTer * mix(1.0, canopy, far);
   ao = mix(1.0, mix(s.b, 1.0, smoothstep(0.5, 6.0, h)), uSunBakeDir.w);
@@ -86,7 +88,7 @@ export function installSunBake(sunDir: THREE.Vector3) {
   if (installed) return;
   installed = true;
   const hz = Math.hypot(sunDir.x, sunDir.z);
-  uniforms.uSunBakeDir.value.set(sunDir.x / hz, sunDir.z / hz, sunDir.y / hz, 1);
+  uniforms.uSunBakeDir.value.set(sunDir.x / hz, sunDir.z / hz, sunDir.y / hz, 0.5);
   const C = THREE.ShaderChunk as any;
   C.shadowmap_pars_vertex = C.shadowmap_pars_vertex + `
 #ifdef USE_SUNBAKE

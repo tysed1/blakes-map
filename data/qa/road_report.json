@@ -1,7 +1,41 @@
 {
- "summary": {},
+ "summary": {
+  "radius:warn": 1,
+  "ramp_conflict:error": 2
+ },
  "components": 1,
- "edges": 1363,
- "nodes": 1017,
- "issues": []
+ "edges": 1395,
+ "nodes": 1048,
+ "issues": [
+  {
+   "kind": "ramp_conflict",
+   "severity": "error",
+   "at": [
+    98.9,
+    88.0
+   ],
+   "msg": "LC_RD_2610 crosses ramp LC_RD_2935 at grade",
+   "ref": "LC_RD_2610"
+  },
+  {
+   "kind": "ramp_conflict",
+   "severity": "error",
+   "at": [
+    98.5,
+    89.7
+   ],
+   "msg": "LC_RD_2610 crosses ramp LC_RD_2872 at grade",
+   "ref": "LC_RD_2610"
+  },
+  {
+   "kind": "radius",
+   "severity": "warn",
+   "at": [
+    103.3,
+    89.4
+   ],
+   "msg": "LC_RD_2935 (ramp) curve radius 23 m < 40 m",
+   "ref": "LC_RD_2935"
+  }
+ ]
 }

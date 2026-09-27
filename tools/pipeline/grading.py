@@ -466,6 +466,52 @@ def main():
                     half = int(load_json_types[t]['width_m'] / MPP / 2) + 2
                     zmin[max(0, k - half):k + half + 1] = np.maximum(zmin[max(0, k - half):k + half + 1], zl + OVERPASS_CLEAR)
                     seps.append({'upper': roads[owner[min(k, n - 1)]]['properties']['id'], 'lower': roads[j]['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'lower_z': rnd(zl, 2)})
+        # surface roads crossing a ramp away from its terminals (e.g. over the SR 9 wye roadways):
+        # ramps are profiled last and stay near grade there, so the road bridges over the ground
+        if t not in ('ramp', 'freeway'):
+            rl = LineString(XY)
+            for j_, f_ in enumerate(roads):
+                if f_['properties']['type'] != 'ramp' or f_['properties'].get('virtual') or not rl.intersects(geoms[j_]):
+                    continue
+                x = rl.intersection(geoms[j_])
+                gj = geoms[j_]
+                for q in ([x] if x.geom_type == 'Point' else [q_ for q_ in getattr(x, 'geoms', []) if q_.geom_type == 'Point']):
+                    if min(Point(gj.coords[0]).distance(q), Point(gj.coords[-1]).distance(q)) < 1.5:
+                        continue  # ramp terminal
+                    k = min(int(round(rl.project(q))), n - 1)
+                    zl = float(bilinear(Ts, q.x, q.y))
+                    half = int(load_json_types[t]['width_m'] / MPP / 2) + 3
+                    zmin[max(0, k - half):k + half + 1] = np.maximum(zmin[max(0, k - half):k + half + 1], zl + OVERPASS_CLEAR)
+                    seps.append({'upper': roads[owner[k]]['properties']['id'], 'lower': f_['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'lower_z': rnd(zl, 2), 'kind': 'road'})
+        # directional flyover ramps (layer >= 1, e.g. the SR 9 wye): carried over every freeway
+        # pavement they pass above (a shallow crossing needs the whole footprint, not a point)
+        if t == 'ramp' and max(roads[i_]['properties'].get('layer') or 0 for (i_, _, _) in order) >= 1:
+            rl = LineString(XY)
+            fly_clear = 6.6  # 4.9 m clearance + deck / girder depth
+            for j, (Sj, XYj, zj) in [(j, profiles[j][:3]) for j in profiles]:
+                if roads[j]['properties']['type'] != 'freeway':
+                    continue
+                lj = LineString(XYj)
+                if lj.distance(rl) > 12:
+                    continue
+                reach = (load_json_types['freeway']['width_m'] + load_json_types['ramp']['width_m']) / MPP / 2 + 0.2   # deck footprint over the pavement
+                for k in range(12, n - 12):
+                    q = Point(XY[k])
+                    dq = lj.distance(q)
+                    if dq < reach:
+                        kj = min(int(round(lj.project(q))), len(zj) - 1)
+                        zmin[k] = max(zmin[k], float(zj[kj]) + fly_clear)
+                x = rl.intersection(lj)
+                for q in ([x] if x.geom_type == 'Point' else [q_ for q_ in getattr(x, 'geoms', []) if q_.geom_type == 'Point']):
+                    k = min(int(round(rl.project(q))), n - 1)
+                    if k < 12 or k > n - 12:
+                        continue
+                    kj = min(int(round(lj.project(q))), len(zj) - 1)
+                    a_ = XY[max(0, k - 3)]; b_ = XY[min(n - 1, k + 3)]
+                    c_ = XYj[max(0, kj - 3)]; d_ = XYj[min(len(XYj) - 1, kj + 3)]
+                    ang = math.degrees(math.acos(min(1, abs(np.dot(b_ - a_, d_ - c_)) / max(np.hypot(*(b_ - a_)) * np.hypot(*(d_ - c_)), 1e-9))))
+                    seps.append({'upper': roads[owner[k]]['properties']['id'], 'lower': roads[j]['properties']['id'], 'at': [rnd(q.x), rnd(q.y)],
+                                 'lower_z': rnd(float(zj[kj]), 2), 'kind': 'road', 'angle_deg': rnd(ang, 1)})
         # railway crossings: the road goes over the railway (major roads, yards, or when
         # the road is already high) or crosses at grade (pinned to the rail head)
         rl = LineString(XY)

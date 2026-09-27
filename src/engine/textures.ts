@@ -19,8 +19,8 @@ let available: Promise<Set<string>> | null = null;
 export function initTextures(renderer: THREE.WebGLRenderer) {
   if (ktx2) return;
   ktx2 = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}basis/`).detectSupport(renderer);
-  // world/ktx2.json lists the baked textures (written by ktx2_bake.mjs) so missing ones cost no 404s
-  available = fetch(assetUrl('ktx2.json')).then((r) => (r.ok ? r.json() : [])).then((l: string[]) => new Set(l)).catch(() => new Set());
+  // world/ktx2.json lists the live KTX2 textures {name: source image} (ktx2_bake.mjs), so missing ones cost no 404s
+  available = fetch(assetUrl('ktx2.json')).then((r) => (r.ok ? r.json() : {})).then((l: Record<string, string>) => new Set(Object.keys(l))).catch(() => new Set<string>());
 }
 
 export interface TexOpts { srgb?: boolean; anisotropy?: number; wrap?: THREE.Wrapping }

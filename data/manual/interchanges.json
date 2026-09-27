@@ -48,6 +48,73 @@
    "keep_gore_side": "north",
    "note": "Was a half diamond. Vertical design makes it infeasible: SR 60 descends from the US 76 diamond to its Tanner River bridge at the 6% freeway limit and is 10-17 m above the river bank here, so ramps down to Riverfront Pkwy would need ~12% grades. SR 60 now crosses over Riverfront Pkwy on its river-bridge approach viaduct (upper=freeway); Tannersville traffic uses the SR 60/US 76 diamond.",
    "upper": "freeway"
+  },
+  {
+   "id": "IC_LC_SR9_WYE",
+   "name": "SR 9 wye (Northwest / Spur split)",
+   "kind": "wye",
+   "trunk": "HWY_SR9_S",
+   "through": "HWY_SR9_N",
+   "branch": "HWY_SR9_W",
+   "branch_split_px": 34,
+   "flyover_offsets_px": [
+    [
+     143,
+     4.4
+    ],
+    [
+     132,
+     6.6
+    ],
+    [
+     110,
+     6.8
+    ],
+    [
+     94,
+     6.0
+    ],
+    [
+     77,
+     0.0
+    ],
+    [
+     61,
+     -6.6
+    ],
+    [
+     46,
+     -8.0
+    ],
+    [
+     0,
+     -8.0
+    ]
+   ],
+   "merge_offsets_px": [
+    [
+     0,
+     -12.4
+    ],
+    [
+     55,
+     -12.3
+    ],
+    [
+     75,
+     -9.8
+    ],
+    [
+     98,
+     -4.8
+    ]
+   ],
+   "clearance_m": 4.9,
+   "note": "Directional split of SR 9 (right-hand traffic). The through route is Downtown Connector <-> Spur; the Northwest branch separates into two one-way roadways: westbound traffic leaves the northbound trunk on the right, flies over the whole trunk (clearance >= 4.9 m below the deck) and comes down beside the southbound lanes to SR 9 NW's westbound carriageway; eastbound SR 9 NW traffic runs outside it and becomes an added lane on the southbound trunk. Offsets: [px along the trunk from the split, px off its centreline (positive = north-east)]; flyover_ext_px: straight run past the split [px, offset] before joining the branch.",
+   "flyover_ext_px": [
+    6,
+    -8.0
+   ]
   }
  ]
 }

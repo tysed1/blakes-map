@@ -88,7 +88,7 @@ def crag_score(rexp, slope, dwater, T):
     exposed crest crags + river-cut gorge walls (steep ground within ~60 m of a channel), concentrated
     into ledges that follow the contours (bedding: a band every ~16 m of height, broken along strike)
     so rocky slopes read as forest with rock ledges, not as bare faces. Crest knobs stay rock."""
-    gorge = smoothstep(0.75, 1.25, slope) * np.exp(-dwater / 45.0) * 0.9
+    gorge = smoothstep(0.55, 1.0, slope) * np.exp(-dwater / 35.0) * 0.9
     base = np.maximum(smoothstep(0.45, 0.85, rexp) * smoothstep(0.55, 1.1, slope), gorge)
     wob = fbm(T.shape, 10, 991, 2)
     band = smoothstep(0.15, 0.65, np.sin(2 * np.pi * T / 16.0 + 1.2 * wob))
@@ -305,6 +305,9 @@ def scatter(T, cls, seed=7):
     def min2(a):  # conservative 2x -> 1x (min distance in each 2x2 block)
         return a.reshape(H, 2, W, 2).min(axis=(1, 3))
     cz_d = clear_zone_distance()
+    # N's cut / retaining walls: nothing grows on the wall face or right at its crest
+    wp = path('data/roads/walls.geojson')
+    wall_d, _, _ = corridor_edge_distance(load_json(wp)['features'] if os.path.exists(wp) else [], lambda f: (1.0, 0, 0))
     road1 = min2(road_d); rail1 = min2(rail_d); bridge1 = min2(bridge_d)
     ftype, fang, hedge = fields(cls, rng, n15)
     # balds are one open grass sward: no field partition, no fence rows (broomsedge / oat-grass: 'fallow' look)
@@ -317,12 +320,12 @@ def scatter(T, cls, seed=7):
     def clear_ok(x, y, layer):
         """layer 0 = tree trunk, 1 = brush/shrub."""
         rd = sample2(road_d, x, y); ct = sample2(road_ct, x, y); cb = sample2(road_cb, x, y)
-        ra = sample2(rail_d, x, y); bd = sample2(bridge_d, x, y); cz = sample2(cz_d, x, y)
+        ra = sample2(rail_d, x, y); bd = sample2(bridge_d, x, y); cz = sample2(cz_d, x, y); wd = sample2(wall_d, x, y)
         xi, yi = np.clip(x.astype(int), 0, W - 1), np.clip(y.astype(int), 0, H - 1)
         dw = dwater[yi, xi]
         if layer == 0:
-            return (rd > ct + rng.random(len(x)) * 3) & (ra > 7 + rng.random(len(x)) * 3) & (bd > BRIDGE_CLEAR + 2) & (dw > 3.0) & ~wet[yi, xi] & (cz > 2.0)
-        return (rd > cb + rng.random(len(x)) * 1.0) & (ra > 4.5) & (bd > BRIDGE_CLEAR) & (dw > 1.0) & ~wet[yi, xi] & (cz > 0.0)
+            return (rd > ct + rng.random(len(x)) * 3) & (ra > 7 + rng.random(len(x)) * 3) & (bd > BRIDGE_CLEAR + 2) & (dw > 3.0) & ~wet[yi, xi] & (cz > 2.0) & (wd > 4.0)
+        return (rd > cb + rng.random(len(x)) * 1.0) & (ra > 4.5) & (bd > BRIDGE_CLEAR) & (dw > 1.0) & ~wet[yi, xi] & (cz > 0.0) & (wd > 2.0)
 
     dev = np.isin(cls, [RES, TOWN])
     pts = []  # (x, y, species, scale)
@@ -334,7 +337,8 @@ def scatter(T, cls, seed=7):
     p_can = np.zeros((H, W), np.float32)
     p_can += forest * 0.95 * edge_in * gaps
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
-    p_can[rock] = 0.62 * np.clip(0.6 + 0.4 * n15[rock], 0, 1) * np.where(slope[rock] > 0.9, 0.5, 1.0)
+    # painted 'rock' mountainsides: Blue Ridge faces are wooded between the ledges (the rock kit carries the rock)
+    p_can[rock] = 0.88 * np.clip(0.7 + 0.3 * n15[rock], 0, 1) * np.where(slope[rock] > 1.1, 0.7, 1.0)
     p_can *= 1 - 0.3 * smoothstep(0.5, 0.95, rexp)   # crags / cut banks: thinner, trees still cling on ledges
     # cliff bands (the rock kit's ledge blocks, tools/pipeline/rocks.py) stay open so the rock reads,
     # and very steep faces only hold scattered trees

@@ -7,7 +7,7 @@ Checks (see docs/WORLD_DESIGN_PRINCIPLES.md):
   sharp_angle    junction legs meeting at < 25 deg
   short_edge     junction-to-junction edges < 3 px (junction clusters)
   duplicate      parallel roads within 3.5 px for > 60 % of the shorter length
-  ramp_conflict  surface road touching a ramp away from a ramp terminal
+  ramp_conflict  surface road touching a ramp away from a ramp terminal (at grade: < 4.9 m apart)
   radius         horizontal curve radius below the minimum for the road type
   water          road over water without a bridge/culvert span
 Writes data/qa/road_report.json and assets/maps/debug/road_qa.png
@@ -44,8 +44,20 @@ def radius_profile(pts):
 
 def main():
     roads = load_json(path('data/roads/roads.geojson'))['features']
+    zs = {}
     for f in roads:  # validate in plan (x, y); elevation is checked by grading.py
-        f['geometry']['coordinates'] = [c[:2] for c in f['geometry']['coordinates']]
+        c3 = f['geometry']['coordinates']
+        if c3 and len(c3[0]) >= 3:
+            zs[f['properties']['id']] = np.asarray(c3, float)
+        f['geometry']['coordinates'] = [c[:2] for c in c3]
+
+    def z_at(rid, pt):
+        c = zs.get(rid)
+        if c is None:
+            return None
+        g = LineString(c[:, :2])
+        s = np.r_[0, np.cumsum(np.hypot(*np.diff(c[:, :2], axis=0).T))]
+        return float(np.interp(g.project(pt), s, c[:, 2]))
     nodes = {f['properties']['id']: f for f in load_json(path('data/roads/road_nodes.geojson'))['features']}
     water = unary_union([shape(f['geometry']) for f in load_json(path('data/water/water_bodies.geojson'))['features']])
     # barriers a street may legitimately dead-end against (a link across them is not a 'near miss')
@@ -131,6 +143,9 @@ def main():
                         if pt.geom_type != 'Point':
                             continue
                         ends = [Point(geoms[j].coords[0]), Point(geoms[j].coords[-1])]
+                        za, zb = z_at(p['id'], pt), z_at(q['id'], pt)
+                        if za is not None and zb is not None and abs(za - zb) >= 4.9:
+                            continue  # grade-separated (overpass / flyover)
                         if min(e.distance(pt) for e in ends) > 1.0:
                             add('ramp_conflict', pt.coords[0], f"{p['id']} crosses ramp {q['id']} at grade", 'error', p['id'])
         mr = MIN_RADIUS_M.get(p['type'], 10)

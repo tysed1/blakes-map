@@ -12,9 +12,18 @@ import { execFileSync } from 'child_process';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const PUB = path.join(ROOT, 'public', 'world');
-// name: [source, mode, srgb]; etc1s = colour (small, ~0.5 B/px on GPU), uastc = normals / data
+// name: [source, mode, srgb, live]; etc1s = colour (small, ~0.5 B/px on GPU), uastc = normals / data.
+// live = the viewer loads it through src/engine/textures.ts loadTexture(name, source): only live
+// entries go into world/ktx2.json (the viewer's and the artifact packer's list; the packer then
+// ships the KTX2 instead of the source image). Flip `live` when the owning module switches loaders.
 export const TEXTURES = {
-  albedo: ['albedo.jpg', 'etc1s', true],
+  albedo: ['albedo.jpg', 'etc1s', true, true],
+  'groundcover/props_albedo': ['groundcover/props_albedo.jpg', 'etc1s', true, false],
+  'groundcover/props_normal': ['groundcover/props_normal.jpg', 'uastc', false, false],
+  'terrain/detail_grass': ['terrain/detail_grass.webp', 'uastc', true, false],
+  'terrain/detail_forest': ['terrain/detail_forest.webp', 'uastc', true, false],
+  'terrain/detail_rock': ['terrain/detail_rock.webp', 'uastc', true, false],
+  'terrain/detail_soil': ['terrain/detail_soil.webp', 'uastc', true, false],
 };
 
 function decode(src) {
@@ -44,6 +53,6 @@ for (const n of names) {
   fs.writeFileSync(dst, out);
   console.log(`${n}.ktx2 ${img.width}x${img.height} ${mode} ${(out.length / 1e6).toFixed(2)} MB (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 }
-// index of available .ktx2 textures (the viewer only requests listed ones)
-const list = fs.readdirSync(PUB).filter((f) => f.endsWith('.ktx2')).map((f) => f.slice(0, -5)).sort();
-fs.writeFileSync(path.join(PUB, 'ktx2.json'), JSON.stringify(list));
+// index of live .ktx2 textures (name -> source image)
+const list = Object.fromEntries(Object.entries(TEXTURES).filter(([n, t]) => t[3] && fs.existsSync(path.join(PUB, n + '.ktx2'))).map(([n, t]) => [n, t[0]]));
+fs.writeFileSync(path.join(PUB, 'ktx2.json'), JSON.stringify(list, null, 1));
