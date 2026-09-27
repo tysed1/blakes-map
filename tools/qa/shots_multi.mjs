@@ -4,7 +4,13 @@
 //    the dev server's hot reload interrupts long software-GL renders)
 import { chromium } from 'playwright';
 import fs from 'fs';
-const [outdir, url, camList] = process.argv.slice(2);
+let [outdir, url, camList] = process.argv.slice(2);
+// '@golden' = every shot in tools/qa/golden_shots.json; '@golden:A,B' = a subset of it
+let extra = null;
+if (camList.startsWith('@golden')) {
+  extra = JSON.parse(fs.readFileSync(new URL('./golden_shots.json', import.meta.url)));
+  camList = camList.includes(':') ? camList.split(':')[1] : Object.keys(extra).join(',');
+}
 const a = process.argv.slice(2);
 const get = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
 fs.mkdirSync(outdir, { recursive: true });
@@ -17,6 +23,7 @@ page.setDefaultTimeout(1800000);
 await page.goto(url);
 await page.waitForFunction(() => { const w = window.w3d; return w && w.vegReady && w.camsReady && w.infraReady !== false && (w.gcReady ?? true) && w.backdropReady; }, null, { timeout: 600000 });
 await page.waitForTimeout(5000);
+if (extra) await page.evaluate((e) => { Object.assign(window.w3d.cams, e); }, extra);
 for (const cam of camList.split(',')) {
   const t0 = Date.now();
   const data = await page.evaluate((cam) => {
