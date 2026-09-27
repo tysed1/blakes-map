@@ -387,6 +387,7 @@ def main():
         return np.array([ls.interpolate(s).coords[0] for s in S]), S
 
     MINOR_FROM = IMPORTANCE.index('urban_street')
+    ramp_caps = {}
     relaxed = False
     for imp, order in routes:
         if imp >= MINOR_FROM and not relaxed and imp != IMPORTANCE.index('ramp'):
@@ -480,9 +481,15 @@ def main():
                         continue  # ramp terminal
                     k = min(int(round(rl.project(q))), n - 1)
                     zl = float(bilinear(Ts, q.x, q.y))
+                    # the ramp's own level there: between its two (already fixed) freeway-end elevations
+                    za_, zb_ = nz.get(f_['properties']['from']), nz.get(f_['properties']['to'])
+                    if za_ is not None and zb_ is not None:
+                        fr = gj.project(q) / max(gj.length, 1e-6)
+                        zl = max(zl, za_ + (zb_ - za_) * fr)
                     half = int(load_json_types[t]['width_m'] / MPP / 2) + 3
                     zmin[max(0, k - half):k + half + 1] = np.maximum(zmin[max(0, k - half):k + half + 1], zl + OVERPASS_CLEAR)
                     seps.append({'upper': roads[owner[k]]['properties']['id'], 'lower': f_['properties']['id'], 'at': [rnd(q.x), rnd(q.y)], 'lower_z': rnd(zl, 2), 'kind': 'road'})
+                    ramp_caps.setdefault(f_['properties']['id'], []).append((q.x, q.y, zl))   # the ramp must pass under at this level
         # directional flyover ramps (layer >= 1, e.g. the SR 9 wye): carried over every freeway
         # pavement they pass above (a shallow crossing needs the whole footprint, not a point)
         if t == 'ramp' and max(roads[i_]['properties'].get('layer') or 0 for (i_, _, _) in order) >= 1:
@@ -605,6 +612,29 @@ def main():
                 if info is not None:
                     sp.append((ia, ib, info[0], info[1], info[2]))
             profiles[i] = (Se, XYe, ze, zte, sp)
+
+    # ---------------- surface roads bridging ramps: the ramps were profiled after them, so the
+    # clearance is re-checked against the final ramp level and the upper road is lifted locally
+    # (grade-limited approach ramps) where it falls short
+    id_ix = {f['properties']['id']: i for i, f in enumerate(roads)}
+    for sp_ in seps:
+        lo_i, up_i = id_ix.get(sp_['lower']), id_ix.get(sp_['upper'])
+        if lo_i is None or up_i is None or roads[lo_i]['properties']['type'] != 'ramp' or up_i not in profiles or lo_i not in profiles:
+            continue
+        Sl, XYl, zl_, _, _ = profiles[lo_i]
+        q = Point(sp_['at'])
+        kl = int(np.argmin(np.hypot(XYl[:, 0] - q.x, XYl[:, 1] - q.y)))
+        need = float(zl_[kl]) + OVERPASS_CLEAR
+        Su, XYu, zu, ztu, spu = profiles[up_i]
+        ku = int(np.argmin(np.hypot(XYu[:, 0] - q.x, XYu[:, 1] - q.y)))
+        half = int(load_json_types[roads[up_i]['properties']['type']]['width_m'] / MPP / 2) + 3
+        if zu[max(0, ku - half):ku + half + 1].min() >= need - 0.05:
+            continue
+        g = MAX_GRADE[roads[up_i]['properties']['type']] * MPP
+        d = np.maximum(np.abs(np.arange(len(zu)) - ku) - half, 0)
+        zu = np.maximum(zu, need - g * d)
+        profiles[up_i] = (Su, XYu, zu, ztu, spu)
+        sp_['lower_z'] = rnd(float(zl_[kl]), 2)
 
     # ---------------- write roads with z + stats
     bridges = []
