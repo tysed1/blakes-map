@@ -1002,6 +1002,41 @@ def finalize_geometry(G):
     print(f'  min-radius easing: {n_ok} streets eased, {n_skip} left (would move > 9 px or collide)')
 
 
+def write_clear_zones(feats):
+    """Maintained grass (no trees / brush) for E's vegetation.py: interchange infields and loops
+    (faces enclosed by ramps, the freeway and the crossroad) and the freeway wye / flyover
+    triangles, minus the pavements. data/roads/clear_zones.geojson (source px)."""
+    from shapely.ops import polygonize
+    from shapely.geometry import mapping
+    geo = [(f['properties'], LineString(np.asarray(f['geometry']['coordinates'])[:, :2])) for f in feats]
+    grade_sep = [(p, g) for p, g in geo if p['type'] in ('ramp', 'freeway')]
+    ramps = [(p, g) for p, g in grade_sep if p['type'] == 'ramp' and not p.get('virtual')]
+    out = []
+    groups = {}
+    for p, g in ramps:
+        groups.setdefault(p.get('interchange') or p.get('def_id') or 'ramp', []).append(g)
+    for key, rg in groups.items():
+        area = unary_union(rg).buffer(70)
+        lines = [g for p, g in geo if g.intersects(area)]
+        faces = [f for f in polygonize(unary_union(lines)) if 30 < f.area < 25000]
+        rset = unary_union(rg)
+        pav = unary_union([g.buffer(wpx(p['type']) / 2 + 1.0) for p, g in geo if g.intersects(area)])
+        keep = []
+        for f in faces:
+            if f.boundary.intersection(rset.buffer(0.6)).length < 8:
+                continue  # not bounded by a ramp: an ordinary block
+            q = f.difference(pav)
+            if q.area > 20:
+                keep.append(q)
+        if keep:
+            u = unary_union(keep)
+            out.append({'type': 'Feature', 'geometry': mapping(u), 'properties': {'kind': 'interchange_infield', 'interchange': key,
+                                                                                   'margin_m': 4.0, 'area_m2': round(u.area * 6.25)}})
+    fc_ = {'type': 'FeatureCollection', 'name': 'clear_zones', 'features': out}
+    save_json(path('data/roads/clear_zones.geojson'), fc_)
+    print(f'  clear zones: {len(out)} ({sum(f["properties"]["area_m2"] for f in out) / 1e4:.1f} ha)')
+
+
 def write(G, zones):
     wb = load_json(path('data/water/water_bodies.geojson'))
     water = unary_union([shape(f['geometry']) for f in wb['features']])
@@ -1081,6 +1116,7 @@ def write(G, zones):
     save_json(path('data/roads/road_nodes.geojson'), fc(nfeats, 'road_nodes'))
     save_json(path('data/roads/bridges.geojson'), fc(bridges, 'bridges'))
     save_json(path('data/roads/id_registry.json'), reg)
+    write_clear_zones(feats)
     from collections import Counter
     c = Counter(f['properties']['type'] for f in feats)
     tot = Counter()

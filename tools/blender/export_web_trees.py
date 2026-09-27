@@ -10,8 +10,8 @@ Writes public/world/trees/:
 
 LODs rebuild each species with the same seed (lobes, limbs and cores are drawn before the
 cards, so every LOD shares one silhouette):
-  0  as in Blender (ico-2 cores, full card shells)          near  (< ~55 m at High)
-  1  ico-1 cores, 30 % card cover with 2.2x cards            mid   (< ~160 m)
+  0  as in Blender (ico-2 cores, full card shells)          near  (< ~45 m at High)
+  1  ico-1 cores, 33 % of the cards at 1.8x                 mid   (< ~150 m)
   2  ico-0 cores, sparse 3.2x cards, trunk only              far   (< ~360 m)
   3  the 4 largest ico-0 cores, no wood                      farther (< ~750 m)
   4  one ico-0 crown ellipsoid (20 tris): the web viewer only reads its extents and draws a
@@ -29,7 +29,7 @@ MATS = ['bark', 'leaf', 'core']
 
 LODS = [
     dict(ico=2, dens=1.0, card=1.0, min_tube=0.0, sides=None),
-    dict(ico=1, dens=0.30, card=2.2, min_tube=0.05, sides=4, core_scale=1.06, keep_lobes=24),
+    dict(ico=1, dens=0.33, card=1.8, min_tube=0.05, sides=4, core_scale=1.06, keep_lobes=24),
     dict(ico=0, dens=0.045, card=3.2, min_tube=0.25, sides=3, core_scale=1.2, keep_lobes=12),
     dict(ico=0, dens=0.0, card=1.0, min_tube=99.0, sides=3, keep_lobes=4, core_scale=1.32),
     dict(ellipsoid=True),   # web: crown extents for the shared billboard LOD (trees.ts)

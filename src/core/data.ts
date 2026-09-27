@@ -56,7 +56,9 @@ async function json<T>(f: string): Promise<T> {
  * Hosts without a pack.json fall back to the legacy `<name>.gz.b64.txt`.
  */
 const PACKED = import.meta.env.VITE_PACKED_BIN === '1';
-interface PackEntry { file: string; filter: 'raw' | 'sh2' | 'sh4' | 'd16sh2' | 'd32sh4'; size: number }
+type Filter = 'raw' | 'sh2' | 'sh4' | 'd16sh2' | 'd32sh4';
+/** filter: a Filter, optionally prefixed 'c<N>:' = N 32-bit columns stored column-major */
+interface PackEntry { file: string; filter: Filter | string; size: number }
 let packIndex: Promise<Record<string, PackEntry> | null> | null = null;
 
 function unshuffle(src: Uint8Array, k: number): Uint8Array {
@@ -64,7 +66,17 @@ function unshuffle(src: Uint8Array, k: number): Uint8Array {
   for (let j = 0; j < k; j++) { const o = j * n; for (let i = 0; i < n; i++) out[i * k + j] = src[o + i]; }
   return out;
 }
-export function unfilter(b: Uint8Array, filter: PackEntry['filter']): ArrayBuffer {
+export function unfilter(b: Uint8Array, spec: string): ArrayBuffer {
+  const m = /^c(\d+):(.*)$/.exec(spec);
+  const filter = (m ? m[2] : spec) as Filter;
+  const out = unfilterBytes(b, filter);
+  if (!m) return out;
+  // column-major -> row-major (32-bit columns)
+  const n = +m[1], src = new Uint32Array(out), rows = src.length / n, dst = new Uint32Array(src.length);
+  for (let c = 0; c < n; c++) { const o = c * rows; for (let r = 0; r < rows; r++) dst[r * n + c] = src[o + r]; }
+  return dst.buffer;
+}
+function unfilterBytes(b: Uint8Array, filter: Filter): ArrayBuffer {
   if (filter === 'raw') return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
   const k = filter.endsWith('sh4') ? 4 : 2;
   const u = unshuffle(b, k);

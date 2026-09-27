@@ -40,7 +40,7 @@ export interface TreeQuality { lodDist: [number, number, number, number]; smallF
 export const TREE_QUALITY: Record<string, TreeQuality> = {
   low: { lodDist: [30, 90, 220, 450], smallFar: 110, shadowLod: -1 },
   medium: { lodDist: [40, 120, 280, 580], smallFar: 150, shadowLod: 0 },
-  high: { lodDist: [55, 160, 360, 750], smallFar: 200, shadowLod: 1 },
+  high: { lodDist: [45, 150, 340, 720], smallFar: 190, shadowLod: 1 },
   ultra: { lodDist: [80, 230, 500, 1000], smallFar: 280, shadowLod: 1 },
 };
 
@@ -218,7 +218,7 @@ function billboardMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUn
           // seen from above the crown is round: the card's height blends from crown height to crown width
           float rup = mix(ibb.z, ibb.y, abs(vd.y));
           mvPosition = viewMatrix * vec4(cc, 1.0) + vec4(position.x * ibb.y * isc, position.y * rup * isc, 0.0, 0.0);
-          vFade = treeFade(ip);
+          vFade = ibb.y > 0.0 ? treeFade(ip) : 0.0;
           vBB = vec4(position.xy, ibb.w, fract(ip.x * 0.371 + ip.z * 0.613));
         #endif
         gl_Position = projectionMatrix * mvPosition;
@@ -423,19 +423,25 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     const conical = sp.family === 'hemlock' || sp.name === 'Sapling_Pine' ? 1 : sp.family === 'pine' ? 0.35 : 0;
     bbSp.set([(y0 + y1) / 2, Math.max(x1 - x0, z1 - z0) / 2 * 1.15, (y1 - y0) / 2 * 1.12, conical], si * 4);
   });
+  // the billboard layer is static: every tree once, in the shared sorted buffers; the vertex shader keeps
+  // only the instances inside LOD 4's distance band (no CPU copies; GPU clips the rest). Shrubs and
+  // saplings get a zero-size card (they are gone long before the billboard band).
   const bbAll = new Float32Array(n * 4); // per sorted instance
-  for (let k = 0; k < n; k++) bbAll.set(bbSp.subarray(Math.floor(key[order[k]] / NC) * 4, Math.floor(key[order[k]] / NC) * 4 + 4), k * 4);
+  const cellCount = new Int32Array(NC);
+  for (let k = 0; k < n; k++) {
+    const kk = key[order[k]], si = Math.floor(kk / NC);
+    cellCount[kk % NC]++;
+    if (!SMALL.has(meta.species[si].name)) for (let j = 0; j < 4; j++) bbAll[k * 4 + j] = bbSp[si * 4 + j];
+  }
   const quad = new THREE.BufferGeometry();
   quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
   quad.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]), 3));
   quad.setIndex([0, 1, 2, 0, 2, 3]);
-  const ibb = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4); ibb.setUsage(THREE.DynamicDrawUsage);
-  quad.setAttribute('ibb', ibb);
+  quad.setAttribute('ibb', new THREE.InstancedBufferAttribute(bbAll, 4));
   const bbMesh = new THREE.InstancedMesh(quad, billboardMaterial(uniforms, coreLeaf, fades[0][4]), Math.max(1, n));
-  bbMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  bbMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n) * 3), 3);
-  bbMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-  bbMesh.count = 0; bbMesh.frustumCulled = false; bbMesh.castShadow = false; bbMesh.receiveShadow = false;
+  bbMesh.instanceMatrix = new THREE.InstancedBufferAttribute(mats, 16);
+  bbMesh.instanceColor = new THREE.InstancedBufferAttribute(cols, 3);
+  bbMesh.count = n; bbMesh.frustumCulled = false; bbMesh.castShadow = false; bbMesh.receiveShadow = false;
   bbMesh.userData.kind = 'tree'; bbMesh.name = 'tree_billboards_lod4';
   group.add(bbMesh);
 
@@ -494,14 +500,12 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
       cellMask[c] = m;
       if (m !== prevMask[c]) changed = true;
     }
-    nActive = 0;
-    for (let c = 0; c < NC; c++) if (cellMask[c]) active[nActive++] = c;
+    nActive = 0; let nbb = 0;
+    for (let c = 0; c < NC; c++) { if (cellMask[c] & 15) active[nActive++] = c; if (cellMask[c] & 16) nbb += cellCount[c]; }
     if (!changed) return;
     prevMask.set(cellMask);
     visible = 0; tris = 0;
     const smallFar = quality.smallFar + SLACK;
-    let nbb = 0;
-    const bbM = bbMesh.instanceMatrix.array as Float32Array, bbC = bbMesh.instanceColor!.array as Float32Array, bbA = ibb.array as Float32Array;
     for (let si = 0; si < nsp; si++) {
       const sp = meta.species[si], sm = small[si];
       const lm = meshes[si];
@@ -512,16 +516,12 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
         if (a < 0) continue;
         if (sm && cellDmin[c] > smallFar) continue; // shrubs / saplings dissolve into the canopy with distance
         const b = range[ri + 1];
-        if (m & 16) {
-          bbM.set(mats.subarray(a * 16, b * 16), nbb * 16); bbC.set(cols.subarray(a * 3, b * 3), nbb * 3);
-          bbA.set(bbAll.subarray(a * 4, b * 4), nbb * 4);
-          nbb += b - a;
-        }
         for (let l = 0; l < NL; l++) {
           if (!(m & (1 << l))) continue;
           const im = lm[l], o = cnt[l];
-          (im.instanceMatrix.array as Float32Array).set(mats.subarray(a * 16, b * 16), o * 16);
-          (im.instanceColor!.array as Float32Array).set(cols.subarray(a * 3, b * 3), o * 3);
+          const am = im.instanceMatrix.array as Float32Array, ac = im.instanceColor!.array as Float32Array;
+          for (let j = a * 16, e = b * 16, t = o * 16; j < e; j++, t++) am[t] = mats[j];
+          for (let j = a * 3, e = b * 3, t = o * 3; j < e; j++, t++) ac[t] = cols[j];
           cnt[l] += b - a;
         }
       }
@@ -536,11 +536,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
         }
       }
     }
-    bbMesh.count = nbb; bbMesh.visible = nbb > 0;
-    if (nbb) {
-      for (const at of [bbMesh.instanceMatrix, bbMesh.instanceColor!, ibb]) { at.clearUpdateRanges(); at.addUpdateRange(0, nbb * at.itemSize); at.needsUpdate = true; }
-      visible += nbb; tris += nbb * 2;
-    }
+    visible += nbb; tris += n * 2; // billboard layer: all instances submitted, off-band ones collapse in the vertex shader
   }
 
   return {

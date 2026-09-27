@@ -83,6 +83,20 @@ def clear_zone_distance(scale=2):
     return (d * MPP / scale - marg[iy, ix]).astype(np.float32)
 
 
+def crag_score(rexp, slope, dwater, T):
+    """Where the rock kit builds cliff bands (tools/pipeline/rocks.py) and the canopy stays open:
+    exposed crest crags + river-cut gorge walls (steep ground within ~60 m of a channel), concentrated
+    into ledges that follow the contours (bedding: a band every ~16 m of height, broken along strike)
+    so rocky slopes read as forest with rock ledges, not as bare faces. Crest knobs stay rock."""
+    gorge = smoothstep(0.75, 1.25, slope) * np.exp(-dwater / 45.0) * 0.9
+    base = np.maximum(smoothstep(0.45, 0.85, rexp) * smoothstep(0.55, 1.1, slope), gorge)
+    wob = fbm(T.shape, 10, 991, 2)
+    band = smoothstep(0.15, 0.65, np.sin(2 * np.pi * T / 16.0 + 1.2 * wob))
+    gaps = smoothstep(-0.6, 0.2, fbm(T.shape, 6, 992, 2))
+    knob = smoothstep(0.85, 0.97, rexp) * smoothstep(1.0, 4.0, T - cv2.GaussianBlur(T, (0, 0), 6))   # crest knobs / spur noses
+    return base * np.maximum(band * gaps, knob)
+
+
 def smoothstep(e0, e1, x):
     t = np.clip((x - e0) / (e1 - e0), 0, 1)
     return t * t * (3 - 2 * t)
@@ -324,7 +338,7 @@ def scatter(T, cls, seed=7):
     p_can *= 1 - 0.3 * smoothstep(0.5, 0.95, rexp)   # crags / cut banks: thinner, trees still cling on ledges
     # cliff bands (the rock kit's ledge blocks, tools/pipeline/rocks.py) stay open so the rock reads,
     # and very steep faces only hold scattered trees
-    crag = smoothstep(0.45, 0.85, rexp) * smoothstep(0.55, 1.1, slope)
+    crag = crag_score(rexp, slope, dwater, T)
     p_can *= (1 - 0.8 * crag) * (1 - 0.5 * smoothstep(1.0, 1.6, slope))
     p_can *= 1 - np.clip(gravelbar, 0, 1)    # open gravel bars
     p_can = np.where(dev, np.clip(0.3 + 0.2 * n100 + 0.1 * n15, 0.05, 0.6), p_can)

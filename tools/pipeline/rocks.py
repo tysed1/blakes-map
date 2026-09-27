@@ -22,7 +22,7 @@ import cv2
 from scipy import ndimage as ndi
 from PIL import Image
 from tools.lib.common import path, load_json, W, H
-from tools.pipeline.vegetation import corridor_edge_distance, fbm, smoothstep, CLEAR, MPP, WATER
+from tools.pipeline.vegetation import corridor_edge_distance, fbm, smoothstep, crag_score, MPP, WATER
 
 KINDS = ['cliff_block', 'crag', 'boulder', 'scree']   # tools/blender/lib_rocks.KINDS
 VARIANTS = 4
@@ -91,12 +91,14 @@ def main(seed=23):
 
     n12 = fbm((H, W), 5, seed + 1, 2)
     # ---- cliff bands: high exposure on steep ground; bands (not polka dots): stronger along the contour
-    crag = smoothstep(0.45, 0.85, rexp) * smoothstep(0.55, 1.1, slope) * np.clip(0.6 + 0.5 * n12, 0, 1)
-    x, y, xi, yi = jitter(2.2, rng, np.clip(crag * 0.75, 0, 1).astype(np.float32))
-    ok = clear(x, y, 3); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
+    crag = crag_score(rexp, slope, dwater, T) * np.clip(0.6 + 0.5 * n12, 0, 1)
+    x, y, xi, yi = jitter(1.7, rng, np.clip(crag * 1.1, 0, 1).astype(np.float32))
+    ok = clear(x, y, 7); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]   # road cuts get their own courses below
     sc = np.exp(rng.normal(0, 0.2, len(x))) * (0.75 + 0.45 * rexp[yi, xi])
     pitch = np.clip(np.arctan(slope[yi, xi]) * 0.35, 0, 0.45) + rng.normal(0, 0.05, len(x))
-    emit(x, y, 'cliff_block', sc, downslope_yaw(xi, yi) + rng.normal(0, 0.18, len(x)), pitch, 0.9 * sc)
+    # the steeper the ground, the deeper the block is set (its downhill base must never show)
+    sink = sc * (0.9 + 1.4 * np.clip(slope[yi, xi] - 0.7, 0, 1.5))
+    emit(x, y, 'cliff_block', sc, downslope_yaw(xi, yi) + rng.normal(0, 0.18, len(x)), pitch, sink)
     ncliff = len(x)
     # ---- crags / tors on crests and knobs with exposed rock (moderate slope)
     tor = smoothstep(0.3, 0.7, rexp) * smoothstep(0.1, 0.5, tpi) * smoothstep(0.15, 0.4, slope) * (1 - smoothstep(0.9, 1.3, slope))
@@ -150,7 +152,7 @@ def main(seed=23):
             nst = max(1, int(math.ceil(hgt / 3.4)))
             for j in range(nst):
                 sc_ = rng.uniform(0.8, 1.05)
-                back = 0.2 + 0.35 * j            # each course steps back a little (benched look)
+                back = 1.5 * sc_ - 0.4 + 0.35 * j   # front face ~0.4 m proud of the cut line; courses step back
                 qx, qy = px - nrm * back / MPP
                 z = base - 0.6 + j * (hgt / nst)
                 yaw = math.atan2(nrm[0], nrm[1]) + rng.normal(0, 0.08)

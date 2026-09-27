@@ -439,10 +439,17 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   interface DTile { n: number; proto: Uint8Array; mats: Float32Array; cols: Float32Array; cx: number; cz: number; y0: number; y1: number }
   const dcache = new Map<number, DTile>();
   const m4 = new THREE.Matrix4(), qt = new THREE.Quaternion(), eu = new THREE.Euler(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
-  function decorTile(ix: number, iz: number): DTile {
+  // new decor tiles are generated at most GEN_BUDGET per relist (spreads the cost over frames; the
+  // relist repeats next update until every tile in range exists)
+  const GEN_BUDGET = 6;
+  let genLeft = GEN_BUDGET, decorPending = false;
+  const lastGen = new THREE.Vector3(1e9, 0, 0);
+  function decorTile(ix: number, iz: number): DTile | null {
     const key = (ix + 4096) * 8192 + (iz + 4096);
     const hit = dcache.get(key);
     if (hit) { dcache.delete(key); dcache.set(key, hit); return hit; }
+    if (genLeft <= 0) { decorPending = true; return null; }
+    genLeft--;
     const rng = mulberry(key * 2654435761);
     const protos: number[] = [], mats: number[] = [], cols: number[] = [];
     let y0 = 1e9, y1 = -1e9;
@@ -582,6 +589,11 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         const px0 = x0 / MPP + 1000, py0 = z0 / MPP + 333.5;
         if (px0 > IMG_W || py0 > IMG_H || px0 + TILE / MPP < 0 || py0 + TILE / MPP < 0) continue;
         const k = TILE / MPP;
+        // cheap reject before the 5 height taps: horizontal distance / height above the tile centre
+        const hx = Math.max(Math.abs(cp.x - (x0 + TILE / 2)) - TILE / 2, 0), hz = Math.max(Math.abs(cp.z - (z0 + TILE / 2)) - TILE / 2, 0);
+        if (hx * hx + hz * hz > q.fade[1] * q.fade[1]) continue;
+        const dyc = Math.max(Math.abs(cp.y - groundAt(px0 + k / 2, py0 + k / 2)) - 8, 0);
+        if (hx * hx + hz * hz + dyc * dyc > q.fade[1] * q.fade[1]) continue;
         const ha = groundAt(px0, py0), hb = groundAt(px0 + k, py0), hc = groundAt(px0, py0 + k), hd = groundAt(px0 + k, py0 + k), he = groundAt(px0 + k / 2, py0 + k / 2);
         box.min.set(x0, Math.min(ha, hb, hc, hd, he) - 0.2, z0); box.max.set(x0 + TILE, Math.max(ha, hb, hc, hd, he) + 1.3, z0 + TILE);
         const d = box.distanceToPoint(cp);
@@ -605,11 +617,18 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
     const Rd = q.decor;
     DU.uDFade.value.set(Rd * 0.7, Rd);
     for (const a of dc) a.fill(0);
+    // a camera cut (> 50 m jump: shot change, teleport, QA still) builds everything at once
+    genLeft = cp.distanceToSquared(lastGen) > 2500 ? 1e9 : GEN_BUDGET; decorPending = false; lastGen.copy(cp);
     const near = Math.min(25, Rd * 0.4);
     for (let iz = Math.floor((cp.z - Rd) / DTILE); iz <= Math.floor((cp.z + Rd) / DTILE); iz++) {
       for (let ix = Math.floor((cp.x - Rd) / DTILE); ix <= Math.floor((cp.x + Rd) / DTILE); ix++) {
+        // reject by distance to the tile (approximate ground height) before generating / fetching it
+        const cxw = ix * DTILE + DTILE / 2, czw = iz * DTILE + DTILE / 2;
+        const ex = Math.max(Math.abs(cp.x - cxw) - DTILE / 2, 0), ez = Math.max(Math.abs(cp.z - czw) - DTILE / 2, 0);
+        const ey = Math.max(Math.abs(cp.y - groundAt(cxw / MPP + 1000, czw / MPP + 333.5)) - 6, 0);
+        if (ex * ex + ey * ey + ez * ez > Rd * Rd) continue;
         const t = decorTile(ix, iz);
-        if (!t.n) continue;
+        if (!t || !t.n) continue;
         box.min.set(t.cx - DTILE / 2, t.y0, t.cz - DTILE / 2); box.max.set(t.cx + DTILE / 2, t.y1, t.cz + DTILE / 2);
         const d = box.distanceToPoint(cp);
         if (d > Rd) continue;
@@ -673,7 +692,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
     const cp = camera.position;
     GU.uCam.value.copy(cp);
     camera.getWorldDirection(dir);
-    if (cp.distanceToSquared(lastPos) < 4 && dir.dot(lastDir) > 0.99) return; // ~2 m / 8 degrees
+    if (!decorPending && cp.distanceToSquared(lastPos) < 4 && dir.dot(lastDir) > 0.99) return; // ~2 m / 8 degrees
     lastPos.copy(cp); lastDir.copy(dir);
     relist(camera);
   }
