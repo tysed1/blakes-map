@@ -164,6 +164,7 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
     C[k * 3] = warm * 1.02; C[k * 3 + 1] = 0.98 + 0.06 * (1 - r); C[k * 3 + 2] = 0.95 + 0.08 * (1 - r);
     P.set([X, R[o + 2], Z], k * 3);
     kindOf[k] = kind; varOf[k] = (R[o + 5] | 0) % meta.variants;
+    if (R[o + 5] >= 10) { C[k * 3] *= 0.55; C[k * 3 + 1] *= 0.58; C[k * 3 + 2] *= 0.6; } // spray-wet ledge rock (rocks.py: variant + 10)
     const d = meta.kinds[kind].dims; RAD[k] = Math.max(d[0], d[1], d[2]) * 0.75 * s;
     perKind[kind]++;
   });

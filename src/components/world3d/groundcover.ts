@@ -56,8 +56,10 @@ export interface Groundcover {
   group: THREE.Group;
   uniforms: GroundcoverUniforms;
   update(camera: THREE.Camera, dt?: number): void;
+  /** Complete relist with no time budget (stills / QA snapshots / after a teleport, when a hitch is fine). */
+  finish(camera: THREE.Camera): void;
   setQuality(q: Q): void;
-  stats(): { tiles: number[]; blades: number; decor: number; props: number; tris: number; draws: number };
+  stats(): { tiles: number[]; blades: number; decor: number; props: number; tris: number; draws: number; ms: number[] };
 }
 
 // ---------------------------------------------------------------- shared GLSL
@@ -442,7 +444,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   const m4 = new THREE.Matrix4(), qt = new THREE.Quaternion(), eu = new THREE.Euler(), sc = new THREE.Vector3(), pv = new THREE.Vector3();
   // new decor tiles are generated at most GEN_BUDGET per relist (spreads the cost over frames; the
   // relist repeats next update until every tile in range exists)
-  const GEN_BUDGET = 2; // ~1 ms each; at 20 Hz relists that is 40 tiles/s (driving speed)
+  const GEN_BUDGET = 1; // one tile (~1-5 ms) per relist; at 20 Hz relists that is 20 tiles/s (the fade ring hides the lag)
   let genLeft = GEN_BUDGET, decorPending = false, genCut = false, genT0 = 0;
   const lastGen = new THREE.Vector3(1e9, 0, 0);
   function decorTile(ix: number, iz: number): DTile | null {
@@ -452,7 +454,8 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
     if (genLeft <= 0 || (!genCut && performance.now() - genT0 > 2.0)) { decorPending = true; return null; }
     genLeft--;
     const rng = mulberry(key * 2654435761);
-    const protos: number[] = [], mats: number[] = [], cols: number[] = [];
+    const protos: number[] = [];
+    const cap = Math.round(1.3 * DTILE * DTILE) + 4, mats = new Float32Array(cap * 16), cols = new Float32Array(cap * 3);
     let y0 = 1e9, y1 = -1e9;
     const x0 = ix * DTILE, z0 = iz * DTILE;
     const layers: [string, number, number][] = [['flowers', 0.6, 0], ['weeds', 0.3, 1], ['fern', 0.4, 2]];
@@ -464,7 +467,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         const px = X / MPP + 1000, py = Z / MPP + 333.5;
         if (px < 1 || py < 1 || px > IMG_W - 1 || py > IMG_H - 1) continue;
         let w = sample(3, c, px, py);
-        if (w < 0.02) continue;
+        if (w < 0.02 || r >= w) continue; // every later factor only lowers w: reject before the expensive taps
         const road = sample(0, 0, px, py) * 3.1875, rail = sample(0, 1, px, py) * 3.1875, water = sample(0, 2, px, py) * 3.1875;
         w *= smooth(1.2, 2.5, road) * smooth(1.5, 3, rail) * smooth(0.8, 1.8, water);
         const y = groundAt(px, py);
@@ -488,11 +491,13 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         eu.set((r5 - 0.5) * 0.12, r5 * 97.0 % (Math.PI * 2), (r4 - 0.5) * 0.12);
         qt.setFromEuler(eu); sc.setScalar(s); pv.set(X, y - 0.02, Z);
         m4.compose(pv, qt, sc);
-        protos.push(proto); mats.push(...m4.elements); cols.push(...col);
+        m4.toArray(mats, protos.length * 16); cols[protos.length * 3] = col[0]; cols[protos.length * 3 + 1] = col[1]; cols[protos.length * 3 + 2] = col[2];
+        protos.push(proto);
         y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1.2 * s);
       }
     }
-    const t: DTile = { n: protos.length, proto: Uint8Array.from(protos), mats: Float32Array.from(mats), cols: Float32Array.from(cols), cx: x0 + DTILE / 2, cz: z0 + DTILE / 2, y0, y1 };
+    const nn = protos.length;
+    const t: DTile = { n: nn, proto: Uint8Array.from(protos), mats: mats.slice(0, nn * 16), cols: cols.slice(0, nn * 3), cx: x0 + DTILE / 2, cz: z0 + DTILE / 2, y0, y1 };
     dcache.set(key, t);
     if (dcache.size > 900) dcache.delete(dcache.keys().next().value!);
     return t;
@@ -567,7 +572,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), box = new THREE.Box3(), sph = new THREE.Sphere();
   const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3();
   const dir = new THREE.Vector3();
-  const st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0 };
+  const st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0, ms: [0, 0, 0] }; // ms: grass, decor, props relist
   // grass tile height ranges over the whole map (lazy, NaN = not yet sampled)
   const TX0 = Math.floor(-1000 * MPP / TILE) - 1, TZ0 = Math.floor(-333.5 * MPP / TILE) - 1;
   const TNX = Math.ceil(IMG_W * MPP / TILE) + 3, TNZ = Math.ceil(IMG_H * MPP / TILE) + 3;
@@ -590,6 +595,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
     const cp = camera.position;
     pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pm);
     st.tiles[0] = st.tiles[1] = st.tiles[2] = 0; st.blades = st.decor = st.props = st.tris = st.draws = 0;
+    const tA = performance.now();
     // grass tiles
     const Rg = q.fade[1] + TILE;
     const cnt = gcnt; cnt[0] = cnt[1] = cnt[2] = 0;
@@ -628,13 +634,13 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
       st.tiles[li] = cnt[li]; st.blades += cnt[li] * slots; st.tris += cnt[li] * slots * (l.ipb / 3);
       if (cnt[li]) st.draws++;
     }
+    const tB = performance.now();
     // decor
     const Rd = q.decor;
     DU.uDFade.value.set(Rd * 0.7, Rd);
     for (const a of dc) a.fill(0);
-    // a true camera cut (> 300 m jump: shot change, teleport, QA still) builds everything at once; any
-    // flight (even fast spline moves) streams tiles in under a ~2 ms/relist time budget
-    genCut = cp.distanceToSquared(lastGen) > 300 * 300; genLeft = genCut ? 1e9 : GEN_BUDGET; genT0 = performance.now();
+    // decor tiles stream in under a ~2 ms / 2-tile budget per relist (finish() lifts it for stills)
+    genLeft = genCut ? 1e9 : GEN_BUDGET; genT0 = performance.now();
     decorPending = false; lastGen.copy(cp);
     const near = Math.min(25, Rd * 0.4);
     for (let iz = Math.floor((cp.z - Rd) / DTILE); iz <= Math.floor((cp.z + Rd) / DTILE); iz++) {
@@ -672,6 +678,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         st.decor += n; st.tris += n * d.tris[li]; st.draws++;
       }
     }
+    const tC = performance.now();
     // props
     for (const a of pc) a.fill(0);
     const maxFar = maxFarK * q.props;
@@ -703,6 +710,14 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         st.props += n; st.tris += n * p.tris[li]; st.draws++;
       }
     }
+    const tD = performance.now();
+    st.ms[0] = tB - tA; st.ms[1] = tC - tB; st.ms[2] = tD - tC;
+  }
+
+  function finish(camera: THREE.Camera) {
+    genCut = true; lastPos.set(1e9, 0, 0);
+    update(camera);
+    genCut = false;
   }
 
   function update(camera: THREE.Camera) {
@@ -717,6 +732,7 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   return {
     group, uniforms, update,
     setQuality(qn) { q = GROUNDCOVER_QUALITY[qn]; applyGrassQuality(); lastPos.set(1e9, 0, 0); },
+    finish,
     stats: () => st,
   };
 }

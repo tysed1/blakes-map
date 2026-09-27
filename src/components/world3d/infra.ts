@@ -387,15 +387,15 @@ float sH = 0.5, sBump = 0.0, sEmit = 0.0;
   } else if (mode == 4) {     // rubble masonry, recessed mortar
     vec3 c = vor3(vec3(P.x / 0.55, P.y / 0.55, P.z / 0.32));
     float r2 = ih13(vec3(c.z * 91.0, 3.0, 7.0));
-    vec3 stone = mix(vec3(0.2, 0.19, 0.17), vec3(0.34, 0.31, 0.27), c.z);
+    vec3 stone = mix(vec3(0.13, 0.125, 0.11), vec3(0.23, 0.21, 0.185), c.z);
     stone = mix(stone, vec3(0.28, 0.2, 0.14), r2 * 0.5);
     float mortar = 1.0 - smoothstep(0.04, 0.09, c.y);
-    col = mix(stone, vec3(0.42, 0.41, 0.38), mortar);
+    col = mix(stone, vec3(0.2, 0.195, 0.18), mortar);   // weathered mortar: no pale flagstone pattern
     col = mix(col, vec3(0.08, 0.1, 0.05), 0.5 * sstep(0.55, 0.8, bn(fbm2(P * 0.6))));
     sH = sstep(0.0, 0.12, c.y); sBump = 0.8;
   } else if (mode == 5) {     // granite riprap, weathered in: smaller stones, low contrast, silted + mossy
-    vec3 c = vor3(P / 0.4);
-    vec3 st = mix(vec3(0.12, 0.115, 0.105), vec3(0.19, 0.18, 0.165), c.z);
+    vec3 c = vor3(P / 0.28);
+    vec3 st = mix(vec3(0.085, 0.082, 0.075), vec3(0.14, 0.133, 0.12), c.z);   // weathered, not pale flagstones
     st = mix(st, vec3(0.07, 0.085, 0.04), 0.55 * sstep(0.5, 0.8, bn(fbm2(P * 0.3))));
     col = mix(st, vec3(0.06, 0.055, 0.045), 0.6 * (1.0 - smoothstep(0.015, 0.05, c.y)));
     col = mix(col, vec3(0.12, 0.105, 0.075), 0.45 * sstep(0.35, 0.7, fbm2(P * 1.3)));   // soil / silt washed between the stones
@@ -430,7 +430,7 @@ float sH = 0.5, sBump = 0.0, sEmit = 0.0;
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
   totalEmissiveRadiance += diffuseColor.rgb * sEmit;   // incandescent signal lenses (subtle: no bloom blow-out)`);
   };
-  m.customProgramCacheKey = () => 'infra-struct-3';
+  m.customProgramCacheKey = () => 'infra-struct-4';
   return m;
 }
 

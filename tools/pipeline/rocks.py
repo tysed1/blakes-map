@@ -163,6 +163,41 @@ def main(seed=23):
                 yaw = math.atan2(nrm[0], nrm[1]) + rng.normal(0, 0.08)
                 out.append(np.array([[qx, qy, z, sc_, KINDS.index('cliff_block'), rng.integers(0, VARIANTS), yaw, rng.normal(0.08, 0.04)]]))
                 ncut += 1
+    # ---- waterfall ledges (waterways.json 'falls'; terrain.py shape_falls cut the step): broken cliff faces
+    # across both banks at the lip and every cascade tier, faces downstream, tops ragged around the upper pool
+    # level, stacked down to the lower water; kept off the water (N's sheets / pool). variant + 10 = wet rock.
+    WLv = np.fromfile(path('data/terrain/water_level_f32.bin'), np.float32).reshape(H, W)
+    nfall = 0
+    for rv in load_json(path('data/manual/waterways.json'))['rivers']:
+        for fl in rv.get('falls', []):
+            lip, toe = np.asarray(fl['lip'], float), np.asarray(fl['toe'], float)
+            flow = (toe - lip) / max(np.hypot(*(toe - lip)), 1e-6); nrm = np.array([-flow[1], flow[0]])
+            nt = max(1, int(fl.get('tiers', 1)))
+            half = fl.get('lip_width_m', 10.0) / 2
+            def wl(p):
+                xi, yi = int(np.clip(p[0], 0, W - 1)), int(np.clip(p[1], 0, H - 1))
+                v = WLv[max(yi - 3, 0):yi + 4, max(xi - 3, 0):xi + 4]
+                return float(np.nanmax(v)) if np.isfinite(v).any() else float(T[yi, xi])
+            for ti in range(nt):
+                c = lip + (toe - lip) * (ti / max(nt, 1) if nt > 1 else 0.0)
+                up = wl(c - flow * 2.5); dn = wl(c + flow * (2.5 if nt == 1 else 1.5))
+                for sd in (-1, 1):
+                    for o in np.arange(half + 3.2, half + 16.0, 3.3):
+                        q = c + nrm * sd * o / MPP + flow * rng.normal(0, 0.25)
+                        qi = (int(np.clip(q[1], 0, H - 1)), int(np.clip(q[0], 0, W - 1)))
+                        if dwater[qi] < 2.0 or wet[qi]:
+                            continue
+                        rise = 1 - (o - half) / 16.0
+                        top = up + 0.4 + rng.uniform(-0.9, 1.3) * (0.4 + 0.6 * rise)
+                        low = min(dn - 0.8, float(T[qi]) - 0.5)
+                        sc = rng.uniform(0.7, 1.0)
+                        hgt = max(top - low, 1.0); ncs = max(1, int(math.ceil(hgt / (3.4 * sc))))
+                        yaw = math.atan2(flow[0], flow[1]) + rng.normal(0, 0.12)
+                        for j in range(ncs):
+                            z = low + j * hgt / ncs
+                            var = rng.integers(0, VARIANTS) + (10 if o < half + 6 else 0)
+                            out.append(np.array([[q[0], q[1], z, sc, KINDS.index('cliff_block'), var, yaw, rng.normal(0.05, 0.05)]]))
+                            ncut += 1; nfall += 1
     R = np.concatenate(out).astype(np.float32) if out else np.zeros((0, STRIDE), np.float32)
     # ---- QA: no floating bases, no rock on pavement / shoulders
     #  base (local z = 0) must sit at or below the ground at 8 points around the footprint: lower it
@@ -191,7 +226,7 @@ def main(seed=23):
     cnt = {k: int((R[:, 4] == i).sum()) for i, k in enumerate(KINDS)}
     json.dump({'file': 'rocks_f32.bin', 'stride': STRIDE, 'fields': ['x_px', 'y_px', 'z_m', 'scale', 'kind', 'variant', 'yaw', 'pitch'],
                'kinds': KINDS, 'count': int(len(R)), 'counts': cnt, 'road_cut_blocks': ncut}, open(path('public/world/rocks.json'), 'w'), indent=1)
-    print(f'rocks: {len(R)} ({cnt}, road-cut blocks {ncut}, cliff-band blocks {ncliff})')
+    print(f'rocks: {len(R)} ({cnt}, road-cut + falls blocks {ncut} (falls {nfall}), cliff-band blocks {ncliff})')
 
 
 if __name__ == '__main__':
