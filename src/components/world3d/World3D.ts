@@ -592,7 +592,7 @@ export class World3D {
 
   /** Render a still for QA / screenshots. */
   updateCullingPublic() { if (this.mode === 'orbit') this.orbit.update(); this.updateCulling(); }
-  snapshot(): string { sunBake.setTime(0); /* deterministic cloud shadows in QA stills */ this.updateCulling(); this.cine.prepare(this.scene); this.cine.render(); return this.renderer.domElement.toDataURL('image/png'); }
+  snapshot(): string { sunBake.setTime(0); /* deterministic cloud shadows in QA stills */ this.updateCulling(); this.gc?.finish(this.camera); /* decor streams in over frames: complete it for stills */ this.cine.prepare(this.scene); this.cine.render(); return this.renderer.domElement.toDataURL('image/png'); }
 }
 
 function skyTexture() {
