@@ -66,6 +66,12 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
   m.receiveShadow = false;
   m.userData.kind = 'backdrop';
   g.add(m);
+  // distant Blue Ridge layers beyond the terrain ring: two skyline bands whose aerial perspective (the
+  // scene's height fog) turns them into successively paler blue ridges (graphics ref: layered horizons)
+  const cx = (meta.origin_px[0] + meta.w * meta.cell_px / 2 - 1000) * 2.5, cz = (meta.origin_px[1] + meta.h * meta.cell_px / 2 - 333.5) * 2.5;
+  for (const [r, base, amp, seed, col] of [[12000, 420, 520, 3, 0x2f423b], [17500, 400, 800, 11, 0x33464a], [24500, 380, 1150, 29, 0x3b505a]] as const) {
+    g.add(ridgeRing(cx, cz, r, base, amp, seed, col));
+  }
   // mirrored river water in the backdrop
   const wp: number[] = [], wi: number[] = [];
   for (let j = 0; j < meta.h - 1; j += 1) for (let i = 0; i < meta.w - 1; i += 1) {
@@ -86,6 +92,47 @@ export function buildBackdrop(meta: BackdropMeta, hBuf: ArrayBuffer, wBuf: Array
     g.add(new THREE.Mesh(wg, new THREE.MeshStandardMaterial({ color: 0x3d6776, roughness: 0.4 })));
   }
   return g;
+}
+
+/** Hash-based 1D value noise (deterministic skyline). */
+function vnoise1(x: number, seed: number) {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+  const h = (n: number) => { const s = Math.sin((n + seed * 101.7) * 127.1) * 43758.5453; return s - Math.floor(s); };
+  return h(i) * (1 - u) + h(i + 1) * u;
+}
+
+/**
+ * One far ridge layer: a closed skyline band around the world at radius r (m). Skyline = ridged multi-octave
+ * noise over the angle (long ridges, knobs and gaps; no two layers alike), bottom well below the horizon.
+ * Lit like terrain and fogged by the scene's aerial perspective, so each farther layer reads paler and bluer.
+ */
+function ridgeRing(cx: number, cz: number, r: number, base: number, amp: number, seed: number, color: number) {
+  const segs = 900;
+  const pos = new Float32Array((segs + 1) * 2 * 3), nrm = new Float32Array((segs + 1) * 2 * 3);
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs, a = t * Math.PI * 2;
+    // periodic noise over the ring: sample on a circle of 'frequency' radii
+    let h = 0, wsum = 0;
+    for (const [fq, w] of [[3, 1], [7, 0.55], [17, 0.3], [41, 0.14], [97, 0.06]]) {
+      const n = vnoise1(t * fq * 8, seed + fq);
+      h += (1 - Math.abs(2 * n - 1)) * w; wsum += w;   // ridged: sharp-ish crests, broad hollows
+    }
+    h = Math.pow(h / wsum, 1.6);
+    const top = base + amp * h, x = Math.cos(a), z = Math.sin(a);
+    const rr = r * (1 + 0.04 * (vnoise1(t * 13, seed + 5) - 0.5));
+    pos.set([cx + x * rr, top, cz + z * rr, cx + x * rr * 1.02, base - 600, cz + z * rr * 1.02], i * 6);
+    // normals face the world centre and tilt up (sunlit crests, shaded foot)
+    nrm.set([-x * 0.6, 0.8, -z * 0.6, -x * 0.9, 0.44, -z * 0.9], i * 6);
+  }
+  const idx: number[] = [];
+  for (let i = 0; i < segs; i++) { const a = i * 2, b = a + 1, c = a + 2, d = a + 3; idx.push(a, b, c, c, b, d); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  geo.setIndex(idx);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0, side: THREE.DoubleSide }));
+  m.frustumCulled = false; m.name = `ridge_layer_${r}`; m.userData.kind = 'backdrop';
+  return m;
 }
 
 /**

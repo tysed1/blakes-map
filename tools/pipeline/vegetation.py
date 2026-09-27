@@ -198,9 +198,17 @@ def fields(cls, rng, noise):
     seeds = []
     ys, xs = np.nonzero(openr)
     if len(xs):
-        nseed = max(1, int(openr.sum() * MPP * MPP / 26000))
-        pick = rng.choice(len(xs), nseed, replace=False)
-        seeds = np.stack([xs[pick], ys[pick]], 1).astype(np.float32)
+        # stable seeds: a fixed jittered grid (~160 m) kept where the land is open, so an edit elsewhere in the
+        # land use never reshuffles every field on the map (ids = grid index, types hashed from it)
+        sp = math.sqrt(26000 / (MPP * MPP))
+        gr = np.random.default_rng(1974)
+        gxs, gys = np.meshgrid(np.arange(sp / 2, W, sp), np.arange(sp / 2, H, sp))
+        jx = gxs + gr.uniform(-0.4, 0.4, gxs.shape) * sp; jy = gys + gr.uniform(-0.4, 0.4, gys.shape) * sp
+        gid = np.arange(gxs.size).reshape(gxs.shape)
+        jxi = np.clip(jx.astype(int), 0, W - 1); jyi = np.clip(jy.astype(int), 0, H - 1)
+        keep = openr[jyi, jxi]
+        seeds = np.stack([jx[keep], jy[keep]], 1).astype(np.float32)
+        seed_gid = gid[keep]
         gy_, gx_ = np.mgrid[0:H, 0:W].astype(np.float32)
         wob = noise * 4
         best = np.full((H, W), 1e9, np.float32); cell = np.zeros((H, W), np.int32)
@@ -208,16 +216,16 @@ def fields(cls, rng, noise):
             x0, x1 = int(max(0, sx - 110)), int(min(W, sx + 110)); y0, y1 = int(max(0, sy - 110)), int(min(H, sy + 110))
             d = np.hypot(gx_[y0:y1, x0:x1] - sx + wob[y0:y1, x0:x1], gy_[y0:y1, x0:x1] - sy - wob[y0:y1, x0:x1])
             m = d < best[y0:y1, x0:x1]
-            best[y0:y1, x0:x1][m] = d[m]; cell[y0:y1, x0:x1][m] = k + 1
+            best[y0:y1, x0:x1][m] = d[m]; cell[y0:y1, x0:x1][m] = seed_gid[k] + 1
         cell[~openr] = 0
-        # an isolated small clearing is a single field
-        cid = cell + lab * 10000
-        types = []
-        for k in range(len(seeds)):
-            types.append(k)
+        # an isolated small clearing (no seed within reach) is a single field, keyed by its first pixel
+        lab_key = np.zeros(n + 1, np.int64)
+        first = ndi.minimum(np.arange(H * W).reshape(H, W), lab, index=np.arange(1, n + 1)) if n else []
+        lab_key[1:] = np.asarray(first, np.int64) + 10 ** 7
+        cid = np.where(cell > 0, cell.astype(np.int64), lab_key[lab])
         uid, inv = np.unique(cid[openr], return_inverse=True)
-        r = np.random.default_rng(11)
-        tsel = r.random(len(uid)); ang = r.uniform(0, math.pi, len(uid))
+        hsh = lambda v, k: (np.sin(v * 12.9898 + k * 78.233) * 43758.5453) % 1.0
+        tsel = hsh(uid.astype(np.float64), 1.0); ang = hsh(uid.astype(np.float64), 2.0) * math.pi
         # majority class of each field decides the menu
         is_farm = ndi.mean((cls[openr] == FARM).astype(np.float32), labels=inv, index=np.arange(len(uid))) > 0.5
         t_farm = np.select([tsel < 0.42, tsel < 0.72, tsel < 0.84], [FIELD_TYPES['pasture'], FIELD_TYPES['hay'], FIELD_TYPES['plowed']], FIELD_TYPES['fallow'])
@@ -532,7 +540,7 @@ def scatter_props(rng, T, cls, eco, forest, sdn, rock, drock, road1, rail1, wet,
     add(forest * (0.012 + 0.04 * smoothstep(0.4, 0.9, slope) + 0.02 * np.clip(tpi, 0, 1)), 2.0, {'boulder': 1.0, 'rock_small': 1.5}, -0.1, 0.3)
     # fallen logs / branches / debris on the forest floor (more in moist hollows)
     ff = forest * smoothstep(0, 8, sdn) * (0.05 + 0.08 * moist) + opening * 0.12
-    add(ff, 2.4, {'log': 1.0, 'log_mossy': 0.8, 'branches': 1.6, 'bark_debris': 0.6}, 0.0, 0.2)
+    add(ff, 2.4, {'log': 1.0, 'log_mossy': 0.8, 'branches': 1.6}, 0.0, 0.2)   # bark_debris dropped: a square patch that reads as a decal
     # creek debris: logs, roots along creek banks
     add(np.exp(-dwater / 6) * ~wet * forest * 0.12, 1.6, {'log_mossy': 1.0, 'roots': 1.0, 'branches': 0.6}, 0.0, 0.2)
     # stumps: logging near forest edges, roads, fields
