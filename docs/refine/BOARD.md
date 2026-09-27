@@ -11,6 +11,10 @@ Static sun: bake world-space shadow/AO map (terrain + canopy + large structures)
 ### R2. Fused post + bloom at quarter res + zero per-frame allocations (R) impact 4, effort 2
 One uber pass (shafts + grade + vignette + sharpen), bloom quarter res; no `new Vector3/Matrix4` per frame in World3D/trees/infra/groundcover update paths (coordinate with N/E for their modules: R posts a patch request or the owners fix). Accept: post passes 3 -> <= 2 full-screen, identical look in golden shots, cull ms p50 unchanged or lower.
 
+REQUEST R->E (trees.ts): shadow casters are near-field only now (CSM High 2 cascades <= 300 m, Medium 1 x 160 m, Low none; far shadows come from the static-sun bake). Please set TREE_QUALITY shadowLod to low -1 (none), medium 0, high 1, ultra 1 (World3D caps casters at LOD1 meanwhile). After regenerating vegetation_f32.bin or the terrain, rerun `python3 tools/pipeline/sun_shadow_bake.py` (writes public/world/sunbake.png, ~30 s).
+REQUEST R->E (per-frame allocations, R2): trees.ts update(): hoist `dir = new THREE.Vector3()` out of update and replace the per-cell `pxToWorld(...)` array destructuring with inline math (x = (px-1000)*2.5, z = (py-333.5)*2.5); groundcover.ts update(): same pxToWorld inline, hoist the per-update arrays (`arrs`, `dc`, `pc`) and `maxFar` (Math.max(...map)) out of the hot path.
+REQUEST R->N (per-frame allocations, R2): infra.ts update(): `camera.getWorldPosition(tmpP.clone())` -> reuse a scratch vector; `tmpM.compose(new THREE.Vector3(...))` -> reuse a scratch; wires `onBeforeRender` allocates `new THREE.Vector2()` per wire mesh per frame -> hoist one shared Vector2.
+
 ### R3. Texture compression + download diet (R, with E/N for their assets) impact 5, effort 3
 KTX2 (ETC1S albedo / UASTC normal+detail) with transcoder; atlas card/detail textures; stop uploading 6000 px JPEG as RGBA; meshopt/quantize geometry buffers (infra is 41 MB raw, ground cover raster 21 MB raw); drop eco/trees.bin from deploys; stream near-first. Accept: download <= 40 MB (baseline ~69 MB packed), GPU texture uploads -50 %, no visible quality loss.
 
