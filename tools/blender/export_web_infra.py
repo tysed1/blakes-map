@@ -341,7 +341,8 @@ def g_attrs(group, A, sub):
         rs = get('rs')
         kind = np.array([GROUND.get(m, 6) for m in mname], np.float32)
         return {
-            'gS': np.stack([rs, np.where(L > 0, L - rs, 0)], 1).astype(np.float32),
+            # stations along the edge (m) as u16 in 1/32 m (<= 2048 m edges; dash / stop-bar precision 3 cm)
+            'gS': np.clip(np.round(np.stack([rs, np.where(L > 0, L - rs, 0)], 1) * 32), 0, 65535).astype(np.uint16),
             'gR': np.stack([np.clip(np.round(get('rl') * 100), -32767, 32767), np.clip(np.round(get('hw') * 100), 0, 32767)], 1).astype(np.int16),
             'gB': np.stack([u8(get('mk')), u8(get('np') * 255), u8(get('age') * 255), u8(get('surf') * 255)], 1),
             'gC': np.stack([u8(get('esh') * 20), u8(get('lw') * 20), u8(get('uin') * 20), u8(kind)], 1),

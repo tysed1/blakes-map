@@ -142,7 +142,7 @@ function groundMaterial(tex: Record<string, THREE.Texture>, pull: { value: numbe
     Object.assign(sh.uniforms, { tAsph: { value: tex.asphalt_l }, tAsphH: { value: tex.asphalt_h }, tGrav: { value: tex.gravel_l }, tClay: { value: tex.clay_l }, uDepthPull: pull });
     patchVertexWorld(sh, `attribute vec2 gS; attribute vec2 gR; attribute vec4 gB; attribute vec4 gC; attribute vec4 gD;
 varying vec2 vS; varying vec2 vR; varying vec4 vB; varying vec4 vC; varying vec4 vD;`,
-      `vS = gS; vR = gR * 0.01; vB = gB; vC = gC; vD = gD;`);
+      `vS = gS * (1.0 / 32.0); vR = gR * 0.01; vB = gB; vC = gC; vD = gD;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vWp; varying vec2 vS; varying vec2 vR; varying vec4 vB; varying vec4 vC; varying vec4 vD;
@@ -288,7 +288,7 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   normal = bumpN(-vViewPosition, normal, gHeight, gBumpS * 0.06);`);
   };
-  m.customProgramCacheKey = () => 'infra-ground-2';
+  m.customProgramCacheKey = () => 'infra-ground-3';
   return m;
 }
 
