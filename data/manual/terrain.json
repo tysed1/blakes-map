@@ -196,6 +196,8 @@
   "town": 0.3,
   "city": 0.75
  },
+ "balds": {"_doc": "Southern Appalachian grassy balds: treeless crest meadows (landuse.py -> meadow, vegetation.py -> fallow grass, stunted trees + shrub skirt at the edge). center px, radius_px = max reach from center, drop_m = how far below the local summit the bald extends (noise-wobbled).",
+  "items": [{"id": "BALD_RIDGE", "name": "Bald Ridge", "center": [832, 288], "radius_px": 80, "drop_m": 58}]},
  "sea_note": "No sea. Lowest point ~280 m (Tanner River at the east edge).",
  "evolve": {
   "steps": 300,

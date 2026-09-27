@@ -29,7 +29,6 @@ export class World3D {
   mode: CamMode = 'free';
   private groups: Record<string, THREE.Object3D> = {};
   private pickMaps: Map<THREE.Mesh, string[]>[] = [];
-  private sun: THREE.DirectionalLight;
   private hl: THREE.Object3D | null = null;
   private raycaster = new THREE.Raycaster();
   private running = false;
@@ -93,7 +92,7 @@ export class World3D {
     const hemi = new THREE.HemisphereLight(0xa9c4ea, 0x4a4630, 0.45);
     this.scene.add(hemi);
     this.cine = createCinematic(this.renderer, this.scene, this.camera, this.sunDir, this.sunColor, this.sunIntensity);
-    this.sun = this.cine.csm!.lights[0];
+    this.cine.setShadowQuality(this.quality);
     this.build();
     this.orbit.enabled = false;
     this.heroView();
@@ -135,6 +134,7 @@ export class World3D {
       t.uniforms.uTime = this.time;
       t.setQuality(this.quality);
       trees.add(t.group);
+      this.capShadowCasters();
       t.update(this.camera, true);
       this.vegReady = true;
     }).catch((e) => { console.error('trees', e); this.vegReady = true; });
@@ -275,6 +275,7 @@ export class World3D {
     this.quality = q;
     const Q = QUALITY[q];
     this.veg?.setQuality(q);
+    this.capShadowCasters();
     this.cine.setShadowQuality(q);
     this.cine.bloom.enabled = Q.bloom;
     this.renderScale = 1;
@@ -282,6 +283,16 @@ export class World3D {
     this.groundcoverQuality?.(q);
   }
   groundcoverQuality?: (q: Quality) => void;
+  /**
+   * R1: real-time shadows are near-field only (<= 300 m on High), everything farther is baked, so only
+   * the two nearest tree LODs cast (LOD1 ends at 260-450 m depending on preset).
+   */
+  private capShadowCasters() {
+    this.veg?.group.traverse((o) => {
+      const m = /_lod(\d)$/.exec(o.name);
+      if (m && +m[1] > 1) o.castShadow = false;
+    });
+  }
   private applyScale() {
     const Q = QUALITY[this.quality];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Q.maxDpr) * this.renderScale);

@@ -82,6 +82,9 @@ def main():
             m = np.zeros((H, W), np.uint8)
             cv2.polylines(m, [np.asarray(f['geometry']['coordinates'])[:, :2].round().astype(np.int32)], False, 1, int(f['properties']['width_m'] / 2.5) + 4)
             cls[m > 0] = ID['rail_yard']
+    # grassy balds (data/manual/terrain.json 'balds'): treeless crest meadows; bare crags stay rock
+    bald = bald_mask(T) > 0.5
+    cls[bald & (cls != ID['rock']) & ~wm] = ID['meadow']
     cls[wm] = ID['water']
     # clean speckle: majority filter
     cls = ndi.generic_filter(cls, lambda v: np.bincount(v.astype(int), minlength=12).argmax(), size=5, mode='nearest').astype(np.uint8) if False else majority(cls)
@@ -118,6 +121,28 @@ def main():
     from collections import Counter
     c = Counter(cls.ravel().tolist())
     print('landuse px:', {CLASSES[k][1]: v for k, v in sorted(c.items())}, 'polygons', len(feats))
+
+
+def bald_mask(T, seed=31):
+    """0..1 grassy-bald cover: crest ground within radius_px of each bald centre and less than drop_m below
+    its local summit, with noise-wobbled edges (tongues of grass down the spurs, forest up the hollows)."""
+    out = np.zeros((H, W), np.float32)
+    cfg = load_json(path('data/manual/terrain.json')).get('balds', {}).get('items', [])
+    if not cfg:
+        return out
+    rng = np.random.default_rng(seed)
+    n = cv2.resize(rng.standard_normal((H // 8 + 2, W // 8 + 2)).astype(np.float32), None, fx=8, fy=8, interpolation=cv2.INTER_CUBIC)[:H, :W]
+    n += 0.3 * cv2.resize(rng.standard_normal((H // 3 + 2, W // 3 + 2)).astype(np.float32), None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)[:H, :W]
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    for b in cfg:
+        cx, cy = b['center']; r = float(b['radius_px']); drop = float(b['drop_m'])
+        d = np.hypot(xx - cx, yy - cy)
+        near = d < r * 1.3
+        top = float(T[near].max())
+        below = top - T
+        m = (1 - np.clip((below - drop * (1 + 0.25 * n)) / 4.0, 0, 1)) * (1 - np.clip((d - r * (1 + 0.15 * n)) / 6.0, 0, 1))
+        out = np.maximum(out, np.where(near, m, 0))
+    return np.clip(cv2.GaussianBlur(out, (0, 0), 1.0), 0, 1)
 
 
 def majority(cls, r=2, n=12):

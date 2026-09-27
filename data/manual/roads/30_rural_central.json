@@ -914,12 +914,42 @@
      578
     ],
     [
-     1325,
-     570
+     1314,
+     578
+    ]
+   ]
+  },
+  {
+   "id": "RU_HOLLOW_CREEK_RD_E2",
+   "name": "Hollow Creek Road",
+   "type": "gravel",
+   "inferred": true,
+   "mode": "spline",
+   "note": "Engineered past the Hollow Creek spring pool: the painted track runs along the pool edge (a false 'bridge' with a 69 % drop to the rail-crossing junction); the lane keeps 3-4 m off the water and eases down to the Georgia Northern crossing.",
+   "wp": [
+    [
+     1314,
+     578
+    ],
+    [
+     1326,
+     578.6
+    ],
+    [
+     1337,
+     577.6
     ],
     [
      1345,
-     564
+     573.5
+    ],
+    [
+     1350,
+     567.5
+    ],
+    [
+     1352.5,
+     563
     ],
     [
      1355,
@@ -1065,18 +1095,20 @@
      560
     ],
     [
-     1375,
-     550
+     1363,
+     559.3
     ],
     [
-     1390,
-     545
+     1371,
+     558.3
     ],
     [
-     1402,
-     540
+     1380,
+     557
     ]
-   ]
+   ],
+   "mode": "spline",
+   "note": "Follows the painted lane along the bench to the homestead above the tracks (the old trace climbed straight up the slope to px 1402,540: 28 % average, 18.5 m cut)."
   },
   {
    "id": "HR_CHURCH_ST_S",

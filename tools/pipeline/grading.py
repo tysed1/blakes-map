@@ -32,8 +32,8 @@ from tools.lib.trace import resample
 from tools.lib.geom import geojson_line, geojson_point, fc
 
 MPP = 2.5
-MAX_GRADE = {'freeway': 0.06, 'highway': 0.08, 'ramp': 0.07, 'arterial': 0.08, 'main_street': 0.08, 'collector': 0.10,
-             'urban_street': 0.12, 'residential': 0.12, 'rural': 0.12, 'gravel': 0.15, 'dirt': 0.18, 'driveway': 0.20, 'rail': 0.022}
+MAX_GRADE = {'freeway': 0.05, 'highway': 0.08, 'ramp': 0.07, 'arterial': 0.08, 'main_street': 0.08, 'collector': 0.10,
+             'urban_street': 0.12, 'residential': 0.12, 'rural': 0.12, 'gravel': 0.15, 'dirt': 0.15, 'driveway': 0.15, 'rail': 0.022}
 SMOOTH_PX = {'freeway': 40, 'highway': 30, 'ramp': 12, 'arterial': 16, 'main_street': 10, 'collector': 10, 'urban_street': 6,
              'residential': 6, 'rural': 8, 'gravel': 6, 'dirt': 4, 'driveway': 3, 'rail': 50}
 CLEAR_WATER = {'river': 6.0, 'creek': 3.5, 'slough': 3.0}

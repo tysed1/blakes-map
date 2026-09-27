@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
+import { installSunBake, loadSunBake, sunBake } from '../../engine/sunbake';
 
 /**
  * Cinematic look: physically-flavoured aerial perspective, golden-hour sun, cascaded shadows,
@@ -139,16 +140,31 @@ const ShaftsShader = {
     }`,
 };
 
+export type ShadowQuality = 'low' | 'medium' | 'high' | 'ultra';
+/**
+ * Near-field real-time shadows (board item R1). Everything past the last cascade (and the terrain
+ * everywhere) comes from the static-sun bake (src/engine/sunbake.ts), so the cascades stay short:
+ * Low none, Medium 1 x 160 m, High 2 x 300 m, Ultra 3 x 500 m.
+ */
+export const SHADOW_PRESET: Record<ShadowQuality, { cascades: number; far: number; size: number }> = {
+  low: { cascades: 0, far: 0, size: 1024 },
+  medium: { cascades: 1, far: 160, size: 2048 },
+  high: { cascades: 2, far: 300, size: 2048 },
+  ultra: { cascades: 3, far: 500, size: 2048 },
+};
+
 export interface Cinematic {
   shafts: ShaderPass;
   composer: EffectComposer;
   bloom: UnrealBloomPass;
   grade: ShaderPass;
   csm: CSM | null;
+  /** the sun (first cascade light) */
+  readonly sun: THREE.DirectionalLight;
   setSize(w: number, h: number, dpr: number): void;
   render(): void;
   prepare(scene: THREE.Object3D): void;
-  setShadowQuality(q: 'low' | 'medium' | 'high' | 'ultra'): void;
+  setShadowQuality(q: ShadowQuality): void;
 }
 
 export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunDir: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number): Cinematic {
@@ -164,37 +180,61 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
 
-  // cascaded shadows: crisp contact shadows up close, tree/terrain shadow patterns to the horizon
-  const csm = new CSM({
-    camera, parent: scene, cascades: 4, maxFar: 3200, mode: 'practical', shadowMapSize: 2048,
-    lightDirection: sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 9000, lightMargin: 400, shadowBias: -0.00012,
-  } as any);
-  csm.fade = true;
-  for (const l of csm.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.5; }
-  const done = new WeakSet<THREE.Material>();
-  const setup = (m: THREE.Material) => {
-    if (done.has(m) || !(m as any).isMeshStandardMaterial && !(m as any).isMeshLambertMaterial && !(m as any).isMeshPhongMaterial && !(m as any).isMeshPhysicalMaterial) return;
-    done.add(m);
-    const prev = m.onBeforeCompile;
+  installSunBake(sunDir);
+  loadSunBake(renderer);
+  // one CSM per cascade count (the count is baked into the shaders); only the active one is in the scene
+  const rigs = new Map<number, CSM>();
+  const rig = (n: number) => {
+    let c = rigs.get(n);
+    if (!c) {
+      c = new CSM({
+        camera, parent: scene, cascades: n, maxFar: 300, mode: 'practical', shadowMapSize: 2048,
+        lightDirection: sunDir.clone().negate(), lightIntensity: sunIntensity, lightNear: 1, lightFar: 2500, lightMargin: 250, shadowBias: -0.00012,
+      } as any);
+      c.fade = true;
+      for (const l of c.lights) { l.color.copy(sunColor); l.shadow.normalBias = 0.5; }
+      c.remove();
+      rigs.set(n, c);
+    }
+    return c;
+  };
+  let csm = rig(2);
+  const attach = (c: CSM) => { for (const l of c.lights) { scene.add(l); scene.add(l.target); } };
+  attach(csm);
+  // every lit material: CSM hook + baked sun (defines / uniforms); re-hooked when the cascade count changes
+  const hooked = new Set<THREE.Material>();
+  const orig = new WeakMap<THREE.Material, { obc: THREE.Material['onBeforeCompile']; key: () => string }>();
+  const hook = (m: THREE.Material) => {
+    let o = orig.get(m);
+    if (!o) { o = { obc: m.onBeforeCompile, key: m.customProgramCacheKey.bind(m) }; orig.set(m, o); }
+    const { obc, key } = o;
     csm.setupMaterial(m);
-    const hook = m.onBeforeCompile;
-    m.onBeforeCompile = (s, r) => { prev.call(m, s, r); hook.call(m, s, r); };
-    const key = m.customProgramCacheKey.bind(m);
-    m.customProgramCacheKey = () => key() + '|csm';
+    const h = m.onBeforeCompile, n = csm.cascades;
+    m.onBeforeCompile = (s, r) => { obc.call(m, s, r); h.call(m, s, r); sunBake.onCompile(s); };
+    m.defines!.USE_SUNBAKE = '';
+    m.customProgramCacheKey = () => key() + '|csm' + n;
     m.needsUpdate = true;
   };
+  const setup = (m: THREE.Material) => {
+    if (hooked.has(m) || !(m as any).isMeshStandardMaterial && !(m as any).isMeshLambertMaterial && !(m as any).isMeshPhongMaterial && !(m as any).isMeshPhysicalMaterial) return;
+    hooked.add(m);
+    hook(m);
+  };
+  const sp = new THREE.Vector3(), fwd = new THREE.Vector3();
   return {
-    composer, bloom, grade, csm, shafts,
+    composer, bloom, grade, shafts,
+    get csm() { return csm; },
+    get sun() { return csm.lights[0]; },
     setSize(w, h, dpr) {
       composer.setPixelRatio(dpr); composer.setSize(w, h);
       grade.uniforms.uRes.value.set(w * dpr, h * dpr);
       csm.updateFrustums();
     },
     render() {
-      csm.update();
+      if (renderer.shadowMap.enabled) csm.update();
       // shafts only when the sun is in front of the camera
-      const sp = sunDir.clone().multiplyScalar(10000).add(camera.position).project(camera);
-      const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+      sp.copy(sunDir).multiplyScalar(10000).add(camera.position).project(camera);
+      camera.getWorldDirection(fwd);
       const facing = fwd.dot(sunDir);
       shafts.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);
       shafts.uniforms.uStrength.value = THREE.MathUtils.smoothstep(facing, 0.1, 0.6) * 1.6;
@@ -206,14 +246,30 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       root.traverse((o) => {
         const mm = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
         if (!mm || (o as any).isSprite) return;
-        (Array.isArray(mm) ? mm : [mm]).forEach(setup);
+        if (Array.isArray(mm)) mm.forEach(setup); else setup(mm);
       });
     },
     setShadowQuality(q) {
-      const s = { low: 1024, medium: 2048, high: 2048, ultra: 4096 }[q];
-      csm.maxFar = { low: 1200, medium: 2000, high: 3200, ultra: 4000 }[q];
-      for (const l of csm.lights) { if (l.shadow.mapSize.x !== s) { l.shadow.mapSize.set(s, s); l.shadow.map?.dispose(); (l.shadow as any).map = null; } }
+      const P = SHADOW_PRESET[q];
+      const n = Math.max(1, P.cascades);
+      if (n !== csm.cascades) {
+        csm.remove();
+        csm = rig(n);
+        attach(csm);
+        hooked.forEach(hook);
+      }
+      const on = P.cascades > 0;
+      if (renderer.shadowMap.enabled !== on) { renderer.shadowMap.enabled = on; hooked.forEach((m) => (m.needsUpdate = true)); }
+      for (const l of csm.lights) {
+        l.castShadow = on;
+        if (l.shadow.mapSize.x !== P.size) { l.shadow.mapSize.set(P.size, P.size); l.shadow.map?.dispose(); (l.shadow as any).map = null; }
+      }
+      csm.maxFar = Math.max(1, P.far);
       csm.updateFrustums();
+      // the CSM fades its last cascade out from the cascade's centre; the baked canopy shadows fade in
+      // over the same depth range (everywhere when there are no cascades)
+      const b = csm.breaks, c0 = on ? ((b.length > 1 ? b[b.length - 2] : 0) + 1) * 0.5 * P.far : 0;
+      sunBake.setNearField(c0, on ? P.far * 1.02 : 1);
     },
   };
 }

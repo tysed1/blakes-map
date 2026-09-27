@@ -546,6 +546,9 @@ def _species():
         ('RedMaple_C', 'maple', B, dict(h=16, crown_base=4.0, crown_r=4.8, lobes=(7, 11), flat=1.0, lean=0.07), 'maple', 'grey'),
         ('Hemlock_C', 'hemlock', HM, dict(h=24, crown_base=3.0, base_r=4.8), 'hemlock', 'pine'),
         ('WhitePine_C', 'pine', WP, dict(h=28, crown_base=10, base_r=5.6, tiers=(6, 9)), 'pine', 'pine'),
+        # stream-side bottomland species (E1): big open sycamore with pale limbs, multi-stem river birch
+        ('Sycamore', 'sycamore', B, dict(h=25, crown_base=7.0, crown_r=7.2, lobes=(9, 13), lobe_r=(0.3, 0.48), flat=0.8, lean=0.08, trunk_r=0.5, n_primary=7), 'poplar', 'pale'),
+        ('RiverBirch', 'birch', B, dict(h=15, crown_base=4.0, crown_r=4.4, lobes=(7, 10), lobe_r=(0.32, 0.5), flat=1.0, lean=0.1, trunk_r=0.2, stems=3, card_size=(0.9, 1.3)), 'maple', 'cinnamon'),
     ]
 
 
@@ -567,7 +570,16 @@ PAL = {
     'rhodo':   [((0.030, 0.058, 0.030), 0.8), ((0.040, 0.066, 0.030), 0.2)],
     'brush':   [((0.07, 0.09, 0.03), 0.5), ((0.19, 0.07, 0.025), 0.18), ((0.16, 0.115, 0.035), 0.32)],
     'snag':    [((0.1, 0.1, 0.1), 1.0)],
+    'sycamore': [((0.064, 0.086, 0.032), 0.6), ((0.16, 0.12, 0.04), 0.3), ((0.12, 0.08, 0.035), 0.1)],
+    'birch':   [((0.060, 0.090, 0.030), 0.6), ((0.22, 0.17, 0.035), 0.4)],
 }
+# autumn (E1): palette entries warmer than green (r > g) are weighted by the per-tree autumn progress
+# encoded in the vegetation seed (int part = autumn * 100): x0.25 in green coves .. x3 on high south crests.
+# Mirrored in src/components/world3d/trees.ts (pick weights).
+
+
+def autumn_weight(a):
+    return 0.25 + 2.75 * np.power(np.clip(a, 0, 1), 1.2)
 
 
 def build_prototypes(coll, seed=7, only=None):
@@ -578,6 +590,8 @@ def build_prototypes(coll, seed=7, only=None):
         'grey': bark_material('MAT_Bark_Grey', 'bark_brown_02', (0.55, 0.55, 0.52, 1), 0.6),
         'pine': bark_material('MAT_Bark_Pine', 'pine_bark', (0.6, 0.5, 0.44, 1), 0.7),
         'dead': bark_material('MAT_Bark_Dead', 'bark_brown_02', (0.75, 0.73, 0.7, 1), 0.6),
+        'pale': bark_material('MAT_Bark_Pale', 'bark_brown_02', (0.95, 0.92, 0.84, 1), 0.6),
+        'cinnamon': bark_material('MAT_Bark_Cinnamon', 'bark_brown_02', (0.78, 0.55, 0.42, 1), 0.6),
     }
     core = core_material()
     objs = []
@@ -601,18 +615,22 @@ def srgb_jitter(rng, n):
     return 0.85 + 0.3 * rng.random((n, 1))
 
 
-def instance_tints(species, rng):
-    """Per-instance linear tint from the family palette."""
+def instance_tints(species, rng, autumn=None):
+    """Per-instance linear tint from the family palette (warm entries weighted by autumn progress)."""
     col = np.ones((len(species), 4), np.float32)
     for i, fam in enumerate(FAMILY_OF):
         sel = species == i
         if not sel.any():
             continue
         pal = PAL[fam]
-        cols = np.array([c for c, _ in pal]); w = np.array([w for _, w in pal])
-        pick = rng.choice(len(pal), sel.sum(), p=w / w.sum())
+        cols = np.array([c for c, _ in pal]); w = np.array([w for _, w in pal], float)
+        warm = cols[:, 0] > cols[:, 1]
+        k = autumn_weight(autumn[sel]) if autumn is not None else np.ones(sel.sum())
+        Wt = np.where(warm[None, :], w[None, :] * k[:, None], w[None, :])
+        cum = np.cumsum(Wt, 1); cum /= cum[:, -1:]
+        pick = (rng.random((sel.sum(), 1)) > cum).sum(1)
         # blend two palette entries sometimes (turning trees: part green, part colour)
-        pick2 = rng.choice(len(pal), sel.sum(), p=w / w.sum())
+        pick2 = (rng.random((sel.sum(), 1)) > cum).sum(1)
         t = np.where(rng.random(sel.sum()) < 0.25, rng.random(sel.sum()) * 0.5, 0)[:, None]
         c = cols[pick] * (1 - t) + cols[pick2] * t
         col[sel, :3] = c * srgb_jitter(rng, sel.sum())
@@ -685,7 +703,7 @@ def build_vegetation(coll, seed=5):
     z = z - 0.25 - np.clip(sl, 0, 1.5) * 0.6
     bx, by = (x - 1000.0) * 2.5, -(y - 333.5) * 2.5
     scale = v[:, 3]
-    tint = instance_tints(sp, rng)
+    tint = instance_tints(sp, rng, np.floor(v[:, 5]) / 100.0 if v.shape[1] == 6 else None)
     rot = rng.random(len(v)) * 6.283
     tilt = rng.normal(0, 0.025, (len(v), 2))
     ob = instancer('VEG_points', coll, np.c_[bx, by, z], sp, scale, rot, tint, pc, tilt)

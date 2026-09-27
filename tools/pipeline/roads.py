@@ -631,7 +631,16 @@ def link_ramp_gores(G):
         if best is None:
             continue
         _, a, b, kk = best
-        t = E.split_edge(G, a, b, kk, xy)
+        # two gores on opposite carriageways at (nearly) the same station share one merge
+        # node on the centreline (no 3 m freeway stubs between junctions)
+        g = LineString(G.edges[a, b, kk]['pts'])
+        q = g.interpolate(g.project(Point(xy)))
+        t = None
+        for m in (a, b):
+            if G.degree(m) >= 3 and Point(G.nodes[m]['xy']).distance(q) < 4.0:
+                t = m
+        if t is None:
+            t = E.split_edge(G, a, b, kk, xy)
         attrs = dict(d['attrs']); attrs['virtual'] = True; attrs['name'] = 'merge link'
         G.add_edge(n, t, pts=np.array([xy, G.nodes[t]['xy']]), attrs=attrs, zone=d.get('zone'))
 
@@ -860,10 +869,85 @@ def chaikin(p, n=2):
     return rdp(p, 0.08)
 
 
+MIN_RADIUS_M = {'residential': 12, 'urban_street': 12, 'rural': 20, 'gravel': 12, 'dirt': 8, 'driveway': 5, 'collector': 35}
+
+
+def local_radius_px(P, h=6):
+    """Circumradius (px) through P[i-h], P[i], P[i+h] (1 px samples); inf near the ends."""
+    R = np.full(len(P), np.inf)
+    if len(P) < 2 * h + 1:
+        return R
+    a, b, c = P[:-2 * h], P[h:-h], P[2 * h:]
+    ab, bc, ca = np.hypot(*(b - a).T), np.hypot(*(c - b).T), np.hypot(*(a - c).T)
+    area2 = np.abs((b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0]))
+    R[h:-h] = ab * bc * ca / np.maximum(2 * area2, 1e-9)
+    return R
+
+
+def ease_min_radius(pts, rmin_m, keep_px=3.0, _depth=0, max_shift_px=2.4):
+    """Traced / grid local streets: round kinks and hairpins that are tighter than the
+    class minimum (AASHO local street 12 m) with a locally weighted smoothing; the
+    junction ends stay fixed. Returns the eased polyline (or the input if it is fine)."""
+    from scipy.ndimage import gaussian_filter1d
+    P = resample(np.asarray(pts, float), 1.0)
+    if len(P) < 15:
+        return pts
+    target = rmin_m * 1.12 / 2.5
+    s = np.r_[0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
+    endw = np.clip(np.minimum(s, s[-1] - s) / keep_px - 1.0, 0, 1)  # 0 at the ends, 1 inside
+    if not (local_radius_px(P) < target).any():
+        return pts
+    P0 = P.copy()
+    for sig in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0):
+        for _ in range(4):
+            bad = local_radius_px(P) < target
+            if not bad.any():
+                break
+            w = gaussian_filter1d(bad.astype(float), sig * 2.0)
+            w = np.clip(w / max(w.max(), 1e-9) * 2.0, 0, 1) * endw
+            Ps = gaussian_filter1d(P, sig, axis=0, mode='nearest')
+            P = P * (1 - w[:, None]) + Ps * w[:, None]
+            # a fillet, not a re-route: never more than max_shift_px off the traced line
+            dv = P - P0
+            dl = np.hypot(dv[:, 0], dv[:, 1])
+            P = P0 + dv * np.minimum(1.0, max_shift_px / np.maximum(dl, 1e-9))[:, None]
+    P[0], P[-1] = np.asarray(pts[0], float), np.asarray(pts[-1], float)
+    out = rdp(P, 0.04)
+    if _depth < 1 and (local_radius_px(resample(out, 1.0)) < target / 1.06).any():
+        return ease_min_radius(out, rmin_m, keep_px, _depth + 1, 0.6)
+    return out
+
+
+def finalize_geometry(G):
+    """Final plan shape of every edge (chaikin curves for traced streets, minimum-radius
+    easing for non-authored local streets), then drop parallel edges the easing made
+    redundant: a non-authored edge between the same two junctions within 5 px of another."""
+    for u, v, k, d in G.edges(keys=True, data=True):
+        pts = np.asarray(d['pts'])
+        if d['attrs']['src'] in ('auto', 'auto_gap') and len(pts) > 2:
+            pts = chaikin(pts, 3)
+        if d['attrs']['src'] != 'manual' and d['attrs']['type'] in MIN_RADIUS_M and len(pts) >= 2:
+            pts = ease_min_radius(pts, MIN_RADIUS_M[d['attrs']['type']])
+        d['pts'] = pts
+    n = 0
+    for u, v in {(min(a, b), max(a, b)) for a, b in G.edges() if a != b and G.number_of_edges(a, b) > 1}:
+        es = sorted(G.get_edge_data(u, v).items(), key=lambda kv: (kv[1]['attrs']['src'] == 'manual', -polyline_length(kv[1]['pts'])))
+        for kk, d in es[:-1]:
+            if d['attrs']['src'] == 'manual':
+                continue
+            keep = es[-1][1]
+            if LineString(d['pts']).hausdorff_distance(LineString(keep['pts'])) < 5.0:
+                G.remove_edge(u, v, kk)
+                n += 1
+    merge_chains(G)
+    print('  parallel duplicates removed after easing:', n)
+
+
 def write(G, zones):
     wb = load_json(path('data/water/water_bodies.geojson'))
     water = unary_union([shape(f['geometry']) for f in wb['features']])
     reg = load_registry()
+    finalize_geometry(G)
     # nodes
     node_ids = {}
     node_feats = []
@@ -878,8 +962,6 @@ def write(G, zones):
     edge_ids = {}
     for u, v, d in sorted(G.edges(data=True), key=lambda e: tuple(np.round(e[2]['pts'][len(e[2]['pts']) // 2]))):
         pts = np.asarray(d['pts'])
-        if d['attrs']['src'] in ('auto', 'auto_gap') and len(pts) > 2:
-            pts = chaikin(pts, 3)
         a_xy = np.asarray(G.nodes[u]['xy'])
         if np.hypot(*(pts[-1] - a_xy)) < np.hypot(*(pts[0] - a_xy)):
             pts = pts[::-1]  # geometry always runs from 'from' to 'to'

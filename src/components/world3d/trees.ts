@@ -9,8 +9,12 @@ import { assetUrl, bin, Heightfield } from '../../core/data';
  * (cards + noise cores + limbs near, core-only ellipsoids at the horizon). Instances are the
  * ecosystem scatter (vegetation_f32.bin) that Blender instances, with lib_trees' per-instance
  * tints, sink and tilt. Instances are pre-sorted by (species, cell); every few frames each
- * 100 m cell picks a LOD from its distance and frustum visibility, and the visible ranges are
- * block-copied into one InstancedMesh per species x LOD (~250 draw calls for 215k plants).
+ * 50 m cell picks the LODs its distance range overlaps (frustum-culled), and the visible ranges
+ * are block-copied into one InstancedMesh per species x LOD (~250 draw calls for 215k plants).
+ * LOD switches are invisible: every LOD owns a distance band and fades in / out per instance with
+ * a screen-space dither over a short cross-fade zone (complementary noise, so the outgoing and
+ * incoming LODs tile the pixels exactly); cells inside a fade zone are emitted to both LODs and the
+ * vertex shader collapses instances outside their LOD's band. Shadows switch at the band middle.
  *
  * Shading follows the Blender materials: leaf = card texture x instance tint x LEAF_K x crown AO,
  * per-card value jitter, crown-volume normals, 32 % warm translucency toward the sun; core = the
@@ -21,22 +25,44 @@ interface LodInfo { vcount: number; icount: number; groups: [number, number, num
 interface SpeciesInfo { name: string; family: string; card: string | null; bark: string; radius: number; height: number; lods: LodInfo[] }
 interface GeoJson { species: SpeciesInfo[]; lods: number; palettes: Record<string, [number[], number][]>; leaf_k: number }
 
-const CELL = 40; // source px (100 m)
+const CELL = 20; // source px (50 m)
 const BARK_TINT: Record<string, [number, number, number, string]> = {
   brown: [0.55, 0.5, 0.45, 'brown'], grey: [0.55, 0.55, 0.52, 'brown'], pine: [0.6, 0.5, 0.44, 'pine'], dead: [0.75, 0.73, 0.7, 'brown'],
+  pale: [0.95, 0.92, 0.84, 'brown'], cinnamon: [0.78, 0.55, 0.42, 'brown'],
 };
+/** lib_trees.autumn_weight: warm palette entries x0.25 (green coves) .. x3 (high south crests). */
+const autumnWeight = (a: number) => 0.25 + 2.75 * Math.pow(Math.min(Math.max(a, 0), 1), 1.2);
 const SMALL = new Set(['Sapling_HW_A', 'Sapling_HW_B', 'Sapling_Pine', 'Rhododendron_A', 'Laurel_B', 'Brush_A', 'Brush_B', 'Dogwood']);
 
 export interface TreeQuality { lodDist: [number, number, number, number]; smallFar: number; shadowLod: number }
+// LOD switch distances (m): 0 full | 1 30 % cards | 2 cores + sparse cards | 3 four cores | 4 shared crown billboard.
+// Cross-fades hide the switches, so they sit where the pixel footprint allows (triangle budget, R4 impostors next).
 export const TREE_QUALITY: Record<string, TreeQuality> = {
-  low: { lodDist: [45, 180, 520, 1100], smallFar: 350, shadowLod: 0 },
-  medium: { lodDist: [70, 260, 750, 1500], smallFar: 550, shadowLod: 1 },
-  high: { lodDist: [100, 340, 950, 1900], smallFar: 800, shadowLod: 2 },
-  ultra: { lodDist: [140, 450, 1200, 2400], smallFar: 1100, shadowLod: 2 },
+  low: { lodDist: [30, 90, 220, 450], smallFar: 110, shadowLod: 0 },
+  medium: { lodDist: [40, 120, 280, 580], smallFar: 150, shadowLod: 1 },
+  high: { lodDist: [55, 160, 360, 750], smallFar: 200, shadowLod: 1 },
+  ultra: { lodDist: [80, 230, 500, 1000], smallFar: 280, shadowLod: 1 },
 };
 
 // ---------------------------------------------------------------- shading
 export interface FoliageUniforms { uTime: { value: number }; uSunDir: { value: THREE.Vector3 }; uWind: { value: number }; uGain: { value: number } }
+/** Per-LOD cross-fade band (x..y fade in, z..w fade out, metres from uCamPos) + small-plant far fade. */
+interface FadeUniforms { uFade: { value: THREE.Vector4 }; uFar: { value: THREE.Vector2 }; uCamPos: { value: THREE.Vector3 } }
+
+const FADE_VERT_PARS = `
+  uniform vec4 uFade; uniform vec2 uFar; uniform vec3 uCamPos;
+  // > 0: visible fraction on a fade-out edge; < 0: -fraction on a fade-in edge (complementary dither)
+  float treeFade(vec3 ip) {
+    float d = distance(ip, uCamPos);
+    float fin = clamp((d - uFade.x) / (uFade.y - uFade.x), 0.0, 1.0);
+    if (fin < 1.0) return -fin;
+    return (1.0 - clamp((d - uFade.z) / (uFade.w - uFade.z), 0.0, 1.0)) * (1.0 - clamp((d - uFar.x) / (uFar.y - uFar.x), 0.0, 1.0));
+  }`;
+const FADE_FRAG = `
+  {
+    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if ((vFade < 0.0 ? 1.0 - ign : ign) >= abs(vFade)) discard;
+  }`;
 
 function windChunk(leafy: boolean) {
   return `
@@ -51,13 +77,21 @@ function windChunk(leafy: boolean) {
     #endif`;
 }
 
-function patchCommon(s: THREE.WebGLProgramParametersWithUniforms, u: FoliageUniforms, leafy: boolean) {
-  Object.assign(s.uniforms, u);
+function patchCommon(s: THREE.WebGLProgramParametersWithUniforms, u: FoliageUniforms, leafy: boolean, f: FadeUniforms) {
+  Object.assign(s.uniforms, u, f);
   s.vertexShader = s.vertexShader
     .replace('#include <common>', `#include <common>
       attribute vec2 al;
       uniform float uTime; uniform float uWind;
-      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj;`)
+      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade;
+      ${FADE_VERT_PARS}`)
+    .replace('#include <project_vertex>', `#include <project_vertex>
+      #ifdef USE_INSTANCING
+        vFade = treeFade((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz);
+        if (abs(vFade) < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // outside this LOD's band: collapse
+      #else
+        vFade = 1.0;
+      #endif`)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       vAL = al; vObj = position;
       #ifdef USE_INSTANCING_COLOR
@@ -67,13 +101,14 @@ function patchCommon(s: THREE.WebGLProgramParametersWithUniforms, u: FoliageUnif
       #endif
       ${windChunk(leafy)}`);
   s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj;
+      varying vec2 vAL; varying vec3 vTint; varying vec3 vObj; varying float vFade;
       uniform vec3 uSunDir; uniform float uGain;`)
+    .replace('#include <clipping_planes_fragment>', FADE_FRAG + '\n#include <clipping_planes_fragment>')
     .replace('#include <color_fragment>', ''); // instance tint is applied explicitly (bark is untinted)
 }
 
 /** Leaf cards: MAT_Foliage_<card>. */
-function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u: FoliageUniforms) {
+function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u: FoliageUniforms, f: FadeUniforms) {
   const m = new THREE.MeshStandardMaterial({
     map, normalMap: nmap, normalScale: new THREE.Vector2(0.55, 0.55), alphaTest: 0.5, side: THREE.DoubleSide,
     roughness: 0.62, metalness: 0, envMapIntensity: 0.6,
@@ -81,7 +116,7 @@ function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u:
   m.alphaToCoverage = true;
   m.defines = { FOLIAGE: '' };
   m.onBeforeCompile = (s) => {
-    patchCommon(s, u, true);
+    patchCommon(s, u, true, f);
     s.fragmentShader = s.fragmentShader
       // crown-volume normals must not flip on back faces (Blender cards: custom normals, no flip)
       .replace('#include <normal_fragment_begin>', THREE.ShaderChunk.normal_fragment_begin.replace('float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;', 'float faceDirection = 1.0;'))
@@ -100,11 +135,11 @@ function leafMaterial(map: THREE.Texture, nmap: THREE.Texture, leafK: number, u:
 }
 
 /** Core masses behind the cards: MAT_Foliage_Core (tint x AO, soft voronoi-ish breakup). */
-function coreMaterial(u: FoliageUniforms, leafTex: THREE.Texture) {
+function coreMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUniforms) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0, envMapIntensity: 0.5 });
   m.alphaToCoverage = true;
   m.onBeforeCompile = (s) => {
-    patchCommon(s, u, false);
+    patchCommon(s, u, false, f);
     s.uniforms.tLeaf = { value: leafTex };
     s.fragmentShader = s.fragmentShader
       .replace('uniform vec3 uSunDir;', 'uniform vec3 uSunDir; uniform sampler2D tLeaf;')
@@ -129,10 +164,10 @@ function coreMaterial(u: FoliageUniforms, leafTex: THREE.Texture) {
 }
 
 /** Bark: triplanar bark texture (object coords, Blender box projection) x species tint. */
-function barkMaterial(tex: THREE.Texture, tint: [number, number, number], scale: number, u: FoliageUniforms) {
+function barkMaterial(tex: THREE.Texture, tint: [number, number, number], scale: number, u: FoliageUniforms, f: FadeUniforms) {
   const m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(tint[0], tint[1], tint[2]), roughness: 0.9, metalness: 0, envMapIntensity: 0.4 });
   m.onBeforeCompile = (s) => {
-    patchCommon(s, u, false);
+    patchCommon(s, u, false, f);
     s.uniforms.uBark = { value: tex };
     s.fragmentShader = s.fragmentShader
       .replace('uniform vec3 uSunDir;', 'uniform vec3 uSunDir; uniform sampler2D uBark;')
@@ -145,6 +180,96 @@ function barkMaterial(tex: THREE.Texture, tint: [number, number, number], scale:
         }`);
   };
   m.customProgramCacheKey = () => 'bark' + scale;
+  return m;
+}
+
+/**
+ * Horizon LOD: one camera-facing crown card per tree for every species in a single draw call (2 tris).
+ * Per-instance ibb = (crown centre height, half width, half height, shape 0 round .. 1 conical); the card is
+ * lit as a sphere-ish crown (view-space normal from the card position), its outline frayed by the leaf-card
+ * alpha and its body broken up by the leaf-card colour, like the core material it replaces.
+ */
+function billboardMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUniforms) {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0, envMapIntensity: 0.5 });
+  m.alphaToCoverage = true;
+  m.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, u, f, { tLeaf: { value: leafTex } });
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute vec4 ibb;
+        varying vec3 vTint; varying vec4 vBB; varying float vFade;
+        ${FADE_VERT_PARS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        #ifdef USE_INSTANCING_COLOR
+          vTint = instanceColor;
+        #else
+          vTint = vec3(1.0);
+        #endif`)
+      .replace('#include <project_vertex>', `
+        vec4 mvPosition = vec4(0.0, 0.0, 0.0, 1.0);
+        #ifdef USE_INSTANCING
+          vec3 ip = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz;
+          float isc = length(instanceMatrix[0].xyz);
+          vec3 cc = ip + vec3(0.0, ibb.x * isc, 0.0);
+          vec3 vd = normalize(cc - uCamPos);
+          // seen from above the crown is round: the card's height blends from crown height to crown width
+          float rup = mix(ibb.z, ibb.y, abs(vd.y));
+          mvPosition = viewMatrix * vec4(cc, 1.0) + vec4(position.x * ibb.y * isc, position.y * rup * isc, 0.0, 0.0);
+          vFade = treeFade(ip);
+          vBB = vec4(position.xy, ibb.w, fract(ip.x * 0.371 + ip.z * 0.613));
+        #endif
+        gl_Position = projectionMatrix * mvPosition;
+        #ifdef USE_INSTANCING
+          if (abs(vFade) < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        #endif`);
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D tLeaf; uniform float uGain;
+        varying vec3 vTint; varying vec4 vBB; varying float vFade;
+        float bbR;`)
+      .replace('#include <clipping_planes_fragment>', FADE_FRAG + `
+        {
+          vec2 bp = vBB.xy;
+          // conical crowns narrow toward the top
+          float wdt = mix(1.0, clamp(0.55 - 0.5 * bp.y, 0.08, 1.0), vBB.z);
+          bbR = length(vec2(bp.x / wdt, bp.y));
+          vec4 lf = texture2D(tLeaf, bp * 0.9 + vBB.w * 7.0);
+          if (bbR > 0.62 + 0.4 * lf.a) discard;
+        }
+        #include <clipping_planes_fragment>`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          vec4 lf = texture2D(tLeaf, vBB.xy * 1.3 + vBB.w * 5.0);
+          float lum = dot(lf.rgb, vec3(0.3, 0.55, 0.15)) * 1.9;
+          float br = mix(0.28, 1.0, lf.a) * mix(1.0, clamp(lum, 0.6, 1.4), lf.a);
+          // crown AO: darker underside and core, like the LOD-0 cards' AO ramp
+          float ao = (0.42 + 0.38 * (vBB.y * 0.5 + 0.5)) * mix(1.0, 0.8, 1.0 - clamp(bbR, 0.0, 1.0));
+          diffuseColor.rgb *= vTint * ao * br * uGain;
+        }`)
+      .replace('#include <color_fragment>', '')
+      .replace('#include <normal_fragment_begin>', `
+        float faceDirection = 1.0;
+        vec2 bn = vBB.xy; float rr = min(dot(bn, bn), 1.0);
+        vec3 normal = normalize(vec3(bn.x, bn.y * 0.85 + 0.2, sqrt(1.0 - rr) + 0.15));
+        vec3 nonPerturbedNormal = normal;`);
+  };
+  m.customProgramCacheKey = () => 'treebb';
+  return m;
+}
+
+/** Shadow depth: optional card alpha, and the LOD band with a hard switch at the fade middle (one caster). */
+function depthMaterial(map: THREE.Texture | null, f: FadeUniforms) {
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: map ? 0.5 : 0 });
+  m.onBeforeCompile = (s) => {
+    Object.assign(s.uniforms, f);
+    s.vertexShader = s.vertexShader
+      .replace('#include <common>', `#include <common>\n${FADE_VERT_PARS}`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        #ifdef USE_INSTANCING
+          if (abs(treeFade((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz)) < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        #endif`);
+  };
+  m.customProgramCacheKey = () => 'treedepth' + (map ? 'm' : '');
   return m;
 }
 
@@ -173,22 +298,25 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
   };
-  const leafMats = new Map<string, THREE.Material>(), barkMats = new Map<string, THREE.Material>();
+  // one material set per LOD (+ small-plant far fade): same programs, per-LOD fade uniforms
+  const camU = { value: new THREE.Vector3(1e9, 0, 0) };
+  const fades: FadeUniforms[][] = [0, 1].map(() => [0, 1, 2, 3, 4].map(() => ({ uFade: { value: new THREE.Vector4() }, uFar: { value: new THREE.Vector2() }, uCamPos: camU })));
+  const matCache = new Map<string, THREE.Material>();
+  const cached = <T extends THREE.Material>(k: string, make: () => T) => { if (!matCache.has(k)) matCache.set(k, make()); return matCache.get(k)! as T; };
+  const texCache = new Map<string, THREE.Texture>();
+  const ctex = (f: string, srgb: boolean) => { if (!texCache.has(f)) texCache.set(f, tex(f, srgb)); return texCache.get(f)!; };
   const barkTex: Record<string, THREE.Texture> = { brown: tex('bark_brown.jpg', true), pine: tex('bark_pine.jpg', true) };
-  const core = coreMaterial(uniforms, tex('card_oak.png', true));
-  const depthMats = new Map<string, THREE.Material>();
-  const leaf = (card: string) => {
-    if (!leafMats.has(card)) {
-      const map = tex(`card_${card}.png`, true);
-      leafMats.set(card, leafMaterial(map, tex(`card_${card}_n.jpg`, false), meta.leaf_k, uniforms));
-      depthMats.set(card, new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: 0.5 }));
-    }
-    return leafMats.get(card)!;
-  };
-  const bark = (b: string) => {
-    if (!barkMats.has(b)) { const [r, g, bb, t] = BARK_TINT[b]; barkMats.set(b, barkMaterial(barkTex[t], [r, g, bb], t === 'pine' ? 0.7 : 0.6, uniforms)); }
-    return barkMats.get(b)!;
-  };
+  const coreLeaf = tex('card_oak.png', true);
+  const fk = (li: number, sm: number) => `${li}:${sm}`;
+  const leaf = (card: string, li: number, sm: number) => cached(`leaf:${card}:${fk(li, sm)}`, () =>
+    leafMaterial(ctex(`card_${card}.png`, true), ctex(`card_${card}_n.jpg`, false), meta.leaf_k, uniforms, fades[sm][li]));
+  const bark = (b: string, li: number, sm: number) => cached(`bark:${b}:${fk(li, sm)}`, () => {
+    const [r, g, bb, t] = BARK_TINT[b] ?? BARK_TINT.brown;
+    return barkMaterial(barkTex[t], [r, g, bb], t === 'pine' ? 0.7 : 0.6, uniforms, fades[sm][li]);
+  });
+  const core = (li: number, sm: number) => cached(`core:${fk(li, sm)}`, () => coreMaterial(uniforms, coreLeaf, fades[sm][li]));
+  const depth = (card: string | null, li: number, sm: number) => cached(`depth:${card}:${fk(li, sm)}`, () =>
+    depthMaterial(card ? ctex(`card_${card}.png`, true) : null, fades[sm][li]));
 
   // geometries
   const geos: THREE.BufferGeometry[][] = meta.species.map((sp) => sp.lods.map((l) => {
@@ -203,7 +331,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, sp.height / 2, 0), Math.hypot(sp.radius, sp.height / 2));
     return g;
   }));
-  const matsFor = (sp: SpeciesInfo) => [bark(sp.bark), sp.card ? leaf(sp.card) : bark(sp.bark), core];
+  const matsFor = (sp: SpeciesInfo, li: number, sm: number) => [bark(sp.bark, li, sm), sp.card ? leaf(sp.card, li, sm) : bark(sp.bark, li, sm), core(li, sm)];
 
   // instances sorted by (species, cell)
   const S = 6, V = new Float32Array(vegBuf), n = V.length / S;
@@ -224,10 +352,15 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   const pal = meta.palettes;
   let seed = 5;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  const pick = (pl: [number[], number][], r: number) => { let a = 0; const tot = pl.reduce((s, x) => s + x[1], 0); for (const [c, w] of pl) { a += w / tot; if (r < a) return c; } return pl[pl.length - 1][0]; };
+  // palette pick weighted by autumn progress (vegetation seed: int part = autumn * 100)
+  const pick = (pl: [number[], number][], r: number, k: number) => {
+    let tot = 0; for (const [c, w] of pl) tot += c[0] > c[1] ? w * k : w;
+    let a = 0; for (const [c, w] of pl) { a += (c[0] > c[1] ? w * k : w) / tot; if (r < a) return c; } return pl[pl.length - 1][0];
+  };
   for (let k = 0; k < n; k++) {
     const i = order[k], kk = key[i], spi = Math.floor(kk / NC), c = kk % NC;
-    const x = V[i * S], y = V[i * S + 1], s = V[i * S + 3], sd = V[i * S + 5];
+    const x = V[i * S], y = V[i * S + 1], s = V[i * S + 3], sd0 = V[i * S + 5];
+    const aw = autumnWeight(Math.floor(sd0) / 100), sd = sd0 - Math.floor(sd0);
     const z = hf.at(x, y);
     // lib_trees.build_vegetation: sink on slopes so the root flare never floats
     const sl = Math.hypot(hf.at(x + 1, y) - hf.at(x - 1, y), hf.at(x, y + 1) - hf.at(x, y - 1)) / (2 * 2.5);
@@ -240,8 +373,8 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     m4.compose(p, q, sc).toArray(mats, k * 16);
     const sp = meta.species[spi];
     const pl = pal[sp.family] ?? pal.oak;
-    let col = pick(pl, r2);
-    if (rnd() < 0.25) { const c2 = pick(pl, rnd()); const t = rnd() * 0.5; col = col.map((v, j) => v * (1 - t) + c2[j] * t); }
+    let col = pick(pl, r2, aw);
+    if (rnd() < 0.25) { const c2 = pick(pl, rnd(), aw); const t = rnd() * 0.5; col = col.map((v, j) => v * (1 - t) + c2[j] * t); }
     const j = 0.85 + 0.3 * r3;
     cols[k * 3] = col[0] * j; cols[k * 3 + 1] = col[1] * j; cols[k * 3 + 2] = col[2] * j;
     const ri = (spi * NC + c) * 2;
@@ -254,71 +387,133 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
 
   // one InstancedMesh per species x LOD, sized for the whole species
   const group = new THREE.Group(); group.name = 'trees';
-  const meshes: THREE.InstancedMesh[][] = meta.species.map((sp, si) => sp.lods.map((_, li) => {
-    const im = new THREE.InstancedMesh(geos[si][li], matsFor(sp), Math.max(1, perSpecies[si]));
+  const NL = 4; // geometry LODs per species; LOD 4 is the shared billboard
+  const meshes: THREE.InstancedMesh[][] = meta.species.map((sp, si) => sp.lods.slice(0, NL).map((_, li) => {
+    const sm = SMALL.has(sp.name) ? 1 : 0;
+    const im = new THREE.InstancedMesh(geos[si][li], matsFor(sp, li, sm), Math.max(1, perSpecies[si]));
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, perSpecies[si]) * 3), 3);
     im.instanceColor.setUsage(THREE.DynamicDrawUsage);
     im.count = 0; im.frustumCulled = false; im.receiveShadow = true;
-    if (sp.card) im.customDepthMaterial = depthMats.get(sp.card);
+    im.customDepthMaterial = depth(sp.card, li, sm);
     im.userData.kind = 'tree';
     im.name = `tree_${sp.name}_lod${li}`;
     group.add(im);
     return im;
   }));
+  const small = meta.species.map((sp) => SMALL.has(sp.name));
+  // billboard: crown centre / radii from the exported horizon ellipsoid (lod 4), slightly grown to the card shell
+  const bbSp = new Float32Array(nsp * 4);
+  meta.species.forEach((sp, si) => {
+    const l = sp.lods[sp.lods.length - 1], P = new Float32Array(geoBuf, l.pos, l.vcount * 3);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (let v = 0; v < l.vcount; v++) {
+      x0 = Math.min(x0, P[v * 3]); x1 = Math.max(x1, P[v * 3]); y0 = Math.min(y0, P[v * 3 + 1]); y1 = Math.max(y1, P[v * 3 + 1]); z0 = Math.min(z0, P[v * 3 + 2]); z1 = Math.max(z1, P[v * 3 + 2]);
+    }
+    const conical = sp.family === 'hemlock' || sp.name === 'Sapling_Pine' ? 1 : sp.family === 'pine' ? 0.35 : 0;
+    bbSp.set([(y0 + y1) / 2, Math.max(x1 - x0, z1 - z0) / 2 * 1.15, (y1 - y0) / 2 * 1.12, conical], si * 4);
+  });
+  const bbAll = new Float32Array(n * 4); // per sorted instance
+  for (let k = 0; k < n; k++) bbAll.set(bbSp.subarray(Math.floor(key[order[k]] / NC) * 4, Math.floor(key[order[k]] / NC) * 4 + 4), k * 4);
+  const quad = new THREE.BufferGeometry();
+  quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+  quad.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]), 3));
+  quad.setIndex([0, 1, 2, 0, 2, 3]);
+  const ibb = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4); ibb.setUsage(THREE.DynamicDrawUsage);
+  quad.setAttribute('ibb', ibb);
+  const bbMesh = new THREE.InstancedMesh(quad, billboardMaterial(uniforms, coreLeaf, fades[0][4]), Math.max(1, n));
+  bbMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  bbMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, n) * 3), 3);
+  bbMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  bbMesh.count = 0; bbMesh.frustumCulled = false; bbMesh.castShadow = false; bbMesh.receiveShadow = false;
+  bbMesh.userData.kind = 'tree'; bbMesh.name = 'tree_billboards_lod4';
+  group.add(bbMesh);
 
   let quality: TreeQuality = TREE_QUALITY.high;
-  const setShadows = () => meshes.forEach((l) => l.forEach((im, li) => (im.castShadow = li <= quality.shadowLod)));
-  setShadows();
-  const cellLod = new Int8Array(NC), prevLod = new Int8Array(NC).fill(-2);
+  // LOD l is drawn over [lo[l], hi[l]] (metres); fade zones are +-FADE_W around each switch distance
+  const lo = new Float32Array(5), hi = new Float32Array(5);
+  const fadeW = (d: number) => Math.min(Math.max(0.1 * d, 6), 45);
+  const applyQuality = () => {
+    const d = quality.lodDist;
+    for (let l = 0; l < 5; l++) {
+      const wi = l > 0 ? fadeW(d[l - 1]) : 0, wo = l < 4 ? fadeW(d[l]) : 0;
+      lo[l] = l > 0 ? d[l - 1] - wi : -1; hi[l] = l < 4 ? d[l] + wo : 1e9;
+      for (const sm of [0, 1]) {
+        fades[sm][l].uFade.value.set(l > 0 ? lo[l] : -2, l > 0 ? d[l - 1] + wi : -1, l < 4 ? d[l] - wo : 1e9, l < 4 ? hi[l] : 2e9);
+        fades[sm][l].uFar.value.set(sm ? quality.smallFar * 0.8 : 1e9, sm ? quality.smallFar : 2e9);
+      }
+    }
+    meshes.forEach((l) => l.forEach((im, li) => (im.castShadow = li <= quality.shadowLod)));
+  };
+  applyQuality();
+  // cell bounds in world metres (no per-frame allocation)
+  const cellX = new Float32Array(ncx + 1), cellZ = new Float32Array(ncy + 1);
+  for (let i = 0; i <= ncx; i++) cellX[i] = pxToWorld(i * CELL, 0)[0];
+  for (let i = 0; i <= ncy; i++) cellZ[i] = pxToWorld(0, i * CELL)[2];
+  const cellMask = new Uint8Array(NC), prevMask = new Uint8Array(NC).fill(255), cellDmin = new Float32Array(NC);
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), box = new THREE.Box3();
-  const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3();
+  const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3(), dir = new THREE.Vector3();
+  const cnt = new Int32Array(5);
+  const PAD = 15, SLACK = 3; // crown overhang (m); camera travel allowed between culling passes (m)
   let visible = 0, tris = 0;
 
   function update(camera: THREE.Camera, force = false) {
-    const cp = camera.position, dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+    const cp = camera.position;
+    camU.value.copy(cp);
+    camera.getWorldDirection(dir);
     if (!force && cp.distanceToSquared(lastPos) < 4 && dir.dot(lastDir) > 0.9995) return;
     lastPos.copy(cp); lastDir.copy(dir);
     pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pm);
-    const d = quality.lodDist;
     let changed = force;
     for (let cy = 0; cy < ncy; cy++) for (let cx = 0; cx < ncx; cx++) {
       const c = cy * ncx + cx;
-      if (cellMaxY[c] < cellMinY[c]) { cellLod[c] = -1; continue; }
-      const [x0, , z0] = pxToWorld(cx * CELL, cy * CELL), [x1, , z1] = pxToWorld((cx + 1) * CELL, (cy + 1) * CELL);
-      box.min.set(x0 - 15, cellMinY[c], z0 - 15); box.max.set(x1 + 15, cellMaxY[c], z1 + 15);
-      let l = -1;
-      if (frustum.intersectsBox(box)) {
-        const dist = box.distanceToPoint(cp);
-        l = dist < d[0] ? 0 : dist < d[1] ? 1 : dist < d[2] ? 2 : dist < d[3] ? 3 : 4;
+      let m = 0;
+      if (cellMaxY[c] >= cellMinY[c]) {
+        box.min.set(cellX[cx] - PAD, cellMinY[c], cellZ[cy] - PAD); box.max.set(cellX[cx + 1] + PAD, cellMaxY[c], cellZ[cy + 1] + PAD);
+        if (frustum.intersectsBox(box)) {
+          const dmin = box.distanceToPoint(cp) - SLACK;
+          const ex = Math.max(Math.abs(cp.x - box.min.x), Math.abs(cp.x - box.max.x));
+          const ey = Math.max(Math.abs(cp.y - box.min.y), Math.abs(cp.y - box.max.y));
+          const ez = Math.max(Math.abs(cp.z - box.min.z), Math.abs(cp.z - box.max.z));
+          const dmax = Math.sqrt(ex * ex + ey * ey + ez * ez) + SLACK;
+          for (let l = 0; l < 5; l++) if (dmin <= hi[l] && dmax >= lo[l]) m |= 1 << l;
+          cellDmin[c] = dmin;
+        }
       }
-      cellLod[c] = l;
-      if (l !== prevLod[c]) changed = true;
+      cellMask[c] = m;
+      if (m !== prevMask[c]) changed = true;
     }
     if (!changed) return;
-    prevLod.set(cellLod);
+    prevMask.set(cellMask);
     visible = 0; tris = 0;
-    const smallFar = quality.smallFar;
+    const smallFar = quality.smallFar + SLACK;
+    let nbb = 0;
+    const bbM = bbMesh.instanceMatrix.array as Float32Array, bbC = bbMesh.instanceColor!.array as Float32Array, bbA = ibb.array as Float32Array;
     for (let si = 0; si < nsp; si++) {
-      const sp = meta.species[si], small = SMALL.has(sp.name);
+      const sp = meta.species[si], sm = small[si];
       const lm = meshes[si];
-      const cnt = [0, 0, 0, 0, 0];
+      cnt.fill(0);
       for (let c = 0; c < NC; c++) {
-        let l = cellLod[c];
-        if (l < 0) continue;
+        const m = cellMask[c];
+        if (!m) continue;
         const ri = (si * NC + c) * 2, a = range[ri];
         if (a < 0) continue;
-        if (small && l >= 2) {
-          // shrubs / saplings vanish into the canopy with distance
-          const cx = c % ncx, cy = Math.floor(c / ncx), [X, , Z] = pxToWorld((cx + 0.5) * CELL, (cy + 0.5) * CELL);
-          if (Math.hypot(X - cp.x, Z - cp.z) > smallFar) continue;
+        if (sm && cellDmin[c] > smallFar) continue; // shrubs / saplings dissolve into the canopy with distance
+        const b = range[ri + 1];
+        if (m & 16) {
+          bbM.set(mats.subarray(a * 16, b * 16), nbb * 16); bbC.set(cols.subarray(a * 3, b * 3), nbb * 3);
+          bbA.set(bbAll.subarray(a * 4, b * 4), nbb * 4);
+          nbb += b - a;
         }
-        const b = range[ri + 1], im = lm[l], o = cnt[l];
-        (im.instanceMatrix.array as Float32Array).set(mats.subarray(a * 16, b * 16), o * 16);
-        (im.instanceColor!.array as Float32Array).set(cols.subarray(a * 3, b * 3), o * 3);
-        cnt[l] += b - a;
+        for (let l = 0; l < NL; l++) {
+          if (!(m & (1 << l))) continue;
+          const im = lm[l], o = cnt[l];
+          (im.instanceMatrix.array as Float32Array).set(mats.subarray(a * 16, b * 16), o * 16);
+          (im.instanceColor!.array as Float32Array).set(cols.subarray(a * 3, b * 3), o * 3);
+          cnt[l] += b - a;
+        }
       }
-      for (let l = 0; l < 5; l++) {
+      for (let l = 0; l < NL; l++) {
         const im = lm[l];
         im.count = cnt[l];
         im.visible = cnt[l] > 0;
@@ -329,11 +524,16 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
         }
       }
     }
+    bbMesh.count = nbb; bbMesh.visible = nbb > 0;
+    if (nbb) {
+      for (const at of [bbMesh.instanceMatrix, bbMesh.instanceColor!, ibb]) { at.clearUpdateRanges(); at.addUpdateRange(0, nbb * at.itemSize); at.needsUpdate = true; }
+      visible += nbb; tris += nbb * 2;
+    }
   }
 
   return {
     group, count: n, uniforms, update,
-    setQuality(qn) { quality = TREE_QUALITY[qn]; setShadows(); prevLod.fill(-2); },
+    setQuality(qn) { quality = TREE_QUALITY[qn]; applyQuality(); prevMask.fill(255); lastPos.set(1e9, 0, 0); },
     stats: () => ({ instances: visible, tris }),
   };
 }
