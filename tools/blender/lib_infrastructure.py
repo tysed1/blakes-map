@@ -1201,7 +1201,9 @@ def build_walls(coll, T, bbox=None):
         M.grid(G, [0, 0, 0], rs=np.broadcast_to(S['s'][:, None], (len(P), 4)))
         n += 1
     if not M.empty():
-        M.to_object('INFRA Retaining Walls', coll, [mats()['stone']], smooth=False)
+        # 1970s town retaining walls: cast-in-place concrete with a coping (the rubble-masonry pattern
+        # read as pale crazy paving from the road)
+        M.to_object('INFRA Retaining Walls', coll, [mats()['concrete']], smooth=False)
     return n
 
 

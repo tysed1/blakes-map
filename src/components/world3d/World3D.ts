@@ -15,7 +15,7 @@ import { installAtmosphere, createCinematic, Cinematic, NEAR_CASTER_LAYER } from
 import { terrainMaterial } from './terrainMaterial';
 import { sunBake } from '../../engine/sunbake';
 import { initTextures, loadTexture } from '../../engine/textures';
-import { bakeImpostors, impostorMaterial, impostorQuad, ImpostorSet } from '../../engine/impostor';
+import { bakeImpostors, impostorMaterial, impostorQuad, ImpostorSet, impostorTune } from '../../engine/impostor';
 import { buildGroundcover, Groundcover } from './groundcover'; // groundcover (agent)
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -181,6 +181,7 @@ export class World3D {
   private envResolve!: () => void;
   private envReady = new Promise<void>((r) => { this.envResolve = r; setTimeout(r, 20000); });
   impostors: ImpostorSet | null = null;
+  readonly impostorTune = impostorTune;
   /**
    * R4: the far tree LOD band (LOD 3: crown cores) becomes octahedral impostors: 2 triangles per tree,
    * rendered from the same mesh + material at load (src/engine/impostor.ts), same cross-fade band.
@@ -201,11 +202,20 @@ export class World3D {
       const u = (this.renderer.properties.get(im.material as THREE.Material) as any).uniforms;
       const tile = set.tiles.get(im.geometry);
       if (!u?.uFade || !tile) continue;   // material never compiled: keep the geometry LOD
-      im.material = impostorMaterial(set, tile, { uFade: u.uFade, uFar: u.uFar, uCamPos: u.uCamPos });
-      im.geometry = quad;
-      im.castShadow = false; im.customDepthMaterial = undefined;
+      im.userData.geo = { geometry: im.geometry, material: im.material, depth: im.customDepthMaterial, cast: im.castShadow };
+      im.userData.imp = { geometry: quad, material: impostorMaterial(set, tile, { uFade: u.uFade, uFar: u.uFar, uCamPos: u.uCamPos }) };
     }
     this.impostors = set;
+    this.setImpostors(true);
+  }
+  /** Swap the LOD3 band between impostors and the geometry LOD (A/B in one session). */
+  setImpostors(on: boolean) {
+    this.veg?.group.children.forEach((o) => {
+      const im = o as THREE.InstancedMesh, d = im.userData;
+      if (!d.imp) return;
+      if (on) { im.geometry = d.imp.geometry; im.material = d.imp.material; im.castShadow = false; im.customDepthMaterial = undefined; }
+      else { im.geometry = d.geo.geometry; im.material = d.geo.material; im.castShadow = d.geo.cast; im.customDepthMaterial = d.geo.depth; }
+    });
   }
   vegReady = false;
   camsReady = false;
