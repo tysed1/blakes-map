@@ -44,10 +44,35 @@ const uniforms = {
   // bias per metre above the ground (sun-side crown tops stay lit inside a closed canopy), z: crown
   // lookup shift (m), w: canopy shadow strength on crowns
   uSunBakeT: { value: new THREE.Vector4(0.3, 0.8, 5, 0.2) },
+  // R5 moving cloud shadows: tileable fbm noise; x, y = drift offset (m), z = shadow strength, w = 1 / scale (1/m)
+  tCloud: { value: cloudNoise() as THREE.Texture },
+  uCloud: { value: new THREE.Vector4(0, 0, 0.42, 1 / 1400) },
 };
 
+/** 128^2 tileable value-noise fbm (R8, repeat): the cloud-shadow pattern. */
+function cloudNoise() {
+  const N = 128, d = new Uint8Array(N * N);
+  const oct = [[8, 0.55], [16, 0.28], [32, 0.17]] as const;
+  const lat = oct.map(([g]) => { const a = new Float32Array(g * g); for (let i = 0; i < a.length; i++) a[i] = Math.abs(Math.sin(i * 12.9898 + g * 78.233) * 43758.5453) % 1; return a; });
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 0;
+    oct.forEach(([g, w], k) => {
+      const fx = (x / N) * g, fy = (y / N) * g, x0 = Math.floor(fx), y0 = Math.floor(fy);
+      let tx = fx - x0, ty = fy - y0; tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+      const L = lat[k], at = (i: number, j: number) => L[((j % g) * g) + (i % g)];
+      v += w * ((at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx) * (1 - ty) + (at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx) * ty);
+    });
+    d[y * N + x] = Math.round(v * 255);
+  }
+  const t = new THREE.DataTexture(d, N, N, THREE.RedFormat, THREE.UnsignedByteType);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+}
+
 export const SUNBAKE_PARS = /* glsl */`
-uniform sampler2D tSunBake, tSunBakeLo;
+uniform sampler2D tSunBake, tSunBakeLo, tCloud;
+uniform vec4 uCloud;
 uniform vec4 uSunBakeXf;
 uniform vec4 uSunBakeK;
 uniform vec4 uSunBakeDir;
@@ -55,7 +80,7 @@ uniform vec4 uSunBakeT;
 // lit: sun visibility from the bake (terrain always, canopy past the real-time cascades); ao: ground AO
 void sunBakeEval(vec3 wp, float h, float viewDepth, out float lit, out float ao) {
   lit = 1.0; ao = 1.0;
-  if (uSunBakeK.w < 0.5) return;
+  if (uSunBakeK.w < 0.5) return;   // (cloud shadows need the bake too: both arrive together)
   // crowns / tall props: step the lookup toward the sun past the object's own bulk (the bake treats
   // every crown as a solid dome, so a crown would otherwise shadow itself)
   float crown = smoothstep(1.5, 5.0, h);
@@ -77,6 +102,10 @@ void sunBakeEval(vec3 wp, float h, float viewDepth, out float lit, out float ao)
   float canopy = 1.0 - mix(uSunBakeT.x, uSunBakeT.w, crown) * (1.0 - (L.y > 0.02 ? clamp(L.x / L.y, 0.0, 1.0) : 1.0));
   float far = smoothstep(uSunBakeK.x, uSunBakeK.y, viewDepth);
   lit = litTer * mix(1.0, canopy, far);
+  // drifting cloud shadows (sampled at the ground point under the fragment, along the sun ray)
+  vec2 cp = (wp.xz - uSunBakeDir.xy * (h / max(uSunBakeDir.z, 0.05)) + uCloud.xy) * uCloud.w;
+  float cl = texture2D(tCloud, cp).r * 0.7 + texture2D(tCloud, cp * 2.7 + 0.37).r * 0.3;
+  lit *= 1.0 - uCloud.z * smoothstep(0.52, 0.68, cl);
   ao = mix(1.0, mix(s.b, 1.0, smoothstep(0.5, 6.0, h)), uSunBakeDir.w);
 }
 `;
@@ -162,4 +191,6 @@ export const sunBake = {
   setNearField(from: number, to: number) { uniforms.uSunBakeK.value.x = from; uniforms.uSunBakeK.value.y = to; },
   setTerrainWeight(w: number) { uniforms.uSunBakeK.value.z = w; },
   setAO(k: number) { uniforms.uSunBakeDir.value.w = k; },
+  /** cloud drift (seconds): wind from the WSW, ~6 m/s */
+  setTime(t: number) { uniforms.uCloud.value.x = -t * 5.5; uniforms.uCloud.value.y = -t * 2.2; },
 };

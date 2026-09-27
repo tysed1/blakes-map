@@ -107,6 +107,11 @@ def mats():
         'reflector': _mat_flat('MAT_Infra_Reflector', (0.8, 0.45, 0.05), 0.2),
         'lens': _mat_flat('MAT_Infra_SignalLens', (0.32, 0.012, 0.008), 0.15),
         'refractor': _mat_flat('MAT_Infra_Refractor', (0.62, 0.6, 0.52), 0.2),
+        'sig_yellow': _mat_flat('MAT_Signal_Housing', (0.6, 0.42, 0.03), 0.55),
+        'lit_red': _mat_flat('MAT_Signal_Red_Lit', (0.9, 0.06, 0.02), 0.3, emit=2.5),
+        'lit_green': _mat_flat('MAT_Signal_Green_Lit', (0.05, 0.75, 0.45), 0.3, emit=2.0),
+        'lit_orange': _mat_flat('MAT_Signal_Walk_Lit', (0.95, 0.4, 0.05), 0.3, emit=1.6),
+        'lens_off': _mat_flat('MAT_Signal_Lens_Off', (0.05, 0.04, 0.03), 0.15),
     })
     return _M
 
@@ -160,7 +165,8 @@ def _post(M, height, mat, w=0.06):
     box_at(M, (0, 0.03), (1, 0), (0, 1), w / 2, w / 2, -0.4, height, mat)
 
 
-SIGN_SLOTS = ['galv', 'white', 'black', 'red', 'yellow', 'signback', 'wood', 'glass', 'reflector', 'steel_dark', 'lens', 'refractor']
+SIGN_SLOTS = ['galv', 'white', 'black', 'red', 'yellow', 'signback', 'wood', 'glass', 'reflector', 'steel_dark', 'lens', 'refractor',
+              'sig_yellow', 'lit_red', 'lit_green', 'lit_orange', 'lens_off', 'pole']
 S_ = {k: i for i, k in enumerate(SIGN_SLOTS)}
 
 
@@ -343,6 +349,53 @@ def build_prototypes(root):
         box_at(M, (0.52, 0.1), (1, 0), (0, 1), 0.045, 0.03, z0, z0 + 0.42, S_['red'] if k % 2 else S_['white'])
     box_at(M, (0.52, 0.1), (1, 0), (0, 1), 0.07, 0.05, 1.0, 1.25, S_['steel_dark'])     # counterweight
     P['rr_gate'] = proto_object('A2_PROTO_Sign_RRGate', M, sl, root)
+    # --- 1970s traffic signals: 12 in 3-section heads (yellow cast aluminium, visors), origin = top
+    #     of the head, front (-Y) towards the approaching traffic
+    def _head(M, x, z_top, lit, backplate=False, hanger=True):
+        hz = 1.02
+        box_at(M, (x, 0.0), (1, 0), (0, 1), 0.18, 0.13, z_top - hz, z_top, S_['sig_yellow'])
+        if backplate:
+            _plate(M, [(x - 0.3, z_top - hz - 0.08), (x + 0.3, z_top - hz - 0.08), (x + 0.3, z_top + 0.08), (x - 0.3, z_top + 0.08)],
+                   S_['black'], y=0.14, thick=0.01)
+        for k, col in enumerate(('red', 'yellow', 'green')):
+            cz = z_top - 0.18 - k * 0.33
+            on = (col == 'red' and lit == 'red') or (col == 'green' and lit == 'green')
+            mat = S_['lit_red'] if (on and col == 'red') else S_['lit_green'] if on else S_['lens_off']
+            _plate(M, _circle(0.145, 14, x, cz), mat, y=-0.132, thick=0.004)
+            box_at(M, (x, -0.24), (1, 0), (0, 1), 0.16, 0.105, cz + 0.13, cz + 0.16, S_['sig_yellow'])        # visor top
+            for sx in (-1, 1):
+                box_at(M, (x + sx * 0.15, -0.24), (1, 0), (0, 1), 0.01, 0.105, cz - 0.05, cz + 0.16, S_['sig_yellow'])
+        if hanger:
+            box_at(M, (x, 0.0), (1, 0), (0, 1), 0.04, 0.04, z_top, z_top + 0.35, S_['galv'])
+    for lit in ('red', 'green'):
+        M = Mesh(); _head(M, 0.0, 0.0, lit)
+        P['sig_head_' + lit] = proto_object(f'A2_PROTO_Signal_Head_{lit}', M, sl, root)
+    # strain pole (creosoted timber, 11 m) for span wires
+    M = Mesh()
+    cyl_at(M, (0, 0), 0.16, -1.8, 9.2, S_['pole'], seg=10)
+    box_at(M, (0, 0), (1, 0), (0, 1), 0.06, 0.06, 8.6, 8.75, S_['galv'])
+    P['sig_pole'] = proto_object('A2_PROTO_Signal_StrainPole', M, sl, root)
+    # corner pedestal: vehicle head on a 3.4 m post + incandescent WALK / DONT WALK box facing the crosswalk (+X)
+    for lit in ('red', 'green'):
+        M = Mesh()
+        cyl_at(M, (0, 0), 0.07, -0.3, 3.45, S_['galv'], seg=8)
+        box_at(M, (0, 0), (1, 0), (0, 1), 0.16, 0.16, -0.05, 0.25, S_['galv'])
+        _head(M, 0.0, 3.55 + 1.02, lit, hanger=False)
+        box_at(M, (0.25, 0.0), (1, 0), (0, 1), 0.16, 0.2, 2.35, 2.85, S_['black'])
+        V = np.array([[0.415, -0.14, 2.62], [0.415, 0.14, 2.62], [0.415, 0.14, 2.8], [0.415, -0.14, 2.8],
+                      [0.415, -0.14, 2.4], [0.415, 0.14, 2.4], [0.415, 0.14, 2.58], [0.415, -0.14, 2.58]])
+        M.add(V, np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]), np.array([S_['lit_orange'] if lit == 'red' else S_['lens_off']] * 2 + [S_['white'] if lit == 'green' else S_['lens_off']] * 2))
+        P['sig_ped_' + lit] = proto_object(f'A2_PROTO_Signal_Pedestal_{lit}', M, sl, root)
+    # steel mast arm (major arterials): pole on the near-right corner, 8 m arm over the lanes (-X)
+    for lit in ('red', 'green'):
+        M = Mesh()
+        cyl_at(M, (0, 0), 0.17, -0.3, 1.0, S_['galv'], seg=10)
+        cyl_at(M, (0, 0), 0.13, 1.0, 7.2, S_['galv'], seg=10)
+        box_between(M, (0.0, 0.0, 6.35), (-8.2, 0.0, 6.55), 0.07, 0.07, S_['galv'])
+        box_between(M, (0.0, 0.0, 7.0), (-3.2, 0.0, 6.5), 0.035, 0.035, S_['galv'])
+        for x in (-3.4, -6.9):
+            _head(M, x, 6.3, lit, backplate=True)
+        P['sig_mast_' + lit] = proto_object(f'A2_PROTO_Signal_MastArm_{lit}', M, sl, root)
     # --- farm fence post, gate
     M = Mesh()
     cyl_at(M, (0, 0), 0.06, -0.6, 1.3, S_['wood'], seg=6)
@@ -709,7 +762,7 @@ def build_signs(coll, net, T, P_):
     # regulatory control at junction approaches (lib_roads.controls: STOP / YIELD / all-way STOP)
     kinds = getattr(net, 'ctl_kind', {})
     for (i, end), kind in kinds.items():
-        if not kind:
+        if not kind or kind == 'signal':
             continue
         e = net.E[i]
         if e.get('_deck') is None:

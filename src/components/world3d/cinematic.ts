@@ -15,6 +15,7 @@ export interface AtmosphereParams {
   sunHaze: THREE.Color;        // warm in-scatter colour toward the sun (linear)
   baseHeight: number;          // metres: fog density reference height (valley floor)
   falloff: number;             // 1/m: exponential height falloff
+  mist?: { base: number; scale: number; density: number };   // valley mist layer (R5): metres, metres, 1/m
 }
 
 /**
@@ -46,6 +47,8 @@ export function installAtmosphere(p: AtmosphereParams) {
   #endif
   #define ATM_SUN ${v3(p.sunDir)}
   #define ATM_SUNHAZE ${v3(p.sunHaze)}
+  ${p.mist ? `#define ATM_MIST vec3(${p.mist.base.toFixed(1)}, ${p.mist.scale.toFixed(1)}, ${p.mist.density.toFixed(5)})
+  #define ATM_MISTCOL vec3(0.46, 0.5, 0.56)` : ''}
   vec3 atmosphere(vec3 col, vec3 viewPos) {
     vec3 rd = transpose(mat3(viewMatrix)) * viewPos;      // world-space camera -> fragment
     float dist = length(rd);
@@ -68,6 +71,25 @@ export function installAtmosphere(p: AtmosphereParams) {
     // aerial perspective: extinction toward the haze colour, plus a warm forward-scatter glow
     col = col * (1.0 - ext) + fc * ext;
     col += ATM_SUNHAZE * pow(mu, 12.0) * inscat * 0.35;
+    #ifdef ATM_MIST
+    {
+      // valley mist (R5): a thin layer hugging the valley floors (exponential above ATM_MIST.x, scale
+      // height ATM_MIST.y), broken into drifting-free pockets by low-frequency noise at the fragment
+      float km = 1.0 / ATM_MIST.y;
+      float hc = max(cameraPosition.y - ATM_MIST.x, -15.0), hf = max(hc + dy, -15.0);
+      float ec = exp(-km * hc), ef = exp(-km * hf);
+      float fm = abs(hf - hc) > 0.5 ? (ec - ef) / (km * (hf - hc)) : ec;
+      vec2 q = (cameraPosition.xz + rd.xz) / 650.0;
+      vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
+      #define ATM_H(v) fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453)
+      float nz = mix(mix(ATM_H(i), ATM_H(i + vec2(1.0, 0.0)), f.x), mix(ATM_H(i + vec2(0.0, 1.0)), ATM_H(i + vec2(1.0, 1.0)), f.x), f.y);
+      float pocket = 0.25 + 0.75 * smoothstep(0.3, 0.75, nz);
+      float odm = ATM_MIST.z * dist * fm * pocket;
+      float em = 1.0 - exp(-odm);
+      vec3 mc = mix(ATM_MISTCOL, ATM_SUNHAZE * 1.25, clamp(pow(mu, 4.0) * 0.8, 0.0, 1.0));
+      col = col * (1.0 - em) + mc * em;
+    }
+    #endif
     return col;
   }
 #endif`;

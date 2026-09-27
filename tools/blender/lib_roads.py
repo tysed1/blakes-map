@@ -840,6 +840,56 @@ def _catch(z0, u0, slope, terr, offs, rising):
 JERSEY = np.array([(-0.30, 0.0), (-0.24, 0.08), (-0.09, 0.33), (-0.075, 0.81), (0.075, 0.81), (0.09, 0.33), (0.24, 0.08), (0.30, 0.0)])
 
 
+SIGNAL_TOWNS = ('laurel_city', 'tannersville')   # no signals in Hollow Ridge or the countryside (1974)
+
+
+def signal_junctions(net, J):
+    """1970s traffic signals: only inside Laurel City and Tannersville (every leg in those
+    settlements), at true junctions (>= 3 legs, no freeway) where an arterial / main street /
+    highway meets another street of urban-street class or more, where a ramp terminal meets a
+    surface street, or at 4-way downtown grid crossings of urban streets; greedy by importance
+    with >= 120 m between signals (75 m inside the downtown grids). -> {node: info}"""
+    cands = []
+    for n, j in J.items():
+        legs = j['legs']
+        if len(legs) < 3:
+            continue
+        ts = [a['t'] for a in legs]
+        if 'freeway' in ts:
+            continue
+        sett = [net.E[a['i']]['p'].get('settlement') for a in legs]
+        if any(x not in SIGNAL_TOWNS for x in sett):
+            continue
+        big = sum(t in ('arterial', 'main_street', 'highway') for t in ts)
+        mid = sum(t in ('urban_street', 'collector') for t in ts)
+        ramp = any(t == 'ramp' for t in ts)
+        zone = net.E[legs[0]['i']]['zone']
+        downtown = zone == 'downtown'
+        if big >= 1 and big + mid >= 2:
+            score = 3 + big
+        elif ramp and big + mid >= 1:
+            score = 3.5
+        elif downtown and len(legs) >= 4 and mid >= 4:
+            score = 1
+        else:
+            continue
+        cands.append((score, n, downtown, sett[0]))
+    cands.sort(key=lambda c: (-c[0], c[1]))
+    out = {}
+    for score, n, downtown, town in cands:
+        xy = np.asarray(J[n]['xy'])
+        gap = 75.0 if downtown else 120.0
+        if any(np.hypot(*(xy - np.asarray(J[m]['xy']))) < gap for m in out):
+            continue
+        ts = [a['t'] for a in J[n]['legs']]
+        big = sum(t in ('arterial', 'main_street', 'highway') for t in ts)
+        style = 'mast' if big >= 3 and not downtown else 'span'
+        out[n] = {'score': score, 'downtown': downtown, 'town': town, 'style': style}
+    from collections import Counter
+    print('   traffic signals:', dict(Counter(v['town'] for v in out.values())), dict(Counter(v['style'] for v in out.values())))
+    return out
+
+
 def controls(net, J):
     """Traffic control per approach (edge, end) -> (stop-bar distance m, crosswalk distance m);
     net.ctl_kind[(edge, end)] = 'stop' | 'yield' | 'all_stop' | None (the sign builder reads it).
@@ -855,6 +905,7 @@ def controls(net, J):
       * driveways, entrance-ramp starts (one-way away from the junction): nothing"""
     ctl = {}
     net.ctl_kind = {}
+    net.signals = signal_junctions(net, J)
     for n, j in J.items():
         legs = j['legs']
         ranks = [0.5 if a['t'] == 'ramp' else RANK.get(a['t'], 3) for a in legs]
@@ -870,6 +921,8 @@ def controls(net, J):
             outbound = bool(e['p'].get('oneway')) and a['end'] == 0   # one-way leaving this node
             if t in ('driveway', 'freeway') or outbound:
                 kind = None
+            elif n in net.signals:
+                kind = 'signal'
             elif all_stop:
                 kind = 'all_stop'
             elif t == 'ramp':
@@ -887,7 +940,7 @@ def controls(net, J):
                 continue
             xw = a['trim'] + 0.6 if (dense and e['sec']['curb']) else 0.0
             stop = 0.0
-            if kind in ('stop', 'all_stop'):
+            if kind in ('stop', 'all_stop', 'signal'):
                 stop = (xw + 3.6) if xw else a['trim'] + 1.2
             ctl[(a['i'], a['end'])] = (stop, xw)
     from collections import Counter
