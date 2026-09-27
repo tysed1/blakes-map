@@ -90,7 +90,7 @@ async function ensure3D() {
     const t0 = performance.now();
     const tick = () => {
       const w = w3d as any;
-      const parts: [string, boolean][] = [['forest', w.vegReady], ['roads & rivers', w.infraReady], ['ground cover', w.gcReady ?? true], ['mountains', w.backdropReady]];
+      const parts: [string, boolean][] = [['forest', w.vegReady], ['roads & rivers', w.infraReady], ['ground cover', w.gcReady ?? true], ['rocks', w.rocksReady ?? true], ['mountains', w.backdropReady]];
       const left = parts.filter(([, ok]) => !ok).map(([n]) => n);
       $('#loadmsg').textContent = left.length ? `streaming ${left.join(', ')}…` : 'ready';
       if (!left.length || performance.now() - t0 > 60000) res(); else setTimeout(tick, 200);

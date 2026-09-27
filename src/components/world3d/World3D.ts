@@ -7,10 +7,11 @@ import { bus, Selection } from '../../core/bus';
 import { buildTerrain, CHUNK } from './terrain';
 import { highlightMesh, roadWorldPoints, setGround } from './roads';
 import { buildInfra, Infra } from './infra'; // infra (agent)
+import { buildRocks, Rocks } from './rocks'; // rock kit (E2)
 import { buildTrees, Trees, TREE_QUALITY } from './trees';
 import { assetUrl, bin } from '../../core/data';
 import { buildBackdrop, buildSky } from './backdrop';
-import { installAtmosphere, createCinematic, Cinematic } from './cinematic';
+import { installAtmosphere, createCinematic, Cinematic, NEAR_CASTER_LAYER } from './cinematic';
 import { terrainMaterial } from './terrainMaterial';
 import { sunBake } from '../../engine/sunbake';
 import { initTextures, loadTexture } from '../../engine/textures';
@@ -42,6 +43,7 @@ export class World3D {
   private clock = new THREE.Clock();
   private sky!: THREE.Mesh;
   private veg: Trees | null = null;
+  rocks: Rocks | null = null; rocksReady = false;
   private skyOff?: number;
   private time = { value: 0 };
   flySpeed = 1;
@@ -146,6 +148,12 @@ export class World3D {
       t.update(this.camera, true);
       this.vegReady = true;
     }).catch((e) => { console.error('trees', e); this.vegReady = true; });
+    // --- rocks (E2: crags, cliff bands, scree, rock-cut ledges) ---
+    const rocksG = new THREE.Group(); rocksG.name = 'rocks'; this.groups.rocks = rocksG;
+    buildRocks({ quality: this.quality }).then((r) => {
+      this.rocks = r; rocksG.add(r.group); this.camera.updateMatrixWorld(); r.update(this.camera, true);
+    }).catch((e) => console.error('rocks', e)).finally(() => (this.rocksReady = true));
+    // --- /rocks ---
     // --- groundcover (agent) ---
     const groundcover = new THREE.Group(); groundcover.name = 'groundcover';
     this.groups.groundcover = groundcover;
@@ -265,7 +273,7 @@ export class World3D {
     if (this.mode === 'orbit') this.orbit.update();
     else if (this.mode === 'top') this.mapc.update();
     else this.fly(dt);
-    this.updateCulling();
+    this.updateCulling(true);
     this.renderFrame();
   };
 
@@ -290,6 +298,7 @@ export class World3D {
     this.quality = q;
     const Q = QUALITY[q];
     this.veg?.setQuality(q);
+    this.rocks?.setQuality(q);
     this.capShadowCasters();
     this.cine.setShadowQuality(q, this.casterRange(q));
     this.cine.bloom.enabled = Q.bloom;
@@ -306,7 +315,10 @@ export class World3D {
   private capShadowCasters() {
     this.veg?.group.traverse((o) => {
       const m = /_lod(\d)$/.exec(o.name);
-      if (m && +m[1] > 1) o.castShadow = false;
+      if (!m) return;
+      if (+m[1] > 1) o.castShadow = false;
+      // LOD0 (nearest ~55 m) casts into the first cascade only
+      if (+m[1] === 0) o.layers.set(NEAR_CASTER_LAYER);
     });
   }
   private applyScale() {
@@ -329,12 +341,20 @@ export class World3D {
     else if (fps > 58 && this.renderScale < 1) { this.renderScale = Math.min(1, this.renderScale + 0.05); this.applyScale(); }
   }
 
-  private updateCulling() {
+  private cullFrame = 0;
+  /**
+   * Culling / LOD for the streamed layers. In the frame loop (stagger) the three modules take turns,
+   * one per frame (each still re-evaluates at 20 Hz at 60 fps), so the per-frame JS cost is about a
+   * third of a full pass; stills / QA call it without stagger for a complete update.
+   */
+  private updateCulling(stagger = false) {
     const cam = this.camera.position;
-    // trees: distance culling per chunk mesh
-    this.camera.updateMatrixWorld(); this.veg?.update(this.camera);
-    this.gc?.update(this.camera); // groundcover (agent)
-    this.infra?.update(this.camera); // infra (agent)
+    this.camera.updateMatrixWorld();
+    const k = stagger ? this.cullFrame++ % 3 : -1;
+    if (k <= 0) this.veg?.update(this.camera);
+    if (k < 0 || k === 1) this.gc?.update(this.camera); // groundcover (agent)
+    if (k < 0 || k === 2) this.infra?.update(this.camera); // infra (agent)
+    if (k <= 0) this.rocks?.update(this.camera);
     this.sky.position.copy(cam);
     // clouds drift slowly across the HDRI sky
     const su = (this.sky.material as THREE.ShaderMaterial).uniforms;

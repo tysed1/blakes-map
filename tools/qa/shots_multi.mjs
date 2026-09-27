@@ -21,7 +21,7 @@ page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
 page.setDefaultTimeout(1800000);
 await page.goto(url);
-await page.waitForFunction(() => { const w = window.w3d; return w && w.vegReady && w.camsReady && w.infraReady !== false && (w.gcReady ?? true) && w.backdropReady; }, null, { timeout: 600000 });
+await page.waitForFunction(() => { const w = window.w3d; return w && w.vegReady && w.camsReady && w.infraReady !== false && (w.gcReady ?? true) && (w.rocksReady ?? true) && w.backdropReady; }, null, { timeout: 600000 });
 await page.waitForTimeout(5000);
 if (extra) await page.evaluate((e) => { Object.assign(window.w3d.cams, e); }, extra);
 for (const cam of camList.split(',')) {

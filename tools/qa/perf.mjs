@@ -32,7 +32,7 @@ await page.addInitScript(() => {
 });
 const t0 = Date.now();
 await page.goto(url);
-await page.waitForFunction(() => { const w = window.w3d; return w && w.vegReady && w.camsReady && w.infraReady !== false && (w.gcReady ?? true) && w.backdropReady; }, null, { timeout: 3600000 });
+await page.waitForFunction(() => { const w = window.w3d; return w && w.vegReady && w.camsReady && w.infraReady !== false && (w.gcReady ?? true) && (w.rocksReady ?? true) && w.backdropReady; }, null, { timeout: 3600000 });
 const loadS = (Date.now() - t0) / 1000;
 await page.waitForTimeout(3000);
 
@@ -64,7 +64,10 @@ const result = await page.evaluate(async ({ presets, samples }) => {
       const p = P(c[0], c[1], c[2]), tp = P(t[0], t[1], t[2]);
       w.camera.position.set(p[0], p[1], p[2]); w.camera.lookAt(tp[0], tp[1], tp[2]); w.camera.updateMatrixWorld();
       w['syncFly']?.();
-      const c0 = performance.now(); w['updateCulling'](); const cullMs = performance.now() - c0;
+      // per-frame cull cost as the frame loop runs it (staggered: one module per frame, mean of the
+      // 3-frame cycle), then a full update so the measured frame is complete
+      let c0 = performance.now(); for (let s = 0; s < 3; s++) w['updateCulling'](true); const cullMs = (performance.now() - c0) / 3;
+      w['updateCulling']();
       w.cine.prepare(w.scene);
       info.reset(); const r0 = performance.now(); w.cine.render(); gl.finish(); const renderMs = performance.now() - r0;
       const total = { calls: info.render.calls, tris: info.render.triangles };
@@ -98,7 +101,7 @@ result.errors = logs;
 fs.writeFileSync(get('--out', 'perf.json'), JSON.stringify(result, null, 1));
 for (const [q, r] of Object.entries(result.presets)) {
   const s = r.summary;
-  console.log(`${q.padEnd(6)} main calls p50 ${s.mainCalls_p50} max ${s.mainCalls_max} | shadow calls p50 ${s.shadowCalls_p50} | main tris p50 ${(s.mainTris_p50 / 1e6).toFixed(2)}M max ${(s.mainTris_max / 1e6).toFixed(2)}M | all-pass tris max ${(s.allTris_max / 1e6).toFixed(2)}M | cull ${s.cullMs_p50}/${s.cullMs_max} ms | programs ${s.programs} | render ${s.renderMs_p50}/${s.renderMs_p99} ms`);
+  console.log(`${q.padEnd(6)} main calls p50 ${s.mainCalls_p50} max ${s.mainCalls_max} | shadow calls p50 ${s.shadowCalls_p50} | main tris p50 ${(s.mainTris_p50 / 1e6).toFixed(2)}M max ${(s.mainTris_max / 1e6).toFixed(2)}M | all-pass tris max ${(s.allTris_max / 1e6).toFixed(2)}M | cull/frame ${s.cullMs_p50}/${s.cullMs_max} ms | programs ${s.programs} | render ${s.renderMs_p50}/${s.renderMs_p99} ms`);
 }
 console.log(`load ${loadS.toFixed(0)} s | download ${result.downloadMB} MB | GPU uploads tex ${result.gpuUploadMB.textures} MB buf ${result.gpuUploadMB.buffers} MB | heap ${result.heapMB} MB | ${result.mode}`);
 await browser.close();
