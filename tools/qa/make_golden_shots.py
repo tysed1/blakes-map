@@ -18,11 +18,11 @@ shots = {}
 for k in ['CAM_Ref_Match', 'CAM_HollowRidge_Valley', 'CAM_Interchange_SR400', 'CAM_LaurelRiver_Bridges', 'CAM_US19_LaurelGap',
           'TC_road_driver', 'TC_hwy_low', 'TC_river_low', 'TC_field_ped', 'TC_forest_ped', 'TC_aerial_100', 'TC_high_1000']:
     shots[k] = cams[k]
-shots['GS_HollowFalls'] = cam(w(1112, 280, 22), w(1128, 262, 4))
-shots['GS_FallsCreekCascades'] = cam(w(1025, 84, 30), w(1043, 60, 4))
+shots['GS_HollowFalls'] = cam(w(1100, 292, 70), w(1128, 262, 0))
+shots['GS_FallsCreekCascades'] = cam(w(1018, 92, 75), w(1043, 60, 0))
 shots['GS_SouthForkGorge'] = cam(w(925, 515, 90), w(975, 565, 0))
 rc = json.load(open(os.path.join(R, 'data/roads/rail_crossings.geojson')))['features'][0]['properties']
-x, y = rc['at']; shots['GS_RailCrossing'] = cam(w(x - 14, y - 9, 8), w(x, y, 1))
+x, y = rc['at']; shots['GS_RailCrossing'] = cam(w(x - 20, y - 14, 35), w(x, y, 0))
 walls = [f for f in json.load(open(os.path.join(R, 'data/roads/walls.geojson')))['features'] if f['properties'].get('kind') == 'rock_cut']
 wl = sorted(walls, key=lambda f: -f['properties']['height_m'])[1]  # 2nd tallest: clear of the regraded Railside Lane
 c = np.asarray(wl['geometry']['coordinates'], float)[:, :2]
@@ -39,7 +39,7 @@ for yy in range(260, 440, 2):
     if best: break
 xx, yy, fx, fy = best; n = math.hypot(fx, fy) or 1
 shots['GS_ForestEdge'] = cam(w(xx - fx / n * 12, yy - fy / n * 12, 1.7), w(xx + fx / n * 8, yy + fy / n * 8, 5))
-shots['GS_BaldRidge'] = cam(w(812, 296, 28), w(1050, 330, 40))
+shots['GS_BaldRidge'] = cam(w(800, 305, 60), w(1050, 330, 40))
 shots['GS_US76_SR60'] = cam(w(1830, 215, 140), w(1872, 158, 0))
 json.dump(shots, open(os.path.join(R, 'tools/qa/golden_shots.json'), 'w'), indent=1)
 print(len(shots), 'shots')
