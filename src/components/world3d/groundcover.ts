@@ -443,13 +443,13 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   // new decor tiles are generated at most GEN_BUDGET per relist (spreads the cost over frames; the
   // relist repeats next update until every tile in range exists)
   const GEN_BUDGET = 2; // ~1 ms each; at 20 Hz relists that is 40 tiles/s (driving speed)
-  let genLeft = GEN_BUDGET, decorPending = false;
+  let genLeft = GEN_BUDGET, decorPending = false, genCut = false, genT0 = 0;
   const lastGen = new THREE.Vector3(1e9, 0, 0);
   function decorTile(ix: number, iz: number): DTile | null {
     const key = (ix + 4096) * 8192 + (iz + 4096);
     const hit = dcache.get(key);
     if (hit) { dcache.delete(key); dcache.set(key, hit); return hit; }
-    if (genLeft <= 0) { decorPending = true; return null; }
+    if (genLeft <= 0 || (!genCut && performance.now() - genT0 > 2.0)) { decorPending = true; return null; }
     genLeft--;
     const rng = mulberry(key * 2654435761);
     const protos: number[] = [], mats: number[] = [], cols: number[] = [];
@@ -632,8 +632,10 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
     const Rd = q.decor;
     DU.uDFade.value.set(Rd * 0.7, Rd);
     for (const a of dc) a.fill(0);
-    // a camera cut (> 50 m jump: shot change, teleport, QA still) builds everything at once
-    genLeft = cp.distanceToSquared(lastGen) > 2500 ? 1e9 : GEN_BUDGET; decorPending = false; lastGen.copy(cp);
+    // a true camera cut (> 300 m jump: shot change, teleport, QA still) builds everything at once; any
+    // flight (even fast spline moves) streams tiles in under a ~2 ms/relist time budget
+    genCut = cp.distanceToSquared(lastGen) > 300 * 300; genLeft = genCut ? 1e9 : GEN_BUDGET; genT0 = performance.now();
+    decorPending = false; lastGen.copy(cp);
     const near = Math.min(25, Rd * 0.4);
     for (let iz = Math.floor((cp.z - Rd) / DTILE); iz <= Math.floor((cp.z + Rd) / DTILE); iz++) {
       for (let ix = Math.floor((cp.x - Rd) / DTILE); ix <= Math.floor((cp.x + Rd) / DTILE); ix++) {

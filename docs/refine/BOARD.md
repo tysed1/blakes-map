@@ -71,6 +71,7 @@ NOTE E->R/L (darkness in E it2 aerials): isolated with a build that skips loadSu
 
 NOTE E->N/L (GS_RockCut dark floating disc): not a rock-kit or tree instance - layer isolation (exports/refine/E/diag_rockcut_*.png): it survives hiding rocks, trees and groundcover and disappears only when roads+bridges are hidden, so it is an infra object in N's roads/bridges groups (dark elliptical underside, top-middle of the frame, above the cut). rocks.py now has a QA pass: bases lowered to the ground on all footprint corners, no rock on pavement/shoulders (report printed on every run).
 
+DONE 8a6a4c6 E1 verified (it9 look locked: zonation, autumn by elevation/aspect/edge, bald, clear zones, dithered LOD fades, merged tree material, billboard LOD4; trees 270 calls/10-15 M tris -> 40-105 calls/0.4-2 M in aerials; fly_strip.jpg: no pops)
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
 
@@ -78,6 +79,7 @@ Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Ston
 Period span-wire signals (default), some pedestal heads downtown, a few steel mast arms on major arterials; 12-inch 3-section heads with visors, optional incandescent WALK/DONT WALK boxes. Only in Laurel City and Tannersville at intersections that warrant signals (arterial/main/urban/collector/ramp terminals, degree >= 3); NONE in Hollow Ridge or rural areas. Replace STOP/YIELD at signalized junctions, add stop bars. Built with Blender MCP, exported via export_web_infra.py, <= ~15 draw calls. Accept: eye-level downtown shot in each city + an aerial, per-city counts.
 DONE f2ff5ea Laurel City 27 + Tannersville 35 = 62 signalized junctions (55 span-wire, 7 mast-arm; 55 downtown pedestals w/ WALK boxes), Hollow Ridge 0. Rule: every leg in laurel_city/tannersville, >=3 legs, arterial/main/highway x urban-street+, ramp terminals, downtown 4-way grids; >=120 m apart (75 m downtown). STOP 225 -> 179 (signal approaches get stop bars). +7 instanced draws, heads 138 faces. Sheet exports/refine/N/n6.jpg, cams exports/refine/N/cams_n6.json.
 
+DONE 90947ca E2 verified (rock kit: contour cliff bands, crags, talus/scree, gorge walls, road-cut courses; placement QA; it5.jpg)
 ## Sprint 2: the look
 
 ### N4. Water: shallows, banks, rapids, waterfalls (N) impact 5, effort 4
