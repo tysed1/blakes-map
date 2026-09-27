@@ -11,7 +11,9 @@
   "water_level_f32": "data/terrain/water_level_f32.bin",
   "water_fx_u8": "data/terrain/water_fx_u8.bin",
   "rock_exposure_u8": "data/terrain/rock_exposure_u8.png",
-  "ridge_skeleton": "data/terrain/ridge_skeleton.geojson"
+  "ridge_skeleton": "data/terrain/ridge_skeleton.geojson",
+  "height_graded_f32": "data/terrain/height_graded_f32.bin",
+  "height_graded_u16": "data/terrain/height_graded_u16.png"
  },
  "water_fx_u8": {
   "layout": "uint8 [5][667][2000]",
@@ -99,5 +101,9 @@
    406.8
   ]
  },
- "note": "Designed from the map geography + ridge skeleton (data/manual/ridges.json), not survey data. Rebuild with tools/pipeline/terrain.py; road cut/fill is applied by tools/pipeline/grading.py."
+ "note": "Designed from the map geography + ridge skeleton (data/manual/ridges.json), not survey data. Rebuild with tools/pipeline/terrain.py; road cut/fill is applied by tools/pipeline/grading.py.",
+ "u16_graded_decode": {
+  "min_m": 276.0,
+  "max_m": 579.0
+ }
 }

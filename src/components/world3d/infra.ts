@@ -286,6 +286,7 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     float chev = (1.0 - smoothstep(0.08 - cvw, 0.08 + cvw, cv)) * step(au, hw - 0.1) * step(0.6, hw);
     float wn = bn(fbm4(vec3(vec2(rl, rs) / 0.6, 2.0)));
     float paint = max(edge, chev) * sstep(0.12, 0.3, wn + 0.15);
+    if (hw < 0.3) paint = band(rl, 0.0, 0.15) * dashf(rs, 3.05, 12.2) * sstep(0.12, 0.3, wn + 0.15);   // aux-lane broken line
     col = mix(col, vec3(0.62, 0.62, 0.58), paint);
     rough = mix(0.9, 0.55, paint);
     gHeight = texture(tAsphH, bxy / 3.2).r + paint * 0.25; gBumpS = 0.35;
@@ -763,7 +764,7 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
           float size = sR.z * (0.5 + 1.3 * life) * (0.6 + 0.3 * sP.w);
           vec4 mv = modelViewMatrix * vec4(c, 1.0);
           mv.xy += position.xy * size;
-          vUv = position.xy; vA = sin(3.14159 * life) * (0.022 + 0.018 * min(sP.w, 1.5)) * (1.0 - smoothstep(250.0, 600.0, -mv.z));
+          vUv = position.xy; vA = sin(3.14159 * life) * (0.0143 + 0.0117 * min(sP.w, 1.5)) * (1.0 - smoothstep(250.0, 600.0, -mv.z));
           gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying vec2 vUv; varying float vA;
         void main(){ float r = dot(vUv, vUv); if (r > 1.0) discard;

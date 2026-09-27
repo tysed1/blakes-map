@@ -2020,7 +2020,7 @@ def build_gores(net, coll, mats, max_gap=9.0):
             if len(net.legs.get(nid, [])) != 1:
                 continue   # a gore end has only the (virtual, not built) merge link
             idx = np.arange(len(D['s'])) if end == 0 else np.arange(len(D['s']))[::-1]
-            rows = []
+            rows, lane = [], []
             for k in idx:
                 p = D['P'][k, :2]
                 j = int(np.argmin(np.hypot(FP[:, 0] - p[0], FP[:, 1] - p[1])))
@@ -2039,6 +2039,22 @@ def build_gores(net, coll, mats, max_gap=9.0):
                 if gap > 0.25:
                     zr_ = D['zl'][k] if side < 0 else D['zr'][k]
                     rows.append((qe, pr, FZ[j], zr_, D['s'][k], gap))
+                elif gap > -2.0 * D['hw'][k] + 0.5 and not rows:
+                    lane.append((qe, v, FZ[j], D['s'][k]))   # accel / decel lane beside the through lanes
+            if len(lane) >= 3:
+                # broken lane line (1971 MUTCD 3 m / 12 m) replacing the solid edge line where the
+                # ramp's parallel lane runs beside the through lanes (web ground kind 8, hw < 0.3)
+                V, F, rl, rs, hw = [], [], [], [], []
+                for r_, (qe, v, zq, sk) in enumerate(lane):
+                    for c_, off in enumerate((-0.25, 0.25)):
+                        pt = qe + v * off
+                        V.append((pt[0], pt[1], zq + 0.03)); rl.append(off); rs.append(abs(sk - lane[0][3])); hw.append(0.25)
+                    if r_:
+                        a = 2 * (r_ - 1)
+                        F += [(a, a + 1, a + 3), (a, a + 3, a + 2)]
+                M = Mesh(ATTRS)
+                M.add(np.array(V), np.array(F), 0, rl=np.array(rl), rs=np.array(rs), hw=np.array(hw), mk=0.0, len=0.0)
+                M.to_object(f"ROAD LANELINE {e['p']['id']}_{end}", coll, [mats['gore']], smooth=True)
             if len(rows) < 3:
                 continue
             V, F, rl, rs, hw = [], [], [], [], []

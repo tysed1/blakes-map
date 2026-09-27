@@ -720,8 +720,11 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                 continue
             tx_ = np.gradient(X); ty_ = np.gradient(Y); tl = np.hypot(tx_, ty_) + 1e-9
             nx_, ny_ = -ty_ / tl, tx_ / tl
-            half = f.get('lip_width_m', 10.0) / MPP / 2
+            plunge = f.get('kind') == 'plunge'
+            half = f.get('lip_width_m', 10.0) / MPP / 2 * (0.72 if plunge else 1.0)
             nu = max(6, int(half * 2 * 2.5))
+            # a plunge splits into 2-3 ribbons around lip rocks (never an even weir sheet)
+            gaps = [(-0.5, -0.22), (0.18, 0.4)] if plunge else []
             V, F, dep, foam, flow = [], [], [], [], []
             for k in range(len(st)):
                 edge_in = min(1.0, (k + 1) / 3.0, (len(st) - k) / 3.0)
@@ -733,8 +736,22 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                     flow.append((tx_[k] / tl[k], -ty_[k] / tl[k], 0.0))
             for k in range(len(st) - 1):
                 for u in range(nu):
+                    wc = -1 + 2 * (u + 0.5) / nu
+                    if any(g0 < wc < g1 for g0, g1 in gaps):
+                        continue
                     a = k * (nu + 1) + u
                     F += [(a, a + 1, a + nu + 2), (a, a + nu + 2, a + nu + 1)]
+            if plunge:
+                # lip rocks: in the ribbon gaps and at both ends of the crest
+                kl = int(np.argmin(np.abs(st - s_l)))
+                lr = []
+                for w_, r_ in ((-0.36, 1.5), (0.29, 1.3), (-1.05, 1.8), (1.05, 1.6), (-0.7, 1.0)):
+                    lr.append((X[kl] + nx_[kl] * half * w_, Y[kl] + ny_[kl] * half * w_, r_))
+                if mrock is not None:
+                    rb = build_boulders(D, lr, coll, mrock, seed=31)
+                    if rb is not None:
+                        rb.name = f"WATER_FallsRocks_{f['id']}"
+                        objs.append(rb)
             V = np.array([[v[0], v[1], v[2]] for v in V], float)
             ob = _mesh(f"WATER_Falls_{f['id']}", V, np.array(F), coll, mat,
                        attrs={'depth': ('FLOAT', np.array(dep)), 'foam': ('FLOAT', np.array(foam)), 'wake': ('FLOAT', np.array(foam) * 0.8),
