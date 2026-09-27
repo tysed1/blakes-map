@@ -1143,7 +1143,7 @@ def write_clear_zones(feats):
         for f in faces:
             rb = f.boundary.intersection(rset.buffer(0.6)).length
             fb = f.boundary.intersection(fset.buffer(0.6)).length
-            if rb < 8 or rb < 0.25 * f.length or fb < 0.6 * rb:
+            if rb < 8 or rb < 0.25 * f.length or (fb < 0.6 * rb and rb < 0.6 * f.length):
                 continue  # not between ramps and the freeway: an ordinary block / neighbourhood
             q = f.intersection(near).difference(pav)
             if q.area > 20:
