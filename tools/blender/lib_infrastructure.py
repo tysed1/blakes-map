@@ -51,6 +51,12 @@ def _mat_flat(name, col, rough=0.6, metal=0.0, emit=0.0):
     b.nt.links.new(c, b.inp('Base Color'))
     b.inp('Roughness').default_value = rough
     b.inp('Metallic').default_value = metal
+    if emit > 0:
+        try:
+            b.inp('Emission Color').default_value = (*col, 1.0)
+            b.inp('Emission Strength').default_value = emit
+        except Exception:
+            pass
     return m
 
 
@@ -964,6 +970,102 @@ def build_signs(coll, net, T, P_):
     return n
 
 
+# ------------------------------------------------------------------ traffic signals (N6)
+def build_signals(coll, net, T, P_):
+    """1970s signals at lib_roads.signal_junctions (Laurel City / Tannersville only).
+    span  : two timber strain poles on opposite corners, a sagging messenger cable, one 3-section
+            head per approach hung where the cable crosses that approach's lanes (Georgia default)
+    mast  : steel mast arm on the near-right corner of every approach (major arterial crossings)
+    downtown: + corner pedestals with WALK / DONT WALK boxes on the other two corners
+    Heads on the approaches of one axis show green, the cross axis red (lit, subtle emission)."""
+    sigs = getattr(net, 'signals', {})
+    J = getattr(net, 'J', {})
+    place, wires = {}, []
+    def add(kind, c, z, face, yaw=None):
+        place.setdefault(kind, ([], []))
+        place[kind][0].append((float(c[0]), float(c[1]), float(z)))
+        place[kind][1].append(_rotz_facing(face) if yaw is None else yaw)
+    counts = {}
+    for n, info in sigs.items():
+        j = J.get(n)
+        if j is None:
+            continue
+        node = np.asarray(j['xy'], float)
+        legs = [a for a in j['legs'] if not (net.E[a['i']]['p'].get('oneway') and a['end'] == 0)]   # approaches
+        allg = j['legs']
+        if len(legs) < 2:
+            continue
+        ax0 = np.asarray(allg[0]['d'], float)
+        def state(a):
+            return 'green' if abs(float(np.dot(np.asarray(a['d']), ax0))) > 0.7071 else 'red'
+        zg = float(T.at(*w2px(node[0], node[1])))
+        # corners between consecutive legs (sorted by angle), outside the pavement
+        corners = []
+        m = len(allg)
+        for k in range(m):
+            a, b = allg[k], allg[(k + 1) % m]
+            da, db = np.asarray(a['d'], float), np.asarray(b['d'], float)
+            bis = da + db
+            if np.hypot(*bis) < 1e-3:
+                bis = np.array([-da[1], da[0]])
+            bis /= np.hypot(*bis)
+            gap = (b['ang'] - a['ang']) % (2 * math.pi)
+            if gap > math.pi:
+                bis = -bis
+            r = (max(a['hw'], b['hw']) + 3.2) / max(math.sin(min(gap, 2 * math.pi - gap) / 2), 0.45)
+            corners.append(node + bis * min(r, 22.0))
+        style = info['style']
+        if style == 'mast':
+            cross = max(b['hw'] for b in allg)
+            for a in legs:
+                d = np.asarray(a['d'], float)
+                rgt = np.array([d[1], -d[0]]) * -1.0          # right of the inbound traffic (travel = -d)
+                c = node - d * (cross + 3.0) + rgt * (a['hw'] + 1.6)   # far-right corner, arm back over the lanes
+                add('sig_mast_' + state(a), c, float(T.at(*w2px(c[0], c[1]))), d)
+            counts[info['town']] = counts.get(info['town'], 0) + 1
+            continue
+        # span wire between the two corners farthest apart
+        best = None
+        for p_ in range(len(corners)):
+            for q_ in range(p_ + 1, len(corners)):
+                dd = np.hypot(*(corners[p_] - corners[q_]))
+                if best is None or dd > best[0]:
+                    best = (dd, p_, q_)
+        _, p_, q_ = best
+        A, B = corners[p_], corners[q_]
+        za, zb = float(T.at(*w2px(A[0], A[1]))), float(T.at(*w2px(B[0], B[1])))
+        add('sig_pole', A, za, B - A); add('sig_pole', B, zb, A - B)
+        a3 = np.array([A[0], A[1], za + 8.7]); b3 = np.array([B[0], B[1], zb + 8.7])
+        wires.append(_catenary(a3, b3, 0.035, 16))
+        seg = np.asarray(_catenary(a3, b3, 0.035, 90))
+        for a in legs:
+            d = np.asarray(a['d'], float)
+            rgt = -np.array([d[1], -d[0]])
+            lane = node + rgt * min(a['hw'] * 0.5, 3.0)
+            # point of the cable nearest to the approach lane axis (lane + d t)
+            rel = seg[:, :2] - lane
+            dist = np.abs(rel[:, 0] * d[1] - rel[:, 1] * d[0])
+            k = int(np.clip(np.argmin(dist), len(seg) * 0.18, len(seg) * 0.82))   # never at a pole top
+            h = seg[k]
+            add('sig_head_' + state(a), h[:2], h[2] - 0.38, d)
+        if info['downtown']:
+            others = [k for k in range(len(corners)) if k not in (p_, q_)]
+            for k in others[:2]:
+                c = corners[k]
+                # face the approach on this corner's far side (the leg clockwise from it)
+                a = allg[(k + 1) % m]
+                add('sig_ped_' + state(a), c, float(T.at(*w2px(c[0], c[1]))), np.asarray(a['d'], float))
+        counts[info['town']] = counts.get(info['town'], 0) + 1
+    n = 0
+    for kind, (pts, rz) in place.items():
+        if kind in P_:
+            instance_points(f'INFRA Signals {kind}', coll, pts, rz, P_[kind])
+            n += len(pts)
+    _curves('INFRA Signal Span Wires', coll, wires, 0.012)
+    print('   signals:', counts, {k: len(v[0]) for k, v in place.items()})
+    return n
+
+
 # ------------------------------------------------------------------ fences
 def build_fences(coll, net, T, P_, lu):
     posts, prz, gates, grz = [], [], [], []
@@ -1182,6 +1284,7 @@ def build(root, ctx):
     npole = build_poles(coll, net, T, P_)
     ngr, ndl = build_guardrails(coll, net, T, P_)
     nsg = build_signs(coll, net, T, P_)
+    nsig = build_signals(coll, net, T, P_)
     nfe = build_fences(coll, net, T, P_, lu)
     ncu = build_culverts(coll, net, T)
     nwa = build_walls(coll, T, ctx.get('bbox'))
