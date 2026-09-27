@@ -12,3 +12,11 @@ TC_aerial_100 64s
 TC_high_1000 40s
 GS_HollowFalls 312s
 GS_FallsCreekCascades 133s
+GS_SouthForkGorge 188s
+GS_RailCrossing 270s
+GS_RockCut 171s
+GS_ForestEdge 199s
+GS_BaldRidge 198s
+GS_US76_SR60 55s
+warning: THREE.WebGLRenderer: KHR_parallel_shader_compile extension not supported.
+done
