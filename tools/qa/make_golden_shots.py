@@ -23,6 +23,9 @@ shots['GS_FallsCreekCascades'] = cam(w(1018, 92, 75), w(1043, 60, 0))
 shots['GS_SouthForkGorge'] = cam(w(925, 515, 90), w(975, 565, 0))
 rc = json.load(open(os.path.join(R, 'data/roads/rail_crossings.geojson')))['features'][0]['properties']
 x, y = rc['at']; shots['GS_RailCrossing'] = cam(w(x - 20, y - 14, 35), w(x, y, 0))
+# N's eye-level rail-gate camera (the aerial one sat inside a tree after N1/N2)
+_nc = os.path.join(R, 'exports/refine/N/cams_n2.json')
+if os.path.exists(_nc): shots['GS_RailCrossing'] = json.load(open(_nc))['N_RailGate']
 walls = [f for f in json.load(open(os.path.join(R, 'data/roads/walls.geojson')))['features'] if f['properties'].get('kind') == 'rock_cut']
 wl = sorted(walls, key=lambda f: -f['properties']['height_m'])[1]  # 2nd tallest: clear of the regraded Railside Lane
 c = np.asarray(wl['geometry']['coordinates'], float)[:, :2]
