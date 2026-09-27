@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { assetUrl } from '../../core/data';
+import { loadTexture } from '../../engine/textures';
 
 /**
  * Terrain surface: the Blender-baked albedo (A3's ecology-driven terrain material, 0.83 m/texel)
@@ -22,12 +23,16 @@ export function terrainMaterial(albedo: THREE.Texture, anisotropy: number) {
   };
   const mask = t('mask.png', false); mask.wrapS = mask.wrapT = THREE.ClampToEdgeWrapping;
   // detail maps: RGB albedo (sRGB) + A height. Alpha is decoded linearly by three either way.
-  const tex = { grass: t('detail_grass.webp'), forest: t('detail_forest.webp'), rock: t('detail_rock.webp'), soil: t('detail_soil.webp') };
+  // detail maps: Basis KTX2 (UASTC, alpha = height kept) when baked (src/engine/textures.ts; R3), else the WebP
+  const U = { tGrass: { value: new THREE.Texture() }, tForest: { value: new THREE.Texture() }, tRock: { value: new THREE.Texture() }, tSoil: { value: new THREE.Texture() } };
+  for (const [u, f] of [[U.tGrass, 'detail_grass'], [U.tForest, 'detail_forest'], [U.tRock, 'detail_rock'], [U.tSoil, 'detail_soil']] as const) {
+    loadTexture('terrain/' + f, `terrain/${f}.webp`, { srgb: true, anisotropy, wrap: THREE.RepeatWrapping }).then((x) => (u.value = x));
+  }
   const m = new THREE.MeshStandardMaterial({ map: albedo, roughness: 0.95, metalness: 0 });
   const v3 = (a: number[]) => new THREE.Vector3(a[0], a[1], a[2]);
   m.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, {
-      tMask: { value: mask }, tGrass: { value: tex.grass }, tForest: { value: tex.forest }, tRock: { value: tex.rock }, tSoil: { value: tex.soil },
+      tMask: { value: mask }, ...U,
       mGrass: { value: v3(MEANS.grass) }, mForest: { value: v3(MEANS.forest) }, mRock: { value: v3(MEANS.rock) }, mSoil: { value: v3(MEANS.soil) },
       uDetail: { value: 1.0 },
     });

@@ -750,6 +750,15 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
             ob = _mesh(f"WATER_Falls_{f['id']}", V, np.array(F), coll, mat,
                        attrs={'depth': ('FLOAT', np.array(dep)), 'foam': ('FLOAT', np.array(foam)), 'wake': ('FLOAT', np.array(foam) * 0.8),
                               'shore': ('FLOAT', np.full(len(V), 6.0)), 'flow': ('FLOAT_VECTOR', np.array(flow))})
+            # spray / mist emitters for the web (export_web_infra -> infra.json 'spray'): the toe of
+            # each tier step (steepest water-surface drops) with a strength ~ the drop there
+            dz = -np.gradient(Z)
+            em = []
+            for k in np.argsort(-dz)[:12]:
+                if dz[k] < 0.05 or any(abs(k - q) < 6 for q in em):
+                    continue
+                em.append(int(k))
+            ob['spray'] = [float(v) for k in em for v in (*px2b(X[min(k + 2, len(X) - 1)], Y[min(k + 2, len(Y) - 1)], Z[min(k + 2, len(Z) - 1)]), half * MPP, float(dz[k]) * 4)]
             objs.append(ob)
-            print(f"   falls {f['id']}: {drop:.1f} m over {(s_t - s_l) * MPP:.0f} m, {len(F)} faces")
+            print(f"   falls {f['id']}: {drop:.1f} m over {(s_t - s_l) * MPP:.0f} m, {len(F)} faces, {len(em)} spray emitters")
     return objs

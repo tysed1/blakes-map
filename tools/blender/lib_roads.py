@@ -521,6 +521,7 @@ def materials():
         'ballast': _gravel_material('MAT_Rail_Ballast', (0.12, 0.115, 0.11), 'gravel_road', 1.1, col2=(0.1, 0.085, 0.07), ruts=False),
         'tie': _simple('MAT_Rail_Tie', (0.075, 0.055, 0.04), 0.95),
         'railing': _steel_material('MAT_Bridge_Railing', (0.5, 0.52, 0.52), 0.4, 0.15),
+        'gore': _simple('MAT_Road_Gore', (0.06, 0.06, 0.062), 0.9),
     })
     return _MATS
 
@@ -1907,7 +1908,7 @@ def build_rail(coll, T, mats, bbox=None, root_coll=None):
         span = np.zeros(n, bool)
         for a, b in p.get('bridge_spans') or []:
             span |= (ss >= a * MPP) & (ss <= b * MPP)
-        M = Mesh(('rs',))
+        M = Mesh(('rs', 'rl', 'hw'))
         offs = np.arange(0.0, 20.01, 0.5)
         cols = {}
         for sgn in (-1, 1):
@@ -1936,7 +1937,7 @@ def build_rail(coll, T, mats, bbox=None, root_coll=None):
                 j += 1
             j = min(j + 1, n - 1)
             if not span[k]:
-                M.grid(G[k:j + 1], bands, rs=np.broadcast_to(ss[k:j + 1, None], (j + 1 - k, 10)))
+                M.grid(G[k:j + 1], bands, rs=np.broadcast_to(ss[k:j + 1, None], (j + 1 - k, 10)), rl=Uall[k:j + 1], hw=top_hw - 0.25)
             k = j
         # rails: head/web/base profile swept per track
         rp = np.array([(-0.075, 0.0), (-0.035, 0.012), (-0.009, 0.03), (-0.01, 0.12), (-0.036, 0.13), (-0.036, 0.165), (0.036, 0.165), (0.036, 0.13), (0.01, 0.12), (0.009, 0.03), (0.035, 0.012), (0.075, 0.0)])
@@ -1998,6 +1999,64 @@ def build_rail(coll, T, mats, bbox=None, root_coll=None):
 _LUW = [None]
 
 
+def build_gores(net, coll, mats, max_gap=9.0):
+    """Painted gores (1971 MUTCD): where an exit / entrance ramp separates from the freeway, the
+    wedge between the freeway edge line and the ramp's inner edge is paved and striped with
+    white chevrons until it is max_gap m wide (the grass gore starts there). Uses the swept
+    frames (_deck) of the ramp and freeway edges. Material MAT_Road_Gore (web ground kind 8:
+    rl = lateral m from the wedge centre, hw = half width, rs = m from the nose)."""
+    fw = [e for e in net.E if e['sec']['t'] == 'freeway' and '_deck' in e]
+    if not fw:
+        return 0
+    FP = np.vstack([e['_deck']['P'] for e in fw])
+    FZ = np.concatenate([(e['_deck']['zl'] + e['_deck']['zr']) * 0.5 for e in fw])
+    FH = np.concatenate([e['_deck']['hw'] for e in fw])
+    n_g = 0
+    for i, e in enumerate(net.E):
+        if e['sec']['t'] != 'ramp' or '_deck' not in e:
+            continue
+        D = e['_deck']
+        for end, nid in ((0, e['p']['from']), (1, e['p']['to'])):
+            if len(net.legs.get(nid, [])) != 1:
+                continue   # a gore end has only the (virtual, not built) merge link
+            idx = np.arange(len(D['s'])) if end == 0 else np.arange(len(D['s']))[::-1]
+            rows = []
+            for k in idx:
+                p = D['P'][k, :2]
+                j = int(np.argmin(np.hypot(FP[:, 0] - p[0], FP[:, 1] - p[1])))
+                q = FP[j, :2]
+                v = p - q
+                dist = float(np.hypot(*v))
+                if dist < 1e-3:
+                    continue
+                v /= dist
+                side = 1.0 if np.dot(D['N'][k], -v) > 0 else -1.0
+                pr = p + D['N'][k] * D['hw'][k] * side        # ramp pavement edge facing the freeway
+                qe = q + v * FH[j]                            # freeway pavement edge facing the ramp
+                gap = float(np.dot(pr - qe, v))
+                if gap > max_gap:
+                    break
+                if gap > 0.25:
+                    zr_ = D['zl'][k] if side < 0 else D['zr'][k]
+                    rows.append((qe, pr, FZ[j], zr_, D['s'][k], gap))
+            if len(rows) < 3:
+                continue
+            V, F, rl, rs, hw = [], [], [], [], []
+            s0 = rows[0][4]
+            for r_, (qe, pr, zq, zp, sk, gap) in enumerate(rows):
+                for c_, (pt, zz, u) in enumerate(((qe, zq, -gap / 2), (pr, zp, gap / 2))):
+                    V.append((pt[0], pt[1], zz + 0.03)); rl.append(u); rs.append(abs(sk - s0)); hw.append(gap / 2)
+                if r_:
+                    a = 2 * (r_ - 1)
+                    F += [(a, a + 1, a + 3), (a, a + 3, a + 2)]
+            M = Mesh(ATTRS)
+            M.add(np.array(V), np.array(F), 0, rl=np.array(rl), rs=np.array(rs), hw=np.array(hw), mk=0.0, len=0.0)
+            M.to_object(f"ROAD GORE {e['p']['id']}_{end}", coll, [mats['gore']], smooth=True)
+            n_g += 1
+    print(f'   gores: {n_g}')
+    return n_g
+
+
 def build_roads(coll, net, T, mats, luw=None):
     J = plan_junctions(net)
     ctl = controls(net, J)
@@ -2020,6 +2079,7 @@ def build_roads(coll, net, T, mats, luw=None):
                 ob[k] = p[k]
         ob['world_id'] = p['id']
         n_obj += 1
+    ng = build_gores(net, coll, mats)
     jc = bpy.data.collections.get('JUNCTIONS') or bpy.data.collections.new('JUNCTIONS')
     if jc.name not in coll.children:
         coll.children.link(jc)

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { pxToWorld } from '../../core/coords';
 import { assetUrl, bin } from '../../core/data';
+import { loadTexture } from '../../engine/textures';
 
 /**
  * Rock kit (E2): crags, cliff-band ledge blocks, talus boulders, scree and road rock cuts.
@@ -42,10 +43,11 @@ const FADE = `
     return 1.0 - clamp((d - uFade.z) / max(uFade.w - uFade.z, 1e-3), 0.0, 1.0);
   }`;
 
-function rockMaterial(tex: THREE.Texture, fade: { value: THREE.Vector4 }, cam: { value: THREE.Vector3 }) {
+function rockMaterial(tex: { value: THREE.Texture }, texRefs: { value: THREE.Texture }[], fade: { value: THREE.Vector4 }, cam: { value: THREE.Vector3 }) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, metalness: 0, envMapIntensity: 0.5 });
   m.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, { uFade: fade, uCamPos: cam, tRock: { value: tex } });
+    const tu = { value: tex.value }; texRefs.push(tu);
+    Object.assign(s.uniforms, { uFade: fade, uCamPos: cam, tRock: tu });
     s.vertexShader = s.vertexShader
       .replace('#include <common>', `#include <common>
         attribute float ao; varying float vAO; varying vec3 vRW; varying vec3 vRN; varying vec3 vTint; varying float vFade;
@@ -124,12 +126,16 @@ export async function buildRocks(opts: { quality?: Q } = {}): Promise<Rocks> {
     fetch(assetUrl('rocks.json')).then((r) => r.json() as Promise<{ stride: number }>),
   ]);
   const S = rj.stride, R = new Float32Array(rBuf), n = R.length / S;
-  const tex = new THREE.TextureLoader().load(assetUrl('terrain/detail_rock.webp'));
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  // the terrain's rock detail (KTX2 when baked, src/engine/textures.ts); swapped in when it arrives
+  const tex = new THREE.Texture();
+  const texU: { value: THREE.Texture }[] = [];
   const camU = { value: new THREE.Vector3(1e9, 0, 0) };
   const K = meta.kinds.length;
   const fades = meta.kinds.map(() => [0, 1, 2].map(() => ({ value: new THREE.Vector4() })));
-  const mats = fades.map((fl) => fl.map((f) => rockMaterial(tex, f, camU)));
+  const rockTex = { value: tex };
+  const mats = fades.map((fl) => fl.map((f) => rockMaterial(rockTex, texU, f, camU)));
+  loadTexture('terrain/detail_rock', 'terrain/detail_rock.webp', { srgb: true, anisotropy: 4, wrap: THREE.RepeatWrapping })
+    .then((t) => { rockTex.value = t; for (const u of texU) u.value = t; });
 
   // geometries [kind][variant][lod]
   const geos = meta.kinds.map((k) => k.variants.map((v) => v.lods.map((l) => {

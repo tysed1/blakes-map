@@ -454,7 +454,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   const cellMask = new Uint8Array(NC), prevMask = new Uint8Array(NC).fill(255), cellDmin = new Float32Array(NC);
   const active = new Int32Array(NC); let nActive = 0; // cells with any LOD this pass
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), box = new THREE.Box3();
-  const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3(), dir = new THREE.Vector3();
+  const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3(), dir = new THREE.Vector3(), lastEmit = new THREE.Vector3(1e9, 0, 0);
   const cnt = new Int32Array(5);
   const PAD = 15, SLACK = 3; // crown overhang (m); camera travel allowed between culling passes (m)
   let visible = 0, tris = 0;
@@ -487,7 +487,10 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     }
     nActive = 0; let nbb = 0;
     for (let c = 0; c < NC; c++) { if (cellMask[c] & 15) active[nActive++] = c; if (cellMask[c] & 16) nbb += cellCount[c]; }
+    // near LODs are filtered per instance: re-emit once the camera has moved past the slack
+    if (cp.distanceToSquared(lastEmit) > (SLACK - 1) * (SLACK - 1)) changed = true;
     if (!changed) return;
+    lastEmit.copy(cp);
     prevMask.set(cellMask);
     visible = 0; tris = 0;
     const smallFar = quality.smallFar + SLACK;
@@ -503,8 +506,23 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
         const b = range[ri + 1];
         for (let l = 0; l < NL; l++) {
           if (!(m & (1 << l))) continue;
-          const im = lm[l], o = cnt[l];
+          const im = lm[l];
           const am = im.instanceMatrix.array as Float32Array, ac = im.instanceColor!.array as Float32Array;
+          if (l <= 2 && m !== 1 << l) {
+            // near LODs in a cell that straddles a band edge: per instance, only those inside this LOD's band
+            // (+ slack), so the submitted near-LOD count follows the band instead of the 50 m cell
+            const lo2 = lo[l] - SLACK, hi2 = hi[l] + SLACK;
+            for (let k = a; k < b; k++) {
+              const dx = mats[k * 16 + 12] - cp.x, dy = mats[k * 16 + 13] - cp.y, dz = mats[k * 16 + 14] - cp.z;
+              const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              if (d < lo2 || d > hi2) continue;
+              const t = cnt[l]++;
+              for (let j = 0; j < 16; j++) am[t * 16 + j] = mats[k * 16 + j];
+              ac[t * 3] = cols[k * 3]; ac[t * 3 + 1] = cols[k * 3 + 1]; ac[t * 3 + 2] = cols[k * 3 + 2];
+            }
+            continue;
+          }
+          const o = cnt[l];
           for (let j = a * 16, e = b * 16, t = o * 16; j < e; j++, t++) am[t] = mats[j];
           for (let j = a * 3, e = b * 3, t = o * 3; j < e; j++, t++) ac[t] = cols[j];
           cnt[l] += b - a;

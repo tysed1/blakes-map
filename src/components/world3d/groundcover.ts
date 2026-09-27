@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { IMG_W, IMG_H, MPP, pxToWorld } from '../../core/coords';
 import { assetUrl, bin, World } from '../../core/data';
+import { loadTexture } from '../../engine/textures';
 
 /**
  * Ground cover + props: the A3 Blender ground layer (tools/blender/lib_groundcover.py, lib_props.py)
@@ -498,11 +499,10 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   }
 
   // ------------------------------------------------ props (lib_props instances)
-  const atlas = loader.load(assetUrl('groundcover/props_albedo.jpg'));
-  atlas.colorSpace = THREE.SRGBColorSpace; atlas.anisotropy = 8;
-  const atlasN = loader.load(assetUrl('groundcover/props_normal.jpg'));
-  atlasN.anisotropy = 4;
-  const pmat = propMaterial(atlas, atlasN);
+  // atlas + normal atlas as Basis KTX2 when baked (src/engine/textures.ts; R3), else the JPEGs
+  const pmat = propMaterial(new THREE.Texture(), new THREE.Texture());
+  loadTexture('groundcover/props_albedo', 'groundcover/props_albedo.jpg', { srgb: true, anisotropy: 8 }).then((t) => { pmat.map = t; pmat.needsUpdate = true; });
+  loadTexture('groundcover/props_normal', 'groundcover/props_normal.jpg', { srgb: false, anisotropy: 4 }).then((t) => { pmat.normalMap = t; pmat.needsUpdate = true; });
   const PV = new Float32Array(propBuf), NP = PV.length / 6;
   const protoKind: number[] = [];
   meta.prop_kinds.forEach((k, ki) => k.protos.forEach((p) => (protoKind[p] = ki)));

@@ -31,6 +31,7 @@ interface InfraMeta {
   version: number; chunk_m: number; origin: [number, number]; palette: PalMeta[]; textures: Record<string, string>;
   chunks: ChunkMeta[];
   protos: Record<string, { nv: number; nt: number; pos: Block; nrm: Block; idx: Block; sA: Block }>;
+  spray?: number[][];   // waterfall mist emitters [x, y, z, half width m, strength]
   instances: { name: string; proto: string; count: number; rows: Block }[];
   wires: { cx: number; cz: number; n: number; pts: Block; cnt: Block; rad: Block }[];
 }
@@ -273,22 +274,48 @@ vec3 concreteCol(vec3 p, vec3 col, float rs, float joints){
     float weeds = sstep(0.5, 0.8, bn(fbm2(P * 0.9)) + so * 0.45) * sstep(0.2, 0.9, so);
     col = mix(col, vec3(0.07, 0.08, 0.035), weeds * 0.75);
     col = mix(col, col * 0.72, (1.0 - sstep(0.0, 0.18, so)) * 0.45);
+  } else if (kind == 8) {
+    // painted gore (1971 MUTCD): white border lines + chevrons pointing at the nose, on worn asphalt
+    float t1 = texture(tAsph, bxy / 3.2).r * 2.0 * 0.1098;
+    float det = pow(t1 * 2.6, 0.55);
+    col = mix(vec3(0.03, 0.03, 0.032), vec3(0.085, 0.083, 0.078), 0.25) * det;
+    float au = abs(rl);
+    float edge = band(au, hw - 0.1, 0.2) * step(0.35, hw);
+    float cv = fract((rs - au * 1.4) / 7.5);
+    float cvw = max(fwidth(cv), 1e-4);
+    float chev = (1.0 - smoothstep(0.08 - cvw, 0.08 + cvw, cv)) * step(au, hw - 0.1) * step(0.6, hw);
+    float wn = bn(fbm4(vec3(vec2(rl, rs) / 0.6, 2.0)));
+    float paint = max(edge, chev) * sstep(0.12, 0.3, wn + 0.15);
+    col = mix(col, vec3(0.62, 0.62, 0.58), paint);
+    rough = mix(0.9, 0.55, paint);
+    gHeight = texture(tAsphH, bxy / 3.2).r + paint * 0.25; gBumpS = 0.35;
   } else if (kind == 4) {
     col = concreteCol(P, vec3(0.3, 0.295, 0.275), rs, 1.5); rough = 0.88;
   } else if (kind == 5) {
     col = concreteCol(P, vec3(0.27, 0.265, 0.245), rs, 1.5); rough = 0.88;
   } else {
     col = gravelCol(P, bxy, tGrav, 1.1, vec3(0.12, 0.115, 0.11), vec3(0.1, 0.085, 0.07), rl, 0.0); rough = 0.97;
+    if (kind == 7 && hw > 0.5) {
+      // far LOD of the instanced ties (culled at 260 m): creosoted tie stripes on the ballast top,
+      // coverage-averaged once sub-pixel, plus the dark oil strip between the rails
+      float dist = length(vViewPosition);
+      float far = sstep(200.0, 250.0, dist) * step(abs(rl), hw);
+      float x = rs / 0.6;
+      float tv = abs(fract(x) - 0.5) * 2.0, aa = fwidth(x) * 2.0 + 1e-4;
+      float ties = mix(1.0 - smoothstep(0.38 - aa, 0.38 + aa, tv), 0.38, sstep(0.3, 0.6, fwidth(x)));
+      col = mix(col, vec3(0.05, 0.04, 0.032), far * ties * 0.9);
+      col = mix(col, col * 0.7, sstep(80.0, 200.0, dist) * step(abs(rl), hw));
+    }
   }
   // ACES (web) crushes the toe harder than Blender's AgX: lift the dark pavement albedos to read alike
-  diffuseColor.rgb = col * (kind == 0 ? 2.0 : kind <= 3 || kind == 7 ? 1.45 : 1.0);
+  diffuseColor.rgb = col * (kind == 0 || kind == 8 ? 2.0 : kind <= 3 || kind == 7 ? 1.45 : 1.0);
   roughnessFactor = rough;
   metalnessFactor = 0.0;
 }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   normal = bumpN(-vViewPosition, normal, gHeight, gBumpS * 0.06);`);
   };
-  m.customProgramCacheKey = () => 'infra-ground-3';
+  m.customProgramCacheKey = () => 'infra-ground-5';
   return m;
 }
 
@@ -430,13 +457,13 @@ float bH = 0.5, bBump = 0.0;
     col = mix(col, col * vec3(0.23, 0.26, 0.12), bn(fbm2(P * 0.05)) * 0.45);
     col = mix(col, vec3(0.05, 0.055, 0.045), mrange(depth, 0.0, 2.5, 0.0, 0.75));
     col = mix(col, col * vec3(0.35, 0.33, 0.30), mrange(depth, -0.5, 0.02, 0.0, 0.55));
-    rough = mrange(depth, -0.7, 0.05, 0.85, 0.3);
+    rough = mrange(depth, -0.7, 0.05, 0.85, 0.55);   // damp, not mirror: no glowing waterline streaks at golden hour
     alpha = sstep(0.15, 0.45, e + (fbm4(P * 0.6) - 0.5) * 0.6);
     bH = dot(cr, vec3(0.33)); bBump = 0.9;
   } else {
     float n2 = bn(fbm4(P * 6.0));
     col = mix(vec3(0.030, 0.025, 0.018), vec3(0.070, 0.058, 0.040), n2);
-    rough = mrange(e, 0.0, 1.0, 0.7, 0.28);
+    rough = mrange(e, 0.0, 1.0, 0.75, 0.5);
     alpha = mrange(e - bn(fbm4(P * 0.8)) * 0.3, 0.0, 0.45, 0.0, 0.85);
     bH = n2; bBump = 0.3;
   }
@@ -445,7 +472,7 @@ float bH = 0.5, bBump = 0.0;
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   normal = bumpN(-vViewPosition, normal, bH, bBump * 0.05);`);
   };
-  m.customProgramCacheKey = () => 'infra-bed-1';
+  m.customProgramCacheKey = () => 'infra-bed-2';
   return m;
 }
 
@@ -702,6 +729,53 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
     roads.add(mesh);
     culled.push({ obj: mesh, box: g.boundingBox!.clone(), dist: CULL.wires });
     tris += idx.length / 3;
+  }
+
+  // ---- waterfall mist / spray: one InstancedMesh of soft camera-facing cards for all falls (1 draw)
+  if (meta.spray && meta.spray.length) {
+    const PER = 36;
+    const n = meta.spray.length * PER;
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    const a = new Float32Array(n * 4), b = new Float32Array(n * 4);
+    let k = 0;
+    const rnd = (i: number) => { const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+    for (const [x, y, z, hw, st] of meta.spray) {
+      for (let i = 0; i < PER; i++, k++) {
+        a.set([x + (rnd(k) - 0.5) * 2 * hw, y, z + (rnd(k + 0.5) - 0.5) * 2 * hw * 0.6, Math.min(Math.max(st, 0.4), 3.0)], k * 4);
+        b.set([rnd(k + 0.25), rnd(k + 0.75), 0.9 + rnd(k + 0.1) * 2.2, rnd(k + 0.3)], k * 4);
+      }
+    }
+    g.setAttribute('sP', new THREE.InstancedBufferAttribute(a, 4));
+    g.setAttribute('sR', new THREE.InstancedBufferAttribute(b, 4));
+    g.instanceCount = n;
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, fog: false,
+      uniforms: { uTime: time },
+      vertexShader: `attribute vec4 sP; attribute vec4 sR; uniform float uTime; varying vec2 vUv; varying float vA;
+        void main(){
+          float life = fract(uTime * (0.12 + sR.x * 0.1) + sR.y);          // each card rises, spreads, fades
+          vec3 c = sP.xyz + vec3((sR.w - 0.5) * 3.0 * life, life * (1.5 + 2.5 * sP.w), (sR.x - 0.5) * 3.0 * life);
+          float size = sR.z * (0.6 + 1.6 * life) * (0.6 + 0.4 * sP.w);
+          vec4 mv = modelViewMatrix * vec4(c, 1.0);
+          mv.xy += position.xy * size;
+          vUv = position.xy; vA = sin(3.14159 * life) * (0.10 + 0.06 * sP.w) * (1.0 - smoothstep(250.0, 600.0, -mv.z));
+          gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `varying vec2 vUv; varying float vA;
+        void main(){ float r = dot(vUv, vUv); if (r > 1.0) discard;
+          gl_FragColor = vec4(vec3(0.86, 0.87, 0.85), vA * (1.0 - r) * (1.0 - r));
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    const mist = new THREE.Mesh(g, mat);
+    mist.frustumCulled = false; mist.renderOrder = 4; mist.name = 'infra_falls_mist';
+    water.add(mist);
+    const box = new THREE.Box3();
+    for (const [x, y, z] of meta.spray) box.expandByPoint(new THREE.Vector3(x, y, z));
+    box.expandByScalar(15);
+    culled.push({ obj: mist, box, dist: 600 });
   }
 
   // ---- culling / LOD

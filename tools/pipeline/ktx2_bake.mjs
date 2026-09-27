@@ -18,12 +18,12 @@ const PUB = path.join(ROOT, 'public', 'world');
 // ships the KTX2 instead of the source image). Flip `live` when the owning module switches loaders.
 export const TEXTURES = {
   albedo: ['albedo.jpg', 'etc1s', true, true],
-  'groundcover/props_albedo': ['groundcover/props_albedo.jpg', 'etc1s', true, false],
-  'groundcover/props_normal': ['groundcover/props_normal.jpg', 'uastc', false, false],
-  'terrain/detail_grass': ['terrain/detail_grass.webp', 'uastc', true, false],
-  'terrain/detail_forest': ['terrain/detail_forest.webp', 'uastc', true, false],
-  'terrain/detail_rock': ['terrain/detail_rock.webp', 'uastc', true, false],
-  'terrain/detail_soil': ['terrain/detail_soil.webp', 'uastc', true, false],
+  'groundcover/props_albedo': ['groundcover/props_albedo.jpg', 'etc1s', true, true],
+  'groundcover/props_normal': ['groundcover/props_normal.jpg', 'uastc', false, true],
+  'terrain/detail_grass': ['terrain/detail_grass.webp', 'uastc', true, true],
+  'terrain/detail_forest': ['terrain/detail_forest.webp', 'uastc', true, true],
+  'terrain/detail_rock': ['terrain/detail_rock.webp', 'uastc', true, true],
+  'terrain/detail_soil': ['terrain/detail_soil.webp', 'uastc', true, true],
 };
 
 function decode(src) {

@@ -215,7 +215,7 @@ def inventory():
 # ground kinds (one shader, per-vertex kind)
 GROUND = {'MAT_Road_Asphalt': 0, 'MAT_Road_Gravel': 1, 'MAT_Road_RedClay': 2, 'MAT_Road_GravelShoulder': 3,
           'MAT_Road_Concrete': 4, 'MAT_Road_Sidewalk': 5, 'MAT_Road_Verge': 6, 'MAT_Terrain_PBR': 6, 'MAT_Terrain': 6,
-          'MAT_Rail_Ballast': 7}
+          'MAT_Rail_Ballast': 7, 'MAT_Road_Gore': 8}
 # structure palette (linear albedo as in lib_roads / lib_infrastructure / lib_water), shader modes:
 # 0 flat (fine noise), 1 cast concrete, 2 painted / weathered steel (rust), 3 wood, 4 rubble masonry,
 # 5 riprap, 6 river boulder (moss, wet), 7 galvanized
@@ -404,7 +404,13 @@ def export():
         if c.name == 'A2_PROTOTYPES':
             proto_names |= {o.name for o in c.all_objects}
     t0 = time.time()
+    spray = []
     for ob in bpy.data.objects:
+        if 'spray' in ob.keys():
+            sp = list(ob['spray'])
+            for k in range(0, len(sp), 5):
+                w = web(np.array(sp[k:k + 3]))[0]
+                spray.append([round(float(w[0]), 2), round(float(w[1]), 2), round(float(w[2]), 2), round(sp[k + 3], 2), round(sp[k + 4], 3)])
         if ob.type == 'CURVE':
             cu = ob.data
             kind = 'power' if 'Power' in ob.name else 'tele' if 'Telephone' in ob.name else 'fence'
@@ -460,7 +466,8 @@ def export():
     BINS = {k: Bin(f'infra_{k}.bin') for k in ('roads', 'water', 'struct')}
     BIN_OF = {'ground': 'roads', 'verge': 'roads', 'water': 'water', 'bed': 'water', 'struct': 'struct', 'detail': 'struct'}
     meta = {'version': 2, 'chunk_m': {'ground': CHUNK_M, 'other': CHUNK_BIG}, 'origin': [X0, Z0], 'palette': [], 'ground_kinds': GROUND,
-            'textures': {k: f'{k}.jpg' for k in TEXTURES}, 'chunks': [], 'protos': {}, 'instances': [], 'wires': []}
+            'textures': {k: f'{k}.jpg' for k in TEXTURES}, 'chunks': [], 'protos': {}, 'instances': [], 'wires': [],
+            'spray': spray}   # waterfall mist emitters [x, y, z, half width m, strength] (web coords)
     for pe in PALETTE:
         name, col, rough, metal, mode, rust = pe[:6]
         meta['palette'].append({'name': name, 'color': col, 'rough': rough, 'metal': metal, 'mode': MODES[mode], 'rust': rust,
