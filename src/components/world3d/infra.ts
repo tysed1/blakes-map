@@ -57,6 +57,7 @@ export interface Infra {
 // cull distances (m) per draw group / prop kind
 const CULL: Record<string, number> = { ground: 1e9, verge: 950, struct: 1e9, detail: 750, bed: 2200, water: 1e9, wires: 520 };
 function protoCull(p: string) {
+  if (/StreetLight/.test(p)) return 700;
   if (/Pole/.test(p)) return 900;
   if (/RailTie/.test(p)) return 260;
   if (/Sign/.test(p)) return 450;
@@ -638,6 +639,7 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
   }
 
   // ---- wires
+  const tmpV2 = new THREE.Vector2();
   for (const w of meta.wires) {
     const pts: Float32Array = view(bufs, w.pts), cnt: Uint16Array = view(bufs, w.cnt), rad: Uint8Array = view(bufs, w.rad);
     const np = pts.length / 3;
@@ -671,7 +673,7 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
     mesh.name = `infra_wires_${w.cx}_${w.cz}`; mesh.renderOrder = 3;
     mesh.onBeforeRender = (renderer, _s, cam) => {
       const pc = cam as THREE.PerspectiveCamera;
-      const h = renderer.getDrawingBufferSize(new THREE.Vector2()).y || 1;
+      const h = renderer.getDrawingBufferSize(tmpV2).y || 1;
       pixK.value = (2 * Math.tan(THREE.MathUtils.degToRad(pc.fov ?? 50) / 2)) / h;   // metres per device pixel at 1 m
     };
     roads.add(mesh);
@@ -681,9 +683,9 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
 
   // ---- culling / LOD
   const last = new THREE.Vector3(1e9, 0, 0);
-  const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(0, 0, 0, 'YZX'), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3();
+  const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(0, 0, 0, 'YZX'), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3(), tmpT = new THREE.Vector3();
   function update(camera: THREE.Camera) {
-    const cp = camera.getWorldPosition(tmpP.clone());
+    const cp = camera.getWorldPosition(tmpP);   // no per-frame allocations
     for (const c of culled) c.obj.visible = c.dist >= 1e8 || c.box.distanceToPoint(cp) < c.dist;
     if (cp.distanceToSquared(last) < 36) return;
     last.copy(cp);
@@ -696,11 +698,12 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
         if (dx * dx + dy * dy + dz * dz > s.r2) continue;
         tmpE.set(R[o + 3], R[o + 4], R[o + 5], 'YZX'); tmpQ.setFromEuler(tmpE);
         tmpS.setScalar(R[o + 6]);
-        tmpM.compose(new THREE.Vector3(R[o], R[o + 1], R[o + 2]), tmpQ, tmpS);
+        tmpM.compose(tmpT.set(R[o], R[o + 1], R[o + 2]), tmpQ, tmpS);
         s.mesh.setMatrixAt(n++, tmpM);
       }
       s.mesh.count = n;
-      s.mesh.instanceMatrix.needsUpdate = true;
+      s.mesh.visible = n > 0;   // no empty instanced draws (and no shadow-pass draws) for far prop kinds
+      if (n > 0) s.mesh.instanceMatrix.needsUpdate = true;
     }
   }
 

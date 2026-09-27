@@ -322,6 +322,10 @@ def scatter(T, cls, seed=7):
     p_can = np.maximum(p_can, (sdn > -4) * edge_in * 0.9 * gaps * ~np.isin(cls, [FARM, COM, IND, RAIL]))  # forest tongues
     p_can[rock] = 0.62 * np.clip(0.6 + 0.4 * n15[rock], 0, 1) * np.where(slope[rock] > 0.9, 0.5, 1.0)
     p_can *= 1 - 0.3 * smoothstep(0.5, 0.95, rexp)   # crags / cut banks: thinner, trees still cling on ledges
+    # cliff bands (the rock kit's ledge blocks, tools/pipeline/rocks.py) stay open so the rock reads,
+    # and very steep faces only hold scattered trees
+    crag = smoothstep(0.45, 0.85, rexp) * smoothstep(0.55, 1.1, slope)
+    p_can *= (1 - 0.8 * crag) * (1 - 0.5 * smoothstep(1.0, 1.6, slope))
     p_can *= 1 - np.clip(gravelbar, 0, 1)    # open gravel bars
     p_can = np.where(dev, np.clip(0.3 + 0.2 * n100 + 0.1 * n15, 0.05, 0.6), p_can)
     p_can[cls == COM] = 0.05; p_can[cls == IND] = 0.03; p_can[cls == RAIL] = 0.0
@@ -378,7 +382,7 @@ def scatter(T, cls, seed=7):
     # ---- 2) understory (inside forest): dogwood, saplings, rhododendron/laurel thickets
     # mature forest: fairly open at eye level; understory concentrates in canopy gaps, coves and creek hollows
     p_und = forest * edge_in * (0.07 + 0.13 * np.clip(moist, 0, 1) + 0.35 * np.clip(1 - gaps, 0, 1)) + forest * 0.08 * np.clip(-tpi, 0, 1)
-    p_und = p_und + opening * 0.3    # regrowth in the openings: saplings, brush, young pine
+    p_und = (p_und + opening * 0.3) * (1 - 0.8 * crag)    # regrowth in the openings; bare cliff bands
     x, y, xi, yi = _jitter_grid(2.2, rng, p_und.astype(np.float32))
     ok = clear_ok(x, y, 1); x, y, xi, yi = x[ok], y[ok], xi[ok], yi[ok]
     m = moist[yi, xi]; r = np.clip(tpi[yi, xi], -1, 1); creek = np.exp(-dwater[yi, xi] / 25); rk = np.exp(-drock[yi, xi] / 30)
@@ -458,7 +462,7 @@ def scatter(T, cls, seed=7):
     # autumn progress per crown: colour comes first up high, on warm south / south-west faces, on ridges and
     # sunny forest edges; moist coves and creek bottoms stay green; whole stands turn together (~75 m patches)
     n75 = fbm((H, W), 30, seed + 11, 2)
-    aut = (0.14 + 0.6 * elev + 0.28 * np.clip(sun, 0, 1) - 0.12 * np.clip(-sun, 0, 1) + 0.12 * np.clip(tpi, 0, 1)
+    aut = (0.2 + 0.6 * elev + 0.28 * np.clip(sun, 0, 1) - 0.12 * np.clip(-sun, 0, 1) + 0.12 * np.clip(tpi, 0, 1)
            - 0.3 * np.clip(-tpi, 0, 1) * moist - 0.25 * np.exp(-dwater / 25) + 0.1 * np.exp(-np.abs(sdn) / 12) + 0.14 * n75)
     aut = np.clip(aut[yi, xi] + rng.normal(0, 0.06, len(X)), 0, 1)
     seed_col = np.round(aut * 100) + rng.random(len(X)) * 0.999

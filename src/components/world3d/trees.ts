@@ -38,8 +38,8 @@ export interface TreeQuality { lodDist: [number, number, number, number]; smallF
 // LOD switch distances (m): 0 full | 1 30 % cards | 2 cores + sparse cards | 3 four cores | 4 shared crown billboard.
 // Cross-fades hide the switches, so they sit where the pixel footprint allows (triangle budget, R4 impostors next).
 export const TREE_QUALITY: Record<string, TreeQuality> = {
-  low: { lodDist: [30, 90, 220, 450], smallFar: 110, shadowLod: 0 },
-  medium: { lodDist: [40, 120, 280, 580], smallFar: 150, shadowLod: 1 },
+  low: { lodDist: [30, 90, 220, 450], smallFar: 110, shadowLod: -1 },
+  medium: { lodDist: [40, 120, 280, 580], smallFar: 150, shadowLod: 0 },
   high: { lodDist: [55, 160, 360, 750], smallFar: 200, shadowLod: 1 },
   ultra: { lodDist: [80, 230, 500, 1000], smallFar: 280, shadowLod: 1 },
 };
@@ -204,7 +204,10 @@ function billboardMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUn
           vTint = instanceColor;
         #else
           vTint = vec3(1.0);
-        #endif`)
+        #endif
+        // object-space stand-in on the crown (worldpos / shadow / baked-sun chunks read 'transformed':
+        // the card must sit at crown height, not at the trunk base)
+        transformed = vec3(0.0, ibb.x + position.y * ibb.z, 0.0);`)
       .replace('#include <project_vertex>', `
         vec4 mvPosition = vec4(0.0, 0.0, 0.0, 1.0);
         #ifdef USE_INSTANCING
@@ -250,8 +253,15 @@ function billboardMaterial(u: FoliageUniforms, leafTex: THREE.Texture, f: FadeUn
       .replace('#include <normal_fragment_begin>', `
         float faceDirection = 1.0;
         vec2 bn = vBB.xy; float rr = min(dot(bn, bn), 1.0);
-        vec3 normal = normalize(vec3(bn.x, bn.y * 0.85 + 0.2, sqrt(1.0 - rr) + 0.15));
-        vec3 nonPerturbedNormal = normal;`);
+        // crown dome: sphere normal on the card, bent toward the sky (tops catch the low sun / sky light)
+        vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+        vec3 normal = normalize(vec3(bn.x, bn.y, sqrt(1.0 - rr) + 0.1) + upV * 0.7);
+        vec3 nonPerturbedNormal = normal;`)
+      // same warm translucency as the leaf cards (backlit crowns glow)
+      .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
+        'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
+        `float back = pow( saturate( - dot( geometryViewDir, directLight.direction ) ), 3.0 ) * 0.5 + 0.25;
+        reflectedLight.directDiffuse += ( irradiance * 0.75 + back * directLight.color * vec3( 1.35, 1.2, 0.62 ) * 0.3 ) * BRDF_Lambert( material.diffuseColor );`));
   };
   m.customProgramCacheKey = () => 'treebb';
   return m;
@@ -432,7 +442,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
   let quality: TreeQuality = TREE_QUALITY.high;
   // LOD l is drawn over [lo[l], hi[l]] (metres); fade zones are +-FADE_W around each switch distance
   const lo = new Float32Array(5), hi = new Float32Array(5);
-  const fadeW = (d: number) => Math.min(Math.max(0.1 * d, 6), 45);
+  const fadeW = (d: number) => Math.min(Math.max(0.06 * d, 3), 30); // narrow: a static frame shows the dither
   const applyQuality = () => {
     const d = quality.lodDist;
     for (let l = 0; l < 5; l++) {

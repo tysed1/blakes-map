@@ -48,18 +48,60 @@ async function json<T>(f: string): Promise<T> {
   return r.json();
 }
 /**
- * Binary rasters. Static hosts that only serve web media types (the Artifact deploy, see
- * tools/deploy/prepare_artifact.py) get them as gzip + base64 text: built with VITE_PACKED_BIN=1.
+ * Binary data. Static hosts that only serve web media types (the Artifact deploy, see
+ * tools/deploy/prepare_artifact.py) get every *.bin packed, built with VITE_PACKED_BIN=1:
+ * world/pack.json maps each file to `<name>.wasm`, a valid WebAssembly module whose single custom
+ * section carries the gzip of the file after a lossless reversible filter (byte-plane shuffle,
+ * optionally with delta coding) that roughly halves the gzip size of heightfields and vertex buffers.
+ * Hosts without a pack.json fall back to the legacy `<name>.gz.b64.txt`.
  */
 const PACKED = import.meta.env.VITE_PACKED_BIN === '1';
+interface PackEntry { file: string; filter: 'raw' | 'sh2' | 'sh4' | 'd16sh2' | 'd32sh4'; size: number }
+let packIndex: Promise<Record<string, PackEntry> | null> | null = null;
+
+function unshuffle(src: Uint8Array, k: number): Uint8Array {
+  const n = src.length / k, out = new Uint8Array(src.length);
+  for (let j = 0; j < k; j++) { const o = j * n; for (let i = 0; i < n; i++) out[i * k + j] = src[o + i]; }
+  return out;
+}
+export function unfilter(b: Uint8Array, filter: PackEntry['filter']): ArrayBuffer {
+  if (filter === 'raw') return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+  const k = filter.endsWith('sh4') ? 4 : 2;
+  const u = unshuffle(b, k);
+  if (filter === 'd16sh2') { const a = new Uint16Array(u.buffer); for (let i = 1; i < a.length; i++) a[i] = (a[i] + a[i - 1]) & 0xffff; }
+  else if (filter === 'd32sh4') { const a = new Uint32Array(u.buffer); for (let i = 1; i < a.length; i++) a[i] = (a[i] + a[i - 1]) >>> 0; }
+  return u.buffer as ArrayBuffer;
+}
+/** Payload of a single-custom-section wasm container (magic, version, id 0, LEB size, LEB name len, name). */
+function wasmPayload(buf: ArrayBuffer): Uint8Array {
+  const b = new Uint8Array(buf);
+  let p = 9;
+  const leb = () => { let v = 0, sh = 0, c; do { c = b[p++]; v |= (c & 0x7f) << sh; sh += 7; } while (c & 0x80); return v; };
+  const size = leb(), start = p, nameLen = leb();
+  p += nameLen;
+  return b.subarray(p, start + size);
+}
+async function gunzip(data: Uint8Array): Promise<Uint8Array> {
+  const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(ds).arrayBuffer());
+}
 export async function bin(f: string): Promise<ArrayBuffer> {
-  const r = await fetch(BASE + f + (PACKED ? '.gz.b64.txt' : ''));
+  if (!PACKED) {
+    const r = await fetch(BASE + f);
+    if (!r.ok) throw new Error(`failed to load ${f}`);
+    return r.arrayBuffer();
+  }
+  packIndex ??= fetch(BASE + 'pack.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const e = (await packIndex)?.[f];
+  if (e) {
+    const r = await fetch(BASE + e.file);
+    if (!r.ok) throw new Error(`failed to load ${e.file}`);
+    return unfilter(await gunzip(wasmPayload(await r.arrayBuffer())), e.filter);
+  }
+  const r = await fetch(BASE + f + '.gz.b64.txt');
   if (!r.ok) throw new Error(`failed to load ${f}`);
-  if (!PACKED) return r.arrayBuffer();
   const b64 = (await r.text()).trim();
-  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Response(ds).arrayBuffer();
+  return (await gunzip(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))).buffer as ArrayBuffer;
 }
 
 export const assetUrl = (f: string) => BASE + f;

@@ -554,7 +554,14 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), box = new THREE.Box3(), sph = new THREE.Sphere();
   const lastPos = new THREE.Vector3(1e9, 0, 0), lastDir = new THREE.Vector3();
   const dir = new THREE.Vector3();
-  let st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0 };
+  const st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0 };
+  // relist scratch (no allocation per relist; R2)
+  const gcnt = [0, 0, 0];
+  const arrs = grassLods.map((l) => l.tiles.array as Float32Array);
+  const dc = decor.map((d) => d.lods.map(() => 0));
+  const pc = props.map((p) => p.lods.map(() => 0));
+  const maxFarK = Math.max(...meta.prop_kinds.map((k) => k.far));
+  const cellX = (cx: number) => (cx * PCELL - 1000) * MPP, cellZ = (cy: number) => (cy * PCELL - 333.5) * MPP;
   const inView = (c: THREE.Vector3, r: number, cam: THREE.Vector3) => {
     // generous frustum test: ~12 degree angular margin so small turns don't need a re-list
     const m = 0.2 * c.distanceTo(cam) + 2 + r;
@@ -565,11 +572,10 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
   function relist(camera: THREE.Camera) {
     const cp = camera.position;
     pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pm);
-    st = { tiles: [0, 0, 0], blades: 0, decor: 0, props: 0, tris: 0, draws: 0 };
+    st.tiles[0] = st.tiles[1] = st.tiles[2] = 0; st.blades = st.decor = st.props = st.tris = st.draws = 0;
     // grass tiles
     const Rg = q.fade[1] + TILE;
-    const cnt = [0, 0, 0];
-    const arrs = grassLods.map((l) => l.tiles.array as Float32Array);
+    const cnt = gcnt; cnt[0] = cnt[1] = cnt[2] = 0;
     for (let iz = Math.floor((cp.z - Rg) / TILE); iz <= Math.floor((cp.z + Rg) / TILE); iz++) {
       for (let ix = Math.floor((cp.x - Rg) / TILE); ix <= Math.floor((cp.x + Rg) / TILE); ix++) {
         const x0 = ix * TILE, z0 = iz * TILE;
@@ -587,17 +593,18 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         arrs[li][cnt[li] * 2] = x0; arrs[li][cnt[li] * 2 + 1] = z0; cnt[li]++;
       }
     }
-    grassLods.forEach((l, li) => {
+    for (let li = 0; li < grassLods.length; li++) {
+      const l = grassLods[li];
       l.geo.instanceCount = cnt[li]; l.mesh.visible = cnt[li] > 0;
       l.tiles.clearUpdateRanges(); l.tiles.addUpdateRange(0, cnt[li] * 2); l.tiles.needsUpdate = true;
       const slots = Math.min(l.n, Math.ceil(q.dens[li] * TILE * TILE));
       st.tiles[li] = cnt[li]; st.blades += cnt[li] * slots; st.tris += cnt[li] * slots * (l.ipb / 3);
       if (cnt[li]) st.draws++;
-    });
+    }
     // decor
     const Rd = q.decor;
     DU.uDFade.value.set(Rd * 0.7, Rd);
-    const dc = decor.map((d) => d.lods.map(() => 0));
+    for (const a of dc) a.fill(0);
     const near = Math.min(25, Rd * 0.4);
     for (let iz = Math.floor((cp.z - Rd) / DTILE); iz <= Math.floor((cp.z + Rd) / DTILE); iz++) {
       for (let ix = Math.floor((cp.x - Rd) / DTILE); ix <= Math.floor((cp.x + Rd) / DTILE); ix++) {
@@ -613,28 +620,29 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
           const li = d < near || dd.lods.length < 2 || dd.tris[0] < 100 ? 0 : 1;
           const im = dd.lods[li], o = dc[p][li];
           if (o >= DMAX) continue;
-          (im.instanceMatrix.array as Float32Array).set(t.mats.subarray(k * 16, k * 16 + 16), o * 16);
-          (im.instanceColor!.array as Float32Array).set(t.cols.subarray(k * 3, k * 3 + 3), o * 3);
+          const am = im.instanceMatrix.array as Float32Array, ac = im.instanceColor!.array as Float32Array;
+          for (let j = 0; j < 16; j++) am[o * 16 + j] = t.mats[k * 16 + j];
+          ac[o * 3] = t.cols[k * 3]; ac[o * 3 + 1] = t.cols[k * 3 + 1]; ac[o * 3 + 2] = t.cols[k * 3 + 2];
           dc[p][li]++;
         }
       }
     }
-    decor.forEach((d, p) => d.lods.forEach((im, li) => {
-      const n = dc[p][li];
+    for (let p = 0; p < decor.length; p++) for (let li = 0; li < decor[p].lods.length; li++) {
+      const d = decor[p], im = d.lods[li], n = dc[p][li];
       im.count = n; im.visible = n > 0;
       if (n) {
         im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
         im.instanceColor!.clearUpdateRanges(); im.instanceColor!.addUpdateRange(0, n * 3); im.instanceColor!.needsUpdate = true;
         st.decor += n; st.tris += n * d.tris[li]; st.draws++;
       }
-    }));
+    }
     // props
-    const pc = props.map((p) => p.lods.map(() => 0));
-    const maxFar = Math.max(...meta.prop_kinds.map((k) => k.far)) * q.props;
+    for (const a of pc) a.fill(0);
+    const maxFar = maxFarK * q.props;
     for (let cy = 0; cy < ncy; cy++) for (let cx = 0; cx < ncx; cx++) {
       const c = cy * ncx + cx, a = cellStart[c], b = cellStart[c + 1];
       if (a >= b) continue;
-      const [x0, , z0] = pxToWorld(cx * PCELL, cy * PCELL), [x1, , z1] = pxToWorld((cx + 1) * PCELL, (cy + 1) * PCELL);
+      const x0 = cellX(cx), z0 = cellZ(cy), x1 = cellX(cx + 1), z1 = cellZ(cy + 1);
       box.min.set(x0 - 5, cellMinY[c], z0 - 5); box.max.set(x1 + 5, cellMaxY[c], z1 + 5);
       if (box.distanceToPoint(cp) > maxFar || !frustum.intersectsBox(box)) continue;
       for (let k = a; k < b; k++) {
@@ -644,20 +652,21 @@ export async function buildGroundcover(world: World, opts: GroundcoverOptions = 
         if (d2 > far * far) continue;
         const li = P.kind.far <= 160 || d2 < (far * 0.22) ** 2 ? 0 : 1; // small debris: one LOD (saves draw calls)
         const im = P.lods[li], o = pc[pr][li];
-        (im.instanceMatrix.array as Float32Array).set(pMats.subarray(k * 16, k * 16 + 16), o * 16);
-        (im.instanceColor!.array as Float32Array).set(pCols.subarray(k * 3, k * 3 + 3), o * 3);
+        const am = im.instanceMatrix.array as Float32Array, ac = im.instanceColor!.array as Float32Array;
+        for (let j = 0; j < 16; j++) am[o * 16 + j] = pMats[k * 16 + j];
+        ac[o * 3] = pCols[k * 3]; ac[o * 3 + 1] = pCols[k * 3 + 1]; ac[o * 3 + 2] = pCols[k * 3 + 2];
         pc[pr][li]++;
       }
     }
-    props.forEach((p, pr) => p.lods.forEach((im, li) => {
-      const n = pc[pr][li];
+    for (let pr = 0; pr < props.length; pr++) for (let li = 0; li < props[pr].lods.length; li++) {
+      const p = props[pr], im = p.lods[li], n = pc[pr][li];
       im.count = n; im.visible = n > 0;
       if (n) {
         im.instanceMatrix.clearUpdateRanges(); im.instanceMatrix.addUpdateRange(0, n * 16); im.instanceMatrix.needsUpdate = true;
         im.instanceColor!.clearUpdateRanges(); im.instanceColor!.addUpdateRange(0, n * 3); im.instanceColor!.needsUpdate = true;
         st.props += n; st.tris += n * p.tris[li]; st.draws++;
       }
-    }));
+    }
   }
 
   function update(camera: THREE.Camera) {

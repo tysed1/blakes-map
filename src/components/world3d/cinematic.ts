@@ -1,11 +1,7 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { installSunBake, loadSunBake, sunBake } from '../../engine/sunbake';
+import { FusedPost, GradeParams } from '../../engine/post';
 
 /**
  * Cinematic look: physically-flavoured aerial perspective, golden-hour sun, cascaded shadows,
@@ -81,64 +77,11 @@ export function installAtmosphere(p: AtmosphereParams) {
 #endif`;
 }
 
-/** Filmic grade in display space: warm highlights / cool shadows, saturation, contrast, vignette. */
-const GradeShader = {
-  uniforms: {
-    tDiffuse: { value: null as THREE.Texture | null },
-    uSat: { value: 1.12 }, uContrast: { value: 1.08 }, uVignette: { value: 0.32 },
-    uShadowTint: { value: new THREE.Vector3(-0.012, 0.0, 0.03) }, uHighTint: { value: new THREE.Vector3(0.035, 0.012, -0.03) },
-    uLift: { value: 0.012 }, uRes: { value: new THREE.Vector2(1, 1) }, uSharpen: { value: 0.18 },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uSat, uContrast, uVignette, uLift, uSharpen; uniform vec3 uShadowTint, uHighTint; uniform vec2 uRes;
-    varying vec2 vUv;
-    void main(){
-      vec2 px = 1.0 / vec2(textureSize(tDiffuse, 0));
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
-      // light unsharp mask (recovers leaf-card crispness lost to MSAA resolve)
-      vec3 bl = (texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb + texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb +
-                 texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb) * 0.25;
-      c = max(c + (c - bl) * uSharpen, 0.0);
-      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, uSat);
-      c = (c - 0.5) * uContrast + 0.5;
-      c += uShadowTint * (1.0 - smoothstep(0.0, 0.5, l)) + uHighTint * smoothstep(0.45, 1.0, l);
-      c = c * (1.0 - uLift) + uLift;
-      vec2 q = vUv - 0.5; q.x *= px.y / px.x;
-      c *= 1.0 - uVignette * smoothstep(0.35, 1.05, length(q));
-      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
-    }`,
-};
-
-/** Sun shafts: radial scatter of the bright (sky) pixels toward the sun's screen position, in HDR. */
-const ShaftsShader = {
-  uniforms: {
-    tDiffuse: { value: null as THREE.Texture | null },
-    uSun: { value: new THREE.Vector2(0.5, 0.5) }, uStrength: { value: 0.0 }, uColor: { value: new THREE.Vector3(1.0, 0.72, 0.45) },
-    uAspect: { value: 1.0 },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStrength, uAspect; uniform vec3 uColor; varying vec2 vUv;
-    void main(){
-      vec4 base = texture2D(tDiffuse, vUv);
-      base.rgb = any(isnan(base.rgb)) ? vec3(0.0) : min(base.rgb, vec3(256.0));
-      if (uStrength <= 0.001) { gl_FragColor = base; return; }
-      vec2 d = (uSun - vUv) / 40.0;
-      vec2 p = vUv; float acc = 0.0, w = 1.0;
-      float n = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
-      p += d * n;
-      for (int i = 0; i < 40; i++) {
-        vec3 c = min(texture2D(tDiffuse, p).rgb, vec3(16.0));
-        if (any(isnan(c))) c = vec3(0.0);
-        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-        acc += smoothstep(1.2, 3.0, l) * w;
-        w *= 0.96; p += d;
-      }
-      vec2 q = vUv - uSun; q.x *= uAspect;
-      float fall = exp(-length(q) * 2.2);
-      gl_FragColor = vec4(base.rgb + uColor * acc / 40.0 * uStrength * fall, base.a);
-    }`,
-};
+/**
+ * Post: one fused full-screen pass (src/engine/post.ts, board item R2): quarter-res sun shafts and
+ * bloom, then ACES + sRGB + unsharp mask + filmic grade (warm highlights / cool shadows, saturation,
+ * contrast, lift, vignette) at full resolution.
+ */
 
 export type ShadowQuality = 'low' | 'medium' | 'high' | 'ultra';
 /**
@@ -154,10 +97,10 @@ export const SHADOW_PRESET: Record<ShadowQuality, { cascades: number; far: numbe
 };
 
 export interface Cinematic {
-  shafts: ShaderPass;
-  composer: EffectComposer;
-  bloom: UnrealBloomPass;
-  grade: ShaderPass;
+  post: FusedPost;
+  /** bloom on/off (quality presets) */
+  bloom: { enabled: boolean };
+  grade: GradeParams;
   csm: CSM | null;
   /** the sun (first cascade light) */
   readonly sun: THREE.DirectionalLight;
@@ -169,17 +112,10 @@ export interface Cinematic {
 }
 
 export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, sunDir: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number): Cinematic {
-  const size = renderer.getSize(new THREE.Vector2());
-  const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
-  const composer = new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
-  const shafts = new ShaderPass(ShaftsShader);
-  composer.addPass(shafts);
-  const bloom = new UnrealBloomPass(size, 0.22, 0.55, 0.92);
-  composer.addPass(bloom);
-  composer.addPass(new OutputPass());
-  const grade = new ShaderPass(GradeShader);
-  composer.addPass(grade);
+  const post = new FusedPost(renderer);
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  post.setSize(size.x, size.y);
+  const bloom = { get enabled() { return post.bloomEnabled; }, set enabled(v: boolean) { post.bloomEnabled = v; } };
 
   installSunBake(sunDir);
   loadSunBake(renderer);
@@ -221,14 +157,13 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
     hooked.add(m);
     hook(m);
   };
-  const sp = new THREE.Vector3(), fwd = new THREE.Vector3();
+  const sp = new THREE.Vector3(), fwd = new THREE.Vector3(), sunUv = new THREE.Vector2();
   return {
-    composer, bloom, grade, shafts,
+    post, bloom, grade: post.grade,
     get csm() { return csm; },
     get sun() { return csm.lights[0]; },
     setSize(w, h, dpr) {
-      composer.setPixelRatio(dpr); composer.setSize(w, h);
-      grade.uniforms.uRes.value.set(w * dpr, h * dpr);
+      post.setSize(w * dpr, h * dpr);
       csm.updateFrustums();
     },
     render() {
@@ -237,11 +172,8 @@ export function createCinematic(renderer: THREE.WebGLRenderer, scene: THREE.Scen
       sp.copy(sunDir).multiplyScalar(10000).add(camera.position).project(camera);
       camera.getWorldDirection(fwd);
       const facing = fwd.dot(sunDir);
-      shafts.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);
-      shafts.uniforms.uStrength.value = THREE.MathUtils.smoothstep(facing, 0.1, 0.6) * 1.6;
-      shafts.uniforms.uAspect.value = camera.aspect;
-      shafts.enabled = shafts.uniforms.uStrength.value > 0.001;
-      composer.render();
+      post.setShafts(sunUv.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5), THREE.MathUtils.smoothstep(facing, 0.1, 0.6) * 1.6, camera.aspect);
+      post.render(scene, camera);
     },
     prepare(root) {
       root.traverse((o) => {

@@ -243,6 +243,8 @@ PALETTE = [
     ('MAT_Infra_StoneWall', (0.3, 0.28, 0.24), 0.92, 0.0, 'stone', 0.0),
     ('MAT_Infra_Void', (0.005, 0.005, 0.005), 1.0, 0.0, 'flat', 0.0),
     ('MAT_Infra_Reflector', (0.8, 0.45, 0.05), 0.2, 0.0, 'flat', 0.0),
+    ('MAT_Infra_SignalLens', (0.32, 0.012, 0.008), 0.15, 0.0, 'flat', 0.0),
+    ('MAT_Infra_Refractor', (0.62, 0.6, 0.52), 0.2, 0.0, 'flat', 0.0),
     ('MAT_RiverRock', (0.22, 0.21, 0.19), 0.8, 0.0, 'rock', 0.0),
     ('MAT_Road_Concrete', (0.3, 0.295, 0.275), 0.88, 0.0, 'concrete', 0.0),
     ('MAT_Unknown', (0.3, 0.3, 0.3), 0.8, 0.0, 'flat', 0.0),

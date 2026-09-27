@@ -13,6 +13,7 @@ import { buildBackdrop, buildSky } from './backdrop';
 import { installAtmosphere, createCinematic, Cinematic } from './cinematic';
 import { terrainMaterial } from './terrainMaterial';
 import { sunBake } from '../../engine/sunbake';
+import { initTextures, loadTexture } from '../../engine/textures';
 import { buildGroundcover, Groundcover } from './groundcover'; // groundcover (agent)
 
 export type CamMode = 'orbit' | 'top' | 'free';
@@ -36,7 +37,7 @@ export class World3D {
   private keys = new Set<string>();
   private yaw = 0; private pitch = -0.25;
   private terrainMat!: THREE.MeshStandardMaterial;
-  private albedo!: THREE.Texture; private baseTex!: THREE.Texture;
+  private albedo!: THREE.Texture; private baseTex: THREE.Texture | null = null; private drape = false;
   treeDistance = 5200;
   private clock = new THREE.Clock();
   private sky!: THREE.Mesh;
@@ -94,6 +95,7 @@ export class World3D {
     });
     const hemi = new THREE.HemisphereLight(0xa9c4ea, 0x4a4630, 0.45);
     this.scene.add(hemi);
+    initTextures(this.renderer);
     this.cine = createCinematic(this.renderer, this.scene, this.camera, this.sunDir, this.sunColor, this.sunIntensity);
     this.cine.setShadowQuality(this.quality, this.casterRange(this.quality));
     this.build();
@@ -107,11 +109,14 @@ export class World3D {
   }
 
   private build() {
-    const loader = new THREE.TextureLoader();
-    this.albedo = loader.load(assetUrl('albedo.jpg'));
-    this.albedo.colorSpace = THREE.SRGBColorSpace; this.albedo.anisotropy = 8;
-    this.baseTex = loader.load(assetUrl('base_map.png'));
-    this.baseTex.colorSpace = THREE.SRGBColorSpace; this.baseTex.anisotropy = 8;
+    // R3: terrain albedo as KTX2 (Basis ETC1S -> native block format, ~8x less VRAM than the 6000 px
+    // RGBA upload); a 1 px placeholder keeps the material's program stable until it arrives
+    this.albedo = new THREE.DataTexture(new Uint8Array([74, 70, 40, 255]), 1, 1); this.albedo.colorSpace = THREE.SRGBColorSpace; this.albedo.needsUpdate = true;
+    const albedoP = loadTexture('albedo', 'albedo.jpg', { anisotropy: 8 }).then((t) => {
+      this.albedo = t;
+      if (!this.drape) { this.terrainMat.map = t; this.terrainMat.needsUpdate = true; }
+      return t;
+    });
     this.terrainMat = terrainMaterial(this.albedo, 8);
     const terrain = buildTerrain(this.w.terrain, this.terrainMat);
     // --- infra (agent) ---
@@ -122,7 +127,7 @@ export class World3D {
     const infraPick = new Map<THREE.Mesh, string[]>();
     const infraLayer = (name: string) => { const g = new THREE.Group(); g.name = name; return { group: g, pick: infraPick }; };
     const roads = infraLayer('roads'), bridges = infraLayer('bridges'), rail = infraLayer('rail'), water = infraLayer('water').group;
-    buildInfra({ albedo: this.albedo, time: this.time }).then((inf) => {
+    albedoP.then((albedo) => buildInfra({ albedo, time: this.time })).then((inf) => {
       this.infra = inf;
       roads.group.add(inf.roads); bridges.group.add(inf.bridges); rail.group.add(inf.rail); water.add(inf.water);
       inf.pick.forEach((v, k) => infraPick.set(k, v));
@@ -145,7 +150,7 @@ export class World3D {
     const groundcover = new THREE.Group(); groundcover.name = 'groundcover';
     this.groups.groundcover = groundcover;
     const veg = () => this.veg; // grass sways with the trees: same uTime, live view of the trees' uWind
-    buildGroundcover(this.w, { albedo: this.albedo, sunDir: this.sunDir, quality: this.quality, uniforms: { uTime: this.time, uWind: { get value() { return veg()?.uniforms.uWind.value ?? 1; } } } })
+    albedoP.then((albedo) => buildGroundcover(this.w, { albedo, sunDir: this.sunDir, quality: this.quality, uniforms: { uTime: this.time, uWind: { get value() { return veg()?.uniforms.uWind.value ?? 1; } } } }))
       .then((gc) => {
         this.gc = gc; groundcover.add(gc.group); this.groundcoverQuality = (q) => gc.setQuality(q);
         this.camera.updateMatrixWorld(); gc.update(this.camera); this.gcReady = true;
@@ -170,7 +175,14 @@ export class World3D {
 
   /** Drape the source map onto the terrain instead of the stylized albedo (alignment check). */
   setDrape(on: boolean) {
-    this.terrainMat.map = on ? this.baseTex : this.albedo;
+    this.drape = on;
+    if (on && !this.baseTex) {
+      // the source map is only needed for this alignment check: load it on first use
+      this.baseTex = new THREE.TextureLoader().load(assetUrl('base_map.png'), () => { if (this.drape) { this.terrainMat.map = this.baseTex!; this.terrainMat.needsUpdate = true; } });
+      this.baseTex.colorSpace = THREE.SRGBColorSpace; this.baseTex.anisotropy = 8;
+      return;
+    }
+    this.terrainMat.map = on ? this.baseTex! : this.albedo;
     this.terrainMat.needsUpdate = true;
   }
 

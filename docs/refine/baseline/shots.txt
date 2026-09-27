@@ -2,3 +2,11 @@ CAM_Ref_Match 207s
 CAM_HollowRidge_Valley 101s
 CAM_Interchange_SR400 37s
 CAM_LaurelRiver_Bridges 133s
+CAM_US19_LaurelGap 183s
+TC_road_driver 325s
+TC_hwy_low 270s
+TC_river_low 190s
+TC_field_ped 159s
+TC_forest_ped 404s
+TC_aerial_100 64s
+TC_high_1000 40s

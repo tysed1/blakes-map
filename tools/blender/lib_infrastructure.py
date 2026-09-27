@@ -105,6 +105,8 @@ def mats():
         'concrete': LR.materials()['bridge_concrete'],
         'dark': _mat_flat('MAT_Infra_Void', (0.005, 0.005, 0.005), 1.0),
         'reflector': _mat_flat('MAT_Infra_Reflector', (0.8, 0.45, 0.05), 0.2),
+        'lens': _mat_flat('MAT_Infra_SignalLens', (0.32, 0.012, 0.008), 0.15),
+        'refractor': _mat_flat('MAT_Infra_Refractor', (0.62, 0.6, 0.52), 0.2),
     })
     return _M
 
@@ -158,7 +160,7 @@ def _post(M, height, mat, w=0.06):
     box_at(M, (0, 0.03), (1, 0), (0, 1), w / 2, w / 2, -0.4, height, mat)
 
 
-SIGN_SLOTS = ['galv', 'white', 'black', 'red', 'yellow', 'signback', 'wood', 'glass', 'reflector', 'steel_dark']
+SIGN_SLOTS = ['galv', 'white', 'black', 'red', 'yellow', 'signback', 'wood', 'glass', 'reflector', 'steel_dark', 'lens', 'refractor']
 S_ = {k: i for i, k in enumerate(SIGN_SLOTS)}
 
 
@@ -260,6 +262,87 @@ def build_prototypes(root):
             _plate(M, _circle(0.25, 28, 0, 2.3), S_['white'], y=-0.002, thick=0.001)
         _text_mesh(M, route, 0.2 if len(route) < 3 else 0.15, (0.0, 2.28), S_['black'], depth=0.004)
         P['route_' + route] = proto_object(f'A2_PROTO_Sign_Route{route}', M, sl, root)
+    # --- YIELD (1971 MUTCD R1-2: red-bordered white down-pointing triangle, 36 in)
+    M = Mesh(); _post(M, 1.75, S_['galv'])
+    tri = [(-0.46, 2.36), (0.46, 2.36), (0.0, 1.56)]
+    _plate(M, tri, S_['red'], back_mat=S_['signback'])
+    cz = (2.36 * 2 + 1.56) / 3
+    _plate(M, [(x * 0.62, cz + (z - cz) * 0.62) for x, z in tri], S_['white'], y=-0.001, thick=0.001)
+    _text_mesh(M, 'YIELD', 0.085, (0.0, 2.2), S_['red'], depth=0.003)
+    P['yield'] = proto_object('A2_PROTO_Sign_Yield', M, sl, root)
+    # --- STOP + '4-WAY' plate (all-way stop, R1-3)
+    M = Mesh(); _copy_proto(P['stop'], M)
+    _plate(M, [(-0.26, 1.52), (0.26, 1.52), (0.26, 1.7), (-0.26, 1.7)], S_['red'], back_mat=S_['signback'])
+    _text_mesh(M, '4-WAY', 0.1, (0.0, 1.61), S_['white'], depth=0.003)
+    P['stop4'] = proto_object('A2_PROTO_Sign_Stop4Way', M, sl, root)
+    # --- intersection warnings (W2-1 cross road, W2-2 side road, W2-4 T), 30 in diamonds
+    for nm in ('xroad', 'side_l', 'side_r', 'tee'):
+        M = Mesh(); _post(M, 1.9, S_['galv'])
+        h = 0.42
+        _plate(M, [(0, 2.1 - h), (h, 2.1), (0, 2.1 + h), (-h, 2.1)], S_['yellow'], back_mat=S_['signback'])
+        bars = []
+        if nm in ('xroad', 'side_l', 'side_r'):
+            bars.append((-0.035, 1.86, 0.035, 2.34))                       # through road (vertical)
+        if nm == 'xroad':
+            bars.append((-0.24, 2.065, 0.24, 2.135))
+        elif nm == 'side_r':
+            bars.append((0.0, 2.065, 0.24, 2.135))
+        elif nm == 'side_l':
+            bars.append((-0.24, 2.065, 0.0, 2.135))
+        else:  # T ahead
+            bars += [(-0.035, 1.86, 0.035, 2.2), (-0.24, 2.2, 0.24, 2.27)]
+        for x0, z0, x1, z1 in bars:
+            _plate(M, [(x0, z0), (x1, z0), (x1, z1), (x0, z1)], S_['black'], y=-0.003, thick=0.001)
+        P[nm] = proto_object(f'A2_PROTO_Sign_{nm}', M, sl, root)
+    # --- JCT assemblies: 'JCT' plate over the route marker
+    for route in ('19', '76', '129', '400', '60', '9'):
+        M = Mesh(); _copy_proto(P['route_' + route], M)
+        _post(M, 2.85, S_['galv'])
+        _plate(M, [(-0.3, 2.64), (0.3, 2.64), (0.3, 2.85), (-0.3, 2.85)], S_['white'], back_mat=S_['signback'])
+        _text_mesh(M, 'JCT', 0.13, (0.0, 2.745), S_['black'], depth=0.003)
+        P['jct_' + route] = proto_object(f'A2_PROTO_Sign_Jct{route}', M, sl, root)
+    # --- 1970s cobra-head street light: galvanized pole + davit arm, luminaire over the lane
+    # (local -Y points from the pole towards the road)
+    M = Mesh()
+    cyl_at(M, (0, 0), 0.13, -0.3, 0.5, S_['galv'], seg=10)                             # base collar
+    cyl_at(M, (0, 0), 0.105, 0.5, 5.0, S_['galv'], seg=10)
+    cyl_at(M, (0, 0), 0.08, 5.0, 8.9, S_['galv'], seg=10)
+    box_between(M, (0, 0.0, 8.75), (0, -1.2, 9.25), 0.045, 0.045, S_['galv'])            # davit arm, rising
+    box_between(M, (0, -1.2, 9.25), (0, -2.35, 9.32), 0.04, 0.04, S_['galv'])
+    box_between(M, (0, -0.1, 8.1), (0, -1.1, 9.2), 0.018, 0.018, S_['galv'])            # brace
+    box_at(M, (0, -2.62), (1, 0), (0, 1), 0.2, 0.36, 9.12, 9.36, S_['galv'])            # cobra head housing
+    box_at(M, (0, -2.66), (1, 0), (0, 1), 0.15, 0.27, 9.0, 9.12, S_['refractor'])       # prismatic refractor bowl
+    P['streetlight'] = proto_object('A2_PROTO_StreetLight', M, sl, root)
+    # --- railroad flashing-light signal (crossbuck + twin red flashers + bell) and gate
+    def _rr_signal(M):
+        cyl_at(M, (0, 0.03), 0.065, -0.4, 4.75, S_['galv'], seg=10)
+        cyl_at(M, (0, 0.03), 0.09, 4.75, 4.9, S_['black'], seg=12)                    # bell
+        for ang in (35, -35):
+            a = math.radians(ang); c, s_ = math.cos(a), math.sin(a)
+            L_, Wb = 1.22, 0.11
+            pts = [(-L_ * c - Wb * -s_, 4.15 - L_ * s_ - Wb * c), (L_ * c - Wb * -s_, 4.15 + L_ * s_ - Wb * c),
+                   (L_ * c + Wb * -s_, 4.15 + L_ * s_ + Wb * c), (-L_ * c + Wb * -s_, 4.15 - L_ * s_ + Wb * c)]
+            _plate(M, pts, S_['white'], y=-0.02 if ang > 0 else -0.03, back_mat=S_['signback'])
+        _text_mesh(M, 'RAILROAD', 0.085, (-0.02, 4.3), S_['black'], depth=0.035)
+        _text_mesh(M, 'CROSSING', 0.085, (0.02, 4.0), S_['black'], depth=0.035)
+        box_at(M, (0, -0.05), (1, 0), (0, 1), 0.72, 0.04, 2.98, 3.06, S_['galv'])       # flasher crossarm
+        for x in (-0.58, 0.58):
+            _plate(M, _circle(0.3, 20, x, 3.02), S_['black'], y=-0.1, thick=0.01)         # backgrounds
+            cyl_at(M, (x, -0.16), 0.15, 2.9, 3.14, S_['black'], seg=12)                   # lamp housing
+            _plate(M, _circle(0.13, 16, x, 3.02), S_['lens'], y=-0.285, thick=0.004)     # red roundel
+            box_at(M, (x, -0.26), (1, 0), (0, 1), 0.16, 0.1, 3.15, 3.18, S_['black'])     # visor
+        _plate(M, [(-0.2, 2.45), (0.2, 2.45), (0.2, 2.72), (-0.2, 2.72)], S_['white'], y=-0.02, back_mat=S_['signback'])
+        _text_mesh(M, '1', 0.16, (0.0, 2.585), S_['black'], depth=0.025)
+        _text_mesh(M, 'TRACK', 0.045, (0.0, 2.5), S_['black'], depth=0.025)
+    M = Mesh(); _rr_signal(M)
+    P['rr_flasher'] = proto_object('A2_PROTO_Sign_RRFlasher', M, sl, root)
+    M = Mesh(); _rr_signal(M)
+    box_at(M, (0.32, 0.1), (1, 0), (0, 1), 0.16, 0.12, 0.2, 1.35, S_['black'])          # gate mechanism
+    for k in range(10):                                                                   # arm raised (clear)
+        z0 = 1.2 + k * 0.42
+        box_at(M, (0.52, 0.1), (1, 0), (0, 1), 0.045, 0.03, z0, z0 + 0.42, S_['red'] if k % 2 else S_['white'])
+    box_at(M, (0.52, 0.1), (1, 0), (0, 1), 0.07, 0.05, 1.0, 1.25, S_['steel_dark'])     # counterweight
+    P['rr_gate'] = proto_object('A2_PROTO_Sign_RRGate', M, sl, root)
     # --- farm fence post, gate
     M = Mesh()
     cyl_at(M, (0, 0), 0.06, -0.6, 1.3, S_['wood'], seg=6)
@@ -272,6 +355,16 @@ def build_prototypes(root):
     box_between(M, (0.1, 0, 0.25), (4.1, 0, 1.15), 0.03, 0.03, S_['galv'])
     P['gate'] = proto_object('A2_PROTO_FarmGate', M, sl, root)
     return P
+
+
+def _copy_proto(ob, dst):
+    """Copy a built prototype object's mesh (per-face slot) into a Mesh builder."""
+    me = ob.data
+    me.calc_loop_triangles()
+    V = np.array([v.co[:] for v in me.vertices])
+    tl = np.array([t.vertices[:] for t in me.loop_triangles], np.int64)
+    tm = np.array([t.material_index for t in me.loop_triangles], np.int32)
+    dst.add(V[tl.reshape(-1)], np.arange(len(tl) * 3).reshape(-1, 3), tm)
 
 
 def _copy(src, dst):
@@ -570,6 +663,10 @@ def build_guardrails(coll, net, T, P_):
 
 
 # ------------------------------------------------------------------ signs
+# side-road importance for intersection warnings (driveways / farm tracks never get one)
+RANK_SIDE = {'driveway': 0, 'dirt': 1, 'gravel': 2, 'residential': 3, 'urban_street': 3, 'rural': 4, 'collector': 5,
+             'main_street': 6, 'arterial': 6, 'highway': 8, 'ramp': 7, 'freeway': 9}
+IC_ROUTE = {'IC_LC_SR400_US19': '400', 'IC_TV_SR60_US76': '60', 'IC_TV_SR60_RIVERFRONT': '60'}
 ROUTE_OF = {'HWY_US19': '19', 'HWY_US19_E': '19', 'HR_MAIN_ST': '19', 'HWY_US76': '76', 'HWY_US129': '129',
             'HWY_SR400': '400', 'HWY_SR60': '60', 'HWY_SR9_W': '9', 'HWY_SR9_N': '9', 'HWY_SR9_S': '9', 'LC_SR9_CONNECTOR': '9'}
 
@@ -581,25 +678,73 @@ def build_signs(coll, net, T, P_):
         place.setdefault(kind, ([], []))
         place[kind][0].append((c[0], c[1], z))
         place[kind][1].append(_rotz_facing(face_dir) + RNG.normal(0, 0.03))
-    # STOP signs on stop-controlled approaches
-    for (i, end), (stop, xw) in getattr(net, 'ctl', {}).items():
-        if stop <= 0:
-            continue
-        e = net.E[i]
-        D = e.get('_deck')
-        if D is None:
-            continue
-        L = D['s'][-1] + e['trim'][1]
-        st = (e['trim'][0] + stop + 1.2) if end == 0 else (L - e['trim'][1] - stop - 1.2)
+    edge_by_id = {e['p']['id']: e for e in net.E if '_deck' in e}
+    route_of_edge = lambda e: ROUTE_OF.get(e['p'].get('def_id') or '')
+
+    def at_edge(e, st, side, off, face_sign):
+        """Point beside edge e at station st: side +1 = right of the edge direction."""
+        D = e['_deck']
         st = float(np.clip(st, D['s'][0], D['s'][-1]))
         f = lambda a: np.interp(st, D['s'], a)
-        p = np.array([f(D['P'][:, 0]), f(D['P'][:, 1])]); nrm = np.array([f(D['N'][:, 0]), f(D['N'][:, 1])]); tg = np.array([f(D['T'][:, 0]), f(D['T'][:, 1])])
-        sgn = -1 if end == 0 else 1                 # right of the approach direction
-        u = f(D['hw']) + _side_offset(e['sec']) * 0.5 + 0.9
-        c = p + nrm * u * sgn
-        face = tg if end == 0 else -tg              # towards the approaching driver
-        add('stop', c, float(T.at(*w2px(c[0], c[1]))), face)
+        p = np.array([f(D['P'][:, 0]), f(D['P'][:, 1])]); nrm = np.array([f(D['N'][:, 0]), f(D['N'][:, 1])])
+        tg = np.array([f(D['T'][:, 0]), f(D['T'][:, 1])])
+        c = p + nrm * (f(D['hw']) + off) * side
+        return c, tg * face_sign
+
+    def approach(e, end, dist, off, kind, clip=False):
+        """Sign on the right of traffic approaching node `end` of edge e, dist m before it."""
+        D = e['_deck']
+        L = D['s'][-1] + e['trim'][1]
+        st = (e['trim'][0] + dist) if end == 0 else (L - e['trim'][1] - dist)
+        if st < D['s'][0] - 0.5 or st > D['s'][-1] + 0.5:
+            if not clip or D['s'][-1] - D['s'][0] < 2.0:
+                return False
+            st = float(np.clip(st, D['s'][0] + 0.5, D['s'][-1] - 0.5))
+        if LR._spans_mask(e, np.array([float(np.clip(st, D['s'][0], D['s'][-1]))]))[0]:
+            return False  # never on a bridge deck
+        sgn = -1 if end == 0 else 1
+        c, face = at_edge(e, st, sgn, off, 1 if end == 0 else -1)
+        add(kind, c, float(T.at(*w2px(c[0], c[1]))), face)
+        return True
+    # regulatory control at junction approaches (lib_roads.controls: STOP / YIELD / all-way STOP)
+    kinds = getattr(net, 'ctl_kind', {})
+    for (i, end), kind in kinds.items():
+        if not kind:
+            continue
+        e = net.E[i]
+        if e.get('_deck') is None:
+            continue
+        stop, xw = getattr(net, 'ctl', {}).get((i, end), (0.0, 0.0))
+        dist = (stop + 1.2) if stop > 0 else 2.2
+        approach(e, end, dist, _side_offset(e['sec']) * 0.5 + 0.9, {'stop': 'stop', 'yield': 'yield', 'all_stop': 'stop4'}[kind], clip=True)
+    # numbered-route junction assemblies (JCT + shield) on every approach of one route to another
+    for n, j in getattr(net, 'J', {}).items():
+        legs = [(a['i'], a['end']) for a in j['legs']]
+        routes = {route_of_edge(net.E[i]) for i, _ in legs} - {None}
+        # interchange ramps carry the freeway's route to the crossroad terminal
+        for i, _ in legs:
+            ic = net.E[i]['p'].get('interchange')
+            if ic:
+                routes.add(IC_ROUTE.get(ic))
+        routes.discard(None)
+        if len(routes) < 2:
+            continue
+        for i, end in legs:
+            e = net.E[i]
+            r = route_of_edge(e)
+            if r is None or e['sec']['t'] in ('ramp', 'freeway') or e.get('_deck') is None:
+                continue
+            if e['p'].get('oneway') and end == 0:
+                continue
+            for other in sorted(routes - {r}):
+                if 'jct_' + other not in P_:
+                    continue
+                for d in (150.0, 115.0, 80.0, 55.0, 35.0):
+                    if approach(e, end, d, _side_offset(e['sec']) + 1.0, 'jct_' + other):
+                        break
     # per-route signs
+    CURVE_R = {'highway': 230.0, 'rural': 150.0, 'collector': 100.0}
+    jnodes = {n: j for n, j in getattr(net, 'J', {}).items()}
     for ch in chains(net, ('highway', 'rural', 'collector', 'main_street', 'arterial', 'freeway', 'ramp')):
         sec = ch['sec']
         s = ch['s']
@@ -609,52 +754,115 @@ def build_signs(coll, net, T, P_):
         ang = np.unwrap(np.arctan2(Tn[:, 1], Tn[:, 0]))
         k_ = LR._gauss(np.gradient(ang) / np.maximum(np.gradient(s), 1e-3), 4.0)
 
-        def put(kind, st, direction):
-            if st < 5 or st > s[-1] - 5:
+        def put(kind, st, direction, off=0.8, slide=0.0):
+            """slide > 0: if the spot is on a deck / in a junction mouth, try further along travel."""
+            for tries in range(6 if slide else 1):
+                q = st + direction * slide * tries
+                if q < 5 or q > s[-1] - 5:
+                    return
+                P, N, Tt, hw, zl, zr, dk, nr = _at(ch, q)
+                if not (dk[0] or nr[0]):
+                    break
+            else:
                 return
-            P, N, Tt, hw, zl, zr, dk, nr = _at(ch, st)
             if dk[0] or nr[0]:
                 return
             sgn = 1 if direction > 0 else -1          # right-hand side of travel
-            u = hw[0] + _side_offset(sec) + 0.8
+            u = hw[0] + _side_offset(sec) + off
             c = P[0, :2] + N[0] * u * sgn
             add(kind, c, float(T.at(*w2px(c[0], c[1]))), -Tt[0] * direction)
-        if sec['t'] in ('highway', 'rural', 'collector') and not sec['curb']:
-            # warn only where the curve needs a speed below the road's (R < 110 m), one sign
-            # per curve group, not in towns
-            if ch['zone'] is None:
-                R = 1.0 / np.maximum(np.abs(k_), 1e-6)
-                last = -1e9
-                for a, b in _runs(R < 110, 18.0, s):
-                    if s[a] - last < 180:
-                        last = s[b]
-                        continue
-                    left = np.mean(k_[a:b + 1]) > 0
-                    put('curve_l' if left else 'curve_r', s[a] - 55, 1)
-                    put('curve_r' if left else 'curve_l', s[b] + 55, -1)
+        if sec['t'] in CURVE_R and not sec['curb'] and ch['zone'] is None:
+            # warn where the curve needs a speed below the road's, one sign per curve group
+            R = 1.0 / np.maximum(np.abs(k_), 1e-6)
+            last = -1e9
+            for a, b in _runs(R < CURVE_R[sec['t']], 18.0, s):
+                if s[a] - last < 180:
                     last = s[b]
-        if sec['t'] == 'highway':
-            for st in np.arange(140.0, s[-1] - 100, 1600.0):
-                put('speed55', st, 1)
-                put('speed55', s[-1] - st, -1)
+                    continue
+                left = np.mean(k_[a:b + 1]) > 0
+                put('curve_l' if left else 'curve_r', s[a] - 55, 1)
+                put('curve_r' if left else 'curve_l', s[b] + 55, -1)
+                last = s[b]
+        if sec['t'] in ('highway', 'rural') and ch['zone'] is None:
+            # intersection warnings ahead of public side roads (not driveways / farm tracks)
+            chain_edges = set(ch['edges'])
+            xy = ch['P'][:, :2]
+            for n, j in jnodes.items():
+                if not any(a['i'] in chain_edges for a in j['legs']):
+                    continue
+                side = [a for a in j['legs'] if a['i'] not in chain_edges and
+                        RANK_SIDE.get(a['t'], 0) >= (2 if sec['t'] == 'highway' else 3)]
+                if not side:
+                    continue
+                k = int(np.argmin(np.hypot(xy[:, 0] - j['xy'][0], xy[:, 1] - j['xy'][1])))
+                if np.hypot(*(xy[k] - j['xy'])) > 8:
+                    continue
+                st0 = s[k]
+                Nk = np.array([Tn[k, 1], -Tn[k, 0]])
+                sides = {int(np.sign(np.dot(a['d'], Nk)) or 1) for a in side}
+                for direction in (1, -1):
+                    if len(sides) == 2:
+                        kind = 'xroad'
+                    else:
+                        right = (next(iter(sides)) * direction) > 0
+                        kind = 'side_r' if right else 'side_l'
+                    put(kind, st0 - direction * 120.0, direction)
+        if sec['t'] in ('highway', 'freeway'):
+            step = 1600.0 if sec['t'] == 'highway' else 2400.0
+            for st in np.arange(140.0 if sec['t'] == 'highway' else 400.0, s[-1] - 100, step):
+                put('speed55', st, 1, 1.2)
+                put('speed55', s[-1] - st, -1, 1.2)
         r = ROUTE_OF.get(ch['key'])
-        if r and sec['t'] != 'freeway':
-            for st in np.arange(200.0, s[-1] - 100, 950.0):
-                put('route_' + r, st, 1)
-                put('route_' + r, s[-1] - st, -1)
-    # railroad crossings: crossbucks at the tracks, advance discs 100 m before
-    edge_by_id = {e['p']['id']: e for e in net.E if '_deck' in e}
+        if r:
+            # reassurance markers after junctions and every ~1 km (freeway: every ~1.5 km);
+            # a short route piece still gets one marker per direction
+            step = 950.0 if sec['t'] != 'freeway' else 1500.0
+            first = min(200.0 if sec['t'] != 'freeway' else 350.0, 0.35 * s[-1])
+            for st in np.arange(first, max(s[-1] - 100, first + 1), step):
+                put('route_' + r, st, 1, 1.0 if sec['t'] != 'freeway' else 1.6, slide=25.0)
+                put('route_' + r, s[-1] - st, -1, 1.0 if sec['t'] != 'freeway' else 1.6, slide=25.0)
+    # town-centre street lighting: cobra heads on davit poles (Hollow Ridge Main St, the downtowns)
+    for ch in chains(net, ('main_street', 'arterial', 'urban_street', 'collector')):
+        if ch['zone'] not in ('downtown', 'town_center') or not ch['sec']['curb']:
+            continue
+        L = ch['s'][-1]
+        if L < 25:
+            continue
+        both = ch['sec']['t'] in ('main_street', 'arterial')
+        h = sum(ord(c) for c in ch['key'])
+        st = np.arange(10.0 + (h % 11), L - 8, 38.0 if both else 42.0)
+        if len(st) == 0:
+            continue
+        P, N, Tt, hw, zl, zr, dk, nr = _at(ch, st)
+        for k in range(len(st)):
+            if dk[k] or nr[k]:
+                continue
+            sgn = (1 if k % 2 else -1) if both else (1 if h % 2 else -1)
+            c = P[k, :2] + N[k] * (hw[k] + 0.55) * sgn
+            add('streetlight', c, float(T.at(*w2px(c[0], c[1]))), -N[k] * sgn)
+    # railroad crossings: crossbucks (1971: every public crossing), flashing-light signals on the
+    # mainline and busy yard streets, automatic gates where a collector or bigger crosses the main
+    rails_ = {f['properties']['id']: f['properties'] for f in load('data/railways/railways.geojson')['features']}
     for f in load('data/roads/rail_crossings.geojson')['features']:
         pr = f['properties']
         e = edge_by_id.get(pr['road'])
         if e is None:
             continue
+        rt = pr.get('road_type') or e['sec']['t']
+        tracks = rails_.get(pr['rail'], {}).get('tracks', pr.get('tracks', 1))
+        main = tracks == 1
+        if main and rt in ('collector', 'arterial', 'highway', 'main_street'):
+            xk = 'rr_gate'
+        elif (main and rt in ('rural', 'urban_street', 'residential')) or (not main and rt in ('urban_street', 'collector', 'arterial')):
+            xk = 'rr_flasher'
+        else:
+            xk = 'crossbuck'
         D = e['_deck']
         x, y = px2w(*f['geometry']['coordinates'])
         k = int(np.argmin(np.hypot(D['P'][:, 0] - x, D['P'][:, 1] - y)))
         st0 = D['s'][k]
         for direction in (1, -1):
-            for kind, dist, extra in (('crossbuck', 4.6, 1.0), ('rr_advance', 100.0, 0.8)):
+            for kind, dist, extra in ((xk, 4.6, 1.0), ('rr_advance', 100.0, 0.8)):
                 st = st0 - direction * dist
                 if st < D['s'][0] or st > D['s'][-1]:
                     if kind != 'rr_advance':

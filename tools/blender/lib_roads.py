@@ -841,25 +841,57 @@ JERSEY = np.array([(-0.30, 0.0), (-0.24, 0.08), (-0.09, 0.33), (-0.075, 0.81), (
 
 
 def controls(net, J):
-    """Stop bars / crosswalks per (edge, end): distance (m) from that end, 0 = none."""
+    """Traffic control per approach (edge, end) -> (stop-bar distance m, crosswalk distance m);
+    net.ctl_kind[(edge, end)] = 'stop' | 'yield' | 'all_stop' | None (the sign builder reads it).
+
+    1974 MUTCD practice, applied only at true junctions (degree >= 3, not freeway wyes):
+      * the through / higher-class road is never controlled; equal classes meeting are
+        uncontrolled (basic right-of-way rule) - residential grids have no signs at all
+      * a local road (residential, rural, urban street, gravel, dirt) meeting a collector or
+        higher, and every exit-ramp terminal, gets STOP (+ stop bar on paved approaches)
+      * a residential / gravel / dirt road meeting a rural road or urban street gets YIELD
+      * a collector meeting an arterial / main street / highway gets STOP
+      * 4-way junctions of two main streets / arterials downtown: ALL-WAY STOP
+      * driveways, entrance-ramp starts (one-way away from the junction): nothing"""
     ctl = {}
+    net.ctl_kind = {}
     for n, j in J.items():
-        ranks = []
-        for a in j['legs']:
-            t = a['t']
-            ranks.append(0.5 if t == 'ramp' else RANK.get(t, 3))
-        rmax = max(ranks)
-        zone = net.E[j['legs'][0]['i']]['zone']
-        dense = zone in ('downtown', 'town_center') or any(a['t'] == 'main_street' for a in j['legs'])
-        for a, r in zip(j['legs'], ranks):
+        legs = j['legs']
+        ranks = [0.5 if a['t'] == 'ramp' else RANK.get(a['t'], 3) for a in legs]
+        zone = net.E[legs[0]['i']]['zone']
+        dense = zone in ('downtown', 'town_center') or any(a['t'] == 'main_street' for a in legs)
+        big = sum(1 for a in legs if a['t'] in ('main_street', 'arterial'))
+        all_stop = dense and len(legs) >= 4 and big >= 3
+        for k, (a, r) in enumerate(zip(legs, ranks)):
             e = net.E[a['i']]
+            t = a['t']
+            major = max([ranks[q] for q in range(len(legs)) if q != k] or [0])
+            kind = None
+            outbound = bool(e['p'].get('oneway')) and a['end'] == 0   # one-way leaving this node
+            if t in ('driveway', 'freeway') or outbound:
+                kind = None
+            elif all_stop:
+                kind = 'all_stop'
+            elif t == 'ramp':
+                kind = 'stop' if major >= 5 else None
+            elif r >= major:
+                kind = None
+            elif r <= 4 and major >= 5:
+                kind = 'stop'
+            elif r == 5 and major >= 6:
+                kind = 'stop'
+            elif r <= 3 and major == 4:
+                kind = 'yield'
+            net.ctl_kind[(a['i'], a['end'])] = kind
             if e['sec']['mat'] != 'asphalt':
                 continue
             xw = a['trim'] + 0.6 if (dense and e['sec']['curb']) else 0.0
             stop = 0.0
-            if r < rmax or (dense and len(j['legs']) >= 4):
+            if kind in ('stop', 'all_stop'):
                 stop = (xw + 3.6) if xw else a['trim'] + 1.2
             ctl[(a['i'], a['end'])] = (stop, xw)
+    from collections import Counter
+    print('   traffic control:', dict(Counter(v for v in net.ctl_kind.values() if v)))
     return ctl
 
 

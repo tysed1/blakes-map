@@ -21,6 +21,10 @@ KTX2 (ETC1S albedo / UASTC normal+detail) with transcoder; atlas card/detail tex
 
 ### N1. Network logic: zero validator warnings + known offenders (N) impact 4, effort 3
 RU_RD_0421 gravel road 68.9 % grade (limit 15 %): reroute with switchbacks or re-grade; RU_RD_0606 18.5 m cut: reroute/bench; 21 residential radius warnings + 2 short edges (LC_RD_2609/2679/2809/2773/2740/2169/2705/2229/..., LC_RD_2692/2716): fix geometry; driveways > 18 % (RU_RD_0678, 0599, 0043, 0240, 0652) and dirt RU_RD_0627 18 %: regrade. Accept: validate_roads.py 0 errors 0 warnings, grade report clean.
+DONE ae1fad5 (files landed in a0e3aa3 + a4417a3) validate_roads {} / 1 component, grade report 0 issues; highway max grade kept 8 % (AASHO mountainous; 7 % = 11 extra viaducts). Min-radius easing of 100 traced streets (<= 9 px). Railside Lane no longer climbs the slope, so GS_RockCut's camera is inside the hill now.
+NOTE N->L: GS_RockCut needs re-aiming (tools/qa/golden_shots.json is yours): the 18.5 m Railside cut is gone. Real rock cuts now: see data/roads/walls.geojson kind=rock_cut (e.g. SR 9 W LC_RD_0047).
+NOTE N->R: please commit only your own paths (a4417a3 swept in N's roads.py / data/roads / graded terrain).
+REQUEST N->E: terrain albedo still has the old road imprints (e.g. Railside Lane climbing NE at px 1360-1402,540-560, eased Laurel City loops): rebake data/terrain/albedo_web.jpg once N3 lands (I'll post DONE N3 first). Also: Hollow Creek's source pool (px 1340,572, water 361-362 m) is perched 3-4 m above the rail/junction ground (358 m) right beside it.
 
 ### N2. Sign and furniture logic, 1974 MUTCD (N) impact 4, effort 2
 686 stop signs -> only minor approaches at true junctions (target 150-300); add yield where right, route shields (US 19, US 76, US 129, SR 9, SR 60, SR 400) at junctions/reassurance points (currently 10 total), curve warnings where needed, junction/turn signs on highways, cobra-head street lights in town centres (Hollow Ridge Main St, Laurel City and Tannersville downtowns), rail crossings with crossbucks + flashers/gates on the mainline at busy roads. Accept: counts in export stats, eye-level golden shots show sensible furniture.
@@ -33,6 +37,15 @@ Species zonation by elevation/aspect/moisture; autumn colour increasing with ele
 
 REQUEST E->N: publish interchange infields / clear zones as data/roads/clear_zones.geojson (FeatureCollection of Polygon/MultiPolygon in source px; optional properties.kind, properties.margin_m). vegetation.py already reads it when present (no trees/brush/logs inside the polygon + margin_m, default 3 m); just rerun `python3 tools/pipeline/vegetation.py` after publishing.
 NOTE E->R: E1 adds a distance-based dithered LOD cross-fade inside trees.ts (per-instance fade in the tree shaders, cells in the fade band emitted to both LODs); R4 impostors can take over LOD3/4 through the same fade band. I also remove the per-frame `new Vector3` in trees.update (R2).
+
+DONE-ish E->R: TREE_QUALITY shadowLod low -1 / medium 0 / high 1 / ultra 1; trees.update + groundcover relist allocation-free (R2). Tree LOD4 is now one shared camera-facing crown billboard for all species (1 draw call, 2 tris/tree; it sets `transformed` to crown height so the sun bake's instance-height term works). R4 impostors can replace it through the same fade band.
+REQUEST E->R/L (World3D.ts, rock kit E2; module src/components/world3d/rocks.ts, data public/world/rocks/geo.* + rocks_f32.bin):
+  import { buildRocks, Rocks } from './rocks';   // field: rocks: Rocks | null = null;
+  constructor, next to trees: `const rocksG = new THREE.Group(); rocksG.name = 'rocks'; this.groups.rocks = rocksG; buildRocks({ quality: this.quality }).then((r) => { this.rocks = r; rocksG.add(r.group); this.camera.updateMatrixWorld(); r.update(this.camera, true); }).catch((e) => console.error('rocks', e));`
+  updateCulling(): `this.rocks?.update(this.camera);`   setQuality(q): `this.rocks?.setQuality(q);`
+  (prepare_artifact: add rocks/geo.bin, rocks/geo.json, rocks_f32.bin, rocks.json; regenerate: `blender -b --factory-startup --python tools/blender/export_web_rocks.py` + `python3 tools/pipeline/rocks.py`.)
+NOTE E->N: rock_cut walls (walls.geojson kind=rock_cut) now get stacked rock-kit ledge blocks (tools/pipeline/rocks.py) standing 0.2-0.9 m behind the wall line, faces to the road; keep your cut face as a dark backing (or drop it) - tell me if you move the cut line.
+NOTE E->L: R's `npm install` (ktx2-encoder) pruned the extraneous local playwright, so tools/qa/*.mjs can't import 'playwright'; a global copy exists at /opt/node22/lib/node_modules/playwright (e.g. NODE_PATH does not work for ESM: add playwright to devDependencies or symlink).
 
 ### E2. Rock: real crags, cliff bands, scree, road cuts (E, cuts with N) impact 4, effort 4
 Instanced rock-kit + cliff-face meshes on high rock-exposure/steep terrain (Stony Knob, Bald Ridge flanks, South Fork Gorge), scree fans, triplanar rock shading; rock-cut faces on N's walls (66 walls, e.g. LC_RD_0047 9.8 m rock cut). Accept: GS_SouthForkGorge, GS_RockCut and the crags in CAM_Ref_Match look like rock formations, not coloured terrain.
