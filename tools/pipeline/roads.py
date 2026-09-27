@@ -530,11 +530,12 @@ def wye_ramps(mlines):
         fly[0] = p1[0]
         # merge: the branch's other carriageway on its old alignment, outside the flyover, then an
         # added lane on the trunk's south-west side
-        mo = ic['merge_offsets_px']
-        q2 = np.array([bpt(b, -1)[0] for b in np.arange(bs, 4.0 - 0.01, -1.0)])
+        mo = ic['merge_offsets_px']  # first station: where the merge roadway meets the trunk corridor
+        q2 = np.array([bpt(b, -1)[0] for b in np.arange(bs, bs - 6.01, -1.0)])
         q1 = _offset_path(Tl, np.arange(min(o[0] for o in mo), max(o[0] for o in mo) + 0.01, 1.0), mo, +1)
-        keep = [q for q in q2 if Point(q).distance(LineString(q1)) > 3.0 or np.hypot(*(q - q2[0])) < 3]
-        mer = resample(chaikin(rdp(np.vstack([keep, q1]), 0.05), 2), 1.0)
+        tq = q2[-1] - q2[-2]; tq /= np.hypot(*tq)
+        qb = bezier_pts(q2[-1], tq, q1[0], tt, k=0.35)
+        mer = resample(chaikin(rdp(np.vstack([q2, qb[1:-1], q1]), 0.05), 2), 1.0)
         mer[0] = q2[0]
         zone = zone_of(node, load_zones())
         for k, (pts, nm, layer) in enumerate(((fly, 'SR 9 NW westbound flyover (from SR 9 northbound)', 1),

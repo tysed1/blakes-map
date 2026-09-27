@@ -492,12 +492,17 @@ def main():
                 if roads[j]['properties']['type'] != 'freeway':
                     continue
                 lj = LineString(XYj)
-                if lj.distance(rl) > 12:
+                if not lj.intersects(rl):
+                    continue  # only freeways the flyover actually crosses (not the ones it leaves / joins)
+                fhw = load_json_types['freeway']['width_m'] / MPP / 2
+                reach = fhw + load_json_types['ramp']['width_m'] / MPP / 2 + 0.2   # deck footprint over the pavement
+                dd = np.array([lj.distance(Point(XY[k])) for k in range(n)])
+                core = [k for k in range(20, n - 20) if dd[k] < fhw - 0.3]
+                if not core:
                     continue
-                reach = (load_json_types['freeway']['width_m'] + load_json_types['ramp']['width_m']) / MPP / 2 + 0.2   # deck footprint over the pavement
-                for k in range(12, n - 12):
+                for k in range(max(12, core[0] - 14), min(n - 12, core[-1] + 15)):
                     q = Point(XY[k])
-                    dq = lj.distance(q)
+                    dq = dd[k]
                     if dq < reach:
                         kj = min(int(round(lj.project(q))), len(zj) - 1)
                         zmin[k] = max(zmin[k], float(zj[kj]) + fly_clear)
