@@ -245,6 +245,11 @@ PALETTE = [
     ('MAT_Infra_Reflector', (0.8, 0.45, 0.05), 0.2, 0.0, 'flat', 0.0),
     ('MAT_Infra_SignalLens', (0.32, 0.012, 0.008), 0.15, 0.0, 'flat', 0.0),
     ('MAT_Infra_Refractor', (0.62, 0.6, 0.52), 0.2, 0.0, 'flat', 0.0),
+    ('MAT_Signal_Housing', (0.6, 0.42, 0.03), 0.55, 0.0, 'flat', 0.0),
+    ('MAT_Signal_Lens_Off', (0.05, 0.04, 0.03), 0.15, 0.0, 'flat', 0.0),
+    ('MAT_Signal_Red_Lit', (0.9, 0.06, 0.02), 0.3, 0.0, 'flat', 0.0, 2.5),
+    ('MAT_Signal_Green_Lit', (0.05, 0.75, 0.45), 0.3, 0.0, 'flat', 0.0, 2.0),
+    ('MAT_Signal_Walk_Lit', (0.95, 0.4, 0.05), 0.3, 0.0, 'flat', 0.0, 1.6),
     ('MAT_RiverRock', (0.22, 0.21, 0.19), 0.8, 0.0, 'rock', 0.0),
     ('MAT_Road_Concrete', (0.3, 0.295, 0.275), 0.88, 0.0, 'concrete', 0.0),
     ('MAT_Unknown', (0.3, 0.3, 0.3), 0.8, 0.0, 'flat', 0.0),
@@ -455,8 +460,10 @@ def export():
     BIN_OF = {'ground': 'roads', 'verge': 'roads', 'water': 'water', 'bed': 'water', 'struct': 'struct', 'detail': 'struct'}
     meta = {'version': 2, 'chunk_m': {'ground': CHUNK_M, 'other': CHUNK_BIG}, 'origin': [X0, Z0], 'palette': [], 'ground_kinds': GROUND,
             'textures': {k: f'{k}.jpg' for k in TEXTURES}, 'chunks': [], 'protos': {}, 'instances': [], 'wires': []}
-    for name, col, rough, metal, mode, rust in PALETTE:
-        meta['palette'].append({'name': name, 'color': col, 'rough': rough, 'metal': metal, 'mode': MODES[mode], 'rust': rust})
+    for pe in PALETTE:
+        name, col, rough, metal, mode, rust = pe[:6]
+        meta['palette'].append({'name': name, 'color': col, 'rough': rough, 'metal': metal, 'mode': MODES[mode], 'rust': rust,
+                                'emit': pe[6] if len(pe) > 6 else 0.0})
     tri = {}
     for (cx, cz, gname), a in sorted(acc.items()):
         P = np.vstack(a['P']); N = np.vstack(a['N']); I = np.vstack(a['I'])

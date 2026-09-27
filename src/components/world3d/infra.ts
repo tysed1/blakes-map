@@ -26,7 +26,7 @@ interface ChunkMeta {
   cx: number; cz: number; group: string; lo: number[]; ext: number[]; nv: number; nt: number;
   pos: Block; nrm?: Block; idx: Block; attrs: Record<string, Block>; pick: [number, string][];
 }
-interface PalMeta { name: string; color: number[]; rough: number; metal: number; mode: number; rust: number }
+interface PalMeta { name: string; color: number[]; rough: number; metal: number; mode: number; rust: number; emit?: number }
 interface InfraMeta {
   version: number; chunk_m: number; origin: [number, number]; palette: PalMeta[]; textures: Record<string, string>;
   chunks: ChunkMeta[];
@@ -58,6 +58,7 @@ export interface Infra {
 const CULL: Record<string, number> = { ground: 1e9, verge: 950, struct: 1e9, detail: 750, bed: 2200, water: 1e9, wires: 520 };
 function protoCull(p: string) {
   if (/StreetLight/.test(p)) return 700;
+  if (/Signal/.test(p)) return 650;
   if (/Pole/.test(p)) return 900;
   if (/RailTie/.test(p)) return 260;
   if (/Sign/.test(p)) return 450;
@@ -296,7 +297,7 @@ function vergeMaterial(albedo: THREE.Texture, pull: { value: number }) {
 // ------------------------------------------------------------------ structure palette material (+ instanced props)
 function structMaterial(pal: PalMeta[], tex: Record<string, THREE.Texture>) {
   const A = pal.map((p) => new THREE.Vector4(p.color[0], p.color[1], p.color[2], p.rough));
-  const B = pal.map((p) => new THREE.Vector4(p.metal, p.mode, p.rust, 0));
+  const B = pal.map((p) => new THREE.Vector4(p.metal, p.mode, p.rust, p.emit ?? 0));   // w: emission (lit signal lenses)
   while (A.length < 32) { A.push(new THREE.Vector4(0.3, 0.3, 0.3, 0.8)); B.push(new THREE.Vector4(0, 0, 0, 0)); }
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0, side: THREE.DoubleSide });
   m.onBeforeCompile = (sh) => {
@@ -313,10 +314,11 @@ varying vec3 vWp; varying vec2 vSA; varying vec3 vWn;
 uniform vec4 uPalA[32]; uniform vec4 uPalB[32]; uniform sampler2D tRock;
 ${NOISE}`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-float sH = 0.5, sBump = 0.0;
+float sH = 0.5, sBump = 0.0, sEmit = 0.0;
 {
   int id = int(vSA.x + 0.5);
   vec4 pa = uPalA[id], pb = uPalB[id];
+  sEmit = pb.w;
   vec3 col = pa.rgb; float rough = pa.a, metal = pb.x, rust = pb.z; int mode = int(pb.y + 0.5);
   vec3 P = vec3(vWp.x, -vWp.z, vWp.y);   // Blender object space (Z-up)
   float wet = vSA.y / 255.0;
@@ -383,9 +385,11 @@ float sH = 0.5, sBump = 0.0;
   diffuseColor.rgb = col; roughnessFactor = rough; metalnessFactor = metal;
 }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-  if (sBump > 0.0) normal = bumpN(-vViewPosition, normal, sH, sBump * 0.05);`);
+  if (sBump > 0.0) normal = bumpN(-vViewPosition, normal, sH, sBump * 0.05);`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  totalEmissiveRadiance += diffuseColor.rgb * sEmit;   // incandescent signal lenses (subtle: no bloom blow-out)`);
   };
-  m.customProgramCacheKey = () => 'infra-struct-2';
+  m.customProgramCacheKey = () => 'infra-struct-3';
   return m;
 }
 
