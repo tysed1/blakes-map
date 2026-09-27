@@ -591,7 +591,7 @@ def build_boulders(D, rocks, coll, mat, seed=7):
         vv = vv @ R.T
         bx, by, _ = px2b(fxp, fyp, 0)
         zb = float(T.at(fxp, fyp))
-        vv += np.array([bx, by, zb + r * sq * rng.uniform(0.05, 0.45)])
+        vv += np.array([bx, by, zb + r * sq * rng.uniform(-0.2, 0.3)])
         V.append(vv); F.append(pf + off); off += len(vv)
         wl = D['WL'][y, x] if np.isfinite(D['WL'][y, x]) else zb
         WZ.append(np.clip((wl + 0.4 - vv[:, 2]) / 0.8, 0, 1))
@@ -736,15 +736,26 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
             nu = max(6, int(half * 2 * 2.5))
             # a plunge splits into 2-3 ribbons around lip rocks (never an even weir sheet)
             gaps = [(-0.5, -0.22), (0.18, 0.4)] if plunge else []
-            V, F, dep, foam, flow = [], [], [], [], []
+            V, F, dep, foam, flow, fall = [], [], [], [], [], []
+            kd_ = int(np.argmax(-np.diff(Z))) if len(Z) > 4 else 0
+            rng_ = np.random.default_rng(7)
+            crest_j = rng_.normal(0, 1, nu + 1)
+            crest_j = np.convolve(crest_j, np.ones(3) / 3, mode='same')           # irregular crest, not a ruler edge
             for k in range(len(st)):
                 edge_in = min(1.0, (k + 1) / 3.0, (len(st) - k) / 3.0)
                 for u in range(nu + 1):
                     w = -1 + 2 * u / nu
                     hw = half * (0.85 + 0.15 * math.sin(k * 0.9))
-                    V.append(px2b(X[k] + nx_[k] * hw * w, Y[k] + ny_[k] * hw * w, Z[k] + 0.07))
+                    zz = Z[k] + 0.07
+                    dxy = 0.0
+                    if plunge and k <= kd_ + 1 and k >= kd_ - 1:
+                        zz += 0.18 * crest_j[u]
+                        dxy = 0.35 * crest_j[u]
+                    V.append(px2b(X[k] + nx_[k] * hw * w + tx_[k] / tl[k] * dxy, Y[k] + ny_[k] * hw * w + ty_[k] / tl[k] * dxy, zz))
                     dep.append(3.0); foam.append(edge_in * (1.0 - 0.35 * abs(w) ** 4))
                     flow.append((tx_[k] / tl[k], -ty_[k] / tl[k], 0.0))
+                    # falling-sheet flag (web shader: vertical streaked whitewater) on the drop itself
+                    fall.append(1.0 if (plunge and kd_ - 1 <= k <= kd_ + 2) or (not plunge and -np.gradient(Z)[k] > 0.25) else 0.0)
             for k in range(len(st) - 1):
                 for u in range(nu):
                     wc = -1 + 2 * (u + 0.5) / nu
@@ -759,14 +770,44 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                 for w_, r_ in ((-0.36, 1.5), (0.29, 1.3), (-1.05, 1.8), (1.05, 1.6), (-0.7, 1.0)):
                     lr.append((X[kl] + nx_[kl] * half * w_, Y[kl] + ny_[kl] * half * w_, r_))
                 if mrock is not None:
-                    rb = build_boulders(D, lr, coll, mrock, seed=31)
-                    if rb is not None:
-                        rb.name = f"WATER_FallsRocks_{f['id']}"
+                    for q_, (rx, ry, rr) in enumerate(lr):
+                        rb = build_boulders(D, [(rx, ry, rr)], coll, mrock, seed=31 + q_)
+                        if rb is None:
+                            continue
+                        # the rock stands proud of the crest (breaks the silhouette), base below the water
+                        co = np.array([v.co[:] for v in rb.data.vertices])
+                        zc = co[:, 2].mean()
+                        co[:, 2] = zc + (co[:, 2] - zc) * 1.8          # taller blocks rooted in the ledge, not caps
+                        co[:, 2] += (Z[0] + 0.4 * rr) - co[:, 2].max()
+                        rb.data.vertices.foreach_set('co', co.ravel().astype(np.float32))
+                        rb.name = f"WATER_FallsRocks_{f['id']}_{q_}"
                         objs.append(rb)
+                # aerated plunge: bright foam patch where the ribbons land, fading over ~5 m
+                tx0, ty0 = X[min(kd_ + 2, len(X) - 1)], Y[min(kd_ + 2, len(Y) - 1)]
+                zp = Z[-1] + 0.06
+                base = len(V)
+                ring = [(0.0, 0.0)] + [(rad * math.cos(a_), rad * math.sin(a_)) for rad in (0.9, 1.8, 2.6) for a_ in np.linspace(0, 2 * math.pi, 16, endpoint=False)]
+                for (ox, oy) in ring:
+                    V.append(px2b(tx0 + ox + tx_[kd_] / tl[kd_] * 0.8, ty0 + oy + ty_[kd_] / tl[kd_] * 0.8, zp))
+                    r_ = math.hypot(ox, oy)
+                    dep.append(2.0); foam.append(max(0.0, 1.0 - r_ / 2.6) ** 0.7); flow.append((tx_[kd_] / tl[kd_], -ty_[kd_] / tl[kd_], 0.0)); fall.append(0.0)
+                ok_ = [np.isfinite(D['WL'][int(ty0 + oy), int(tx0 + ox)]) for ox, oy in ring]
+                for i_ in range(16):
+                    tri = (base, base + 1 + i_, base + 1 + (i_ + 1) % 16)
+                    if all(ok_[t - base] for t in tri):
+                        F.append(tri)
+                    for ring_i in range(2):
+                        a0 = base + 1 + ring_i * 16
+                        q0, q1 = a0 + i_, a0 + (i_ + 1) % 16
+                        q2, q3 = q0 + 16, q1 + 16
+                        for tri in ((q0, q2, q3), (q0, q3, q1)):
+                            if all(ok_[t - base] for t in tri):
+                                F.append(tri)
             V = np.array([[v[0], v[1], v[2]] for v in V], float)
             ob = _mesh(f"WATER_Falls_{f['id']}", V, np.array(F), coll, mat,
                        attrs={'depth': ('FLOAT', np.array(dep)), 'foam': ('FLOAT', np.array(foam)), 'wake': ('FLOAT', np.array(foam) * 0.8),
-                              'shore': ('FLOAT', np.full(len(V), 6.0)), 'flow': ('FLOAT_VECTOR', np.array(flow))})
+                              'shore': ('FLOAT', np.full(len(V), 6.0)), 'flow': ('FLOAT_VECTOR', np.array(flow)),
+                              'fall': ('FLOAT', np.array(fall))})
             # spray / mist emitters for the web (export_web_infra -> infra.json 'spray'): the toe of
             # each tier step (steepest water-surface drops) with a strength ~ the drop there
             dz = -np.gradient(Z)
@@ -775,7 +816,8 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                 if dz[k] < 0.05 or any(abs(k - q) < 6 for q in em):
                     continue
                 em.append(int(k))
-            ob['spray'] = [float(v) for k in em for v in (*px2b(X[min(k + 2, len(X) - 1)], Y[min(k + 2, len(Y) - 1)], Z[min(k + 2, len(Z) - 1)]), half * MPP, float(dz[k]) * 4)]
+            kk = lambda k: min(k + 4, len(X) - 1)   # base of the drop, ~5 m downstream: mist never veils the lip
+            ob['spray'] = [float(v) for k in em for v in (*px2b(X[kk(k)], Y[kk(k)], Z[kk(k)]), half * MPP * 0.8, float(dz[k]) * 4)]
             objs.append(ob)
             print(f"   falls {f['id']}: {drop:.1f} m over {(s_t - s_l) * MPP:.0f} m, {len(F)} faces, {len(em)} spray emitters")
     return objs

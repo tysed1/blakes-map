@@ -485,10 +485,10 @@ function waterMaterial(time: { value: number }) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, transparent: true, depthWrite: true, envMapIntensity: 0.75 });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, { uTime: time });
-    patchVertexWorld(sh, 'attribute vec4 wA; attribute vec4 wF; varying vec4 vWA; varying vec3 vFl;', 'vWA = wA; vFl = wF.xyz;');
+    patchVertexWorld(sh, 'attribute vec4 wA; attribute vec4 wF; varying vec4 vWA; varying vec3 vFl; varying float vFall;', 'vWA = wA; vFl = wF.xyz; vFall = wF.w;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vWp; varying vec4 vWA; varying vec3 vFl; uniform float uTime;
+varying vec3 vWp; varying vec4 vWA; varying vec3 vFl; varying float vFall; uniform float uTime;
 ${NOISE}
 float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
@@ -524,6 +524,20 @@ float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
   float alpha = mix(0.3, 0.94, dfac);
   diffuseColor = vec4(mix(body, vec3(0.78, 0.8, 0.78), wFoam), mix(alpha, 0.96, wFoam) * (1.0 - wBnd));
   roughnessFactor = mix(0.075, 0.55, wFoam);   // no pin-point sun glints / bloom sparkles
+  float fallF = clamp(vFall / 127.0, 0.0, 1.0);
+  if (fallF > 0.01) {
+    // falling sheet: vertically streaked, scrolling aerated whitewater, bright cores and thin
+    // translucent strands (the wet rock shows through between them)
+    float yv = vWp.y;
+    float st1 = vnoise(vec3(across * 2.2, (yv + uTime * 5.5) * 0.35, 1.0));
+    float st2 = vnoise(vec3(across * 6.5, (yv + uTime * 7.0) * 0.9, 4.0));
+    float core = sstep(0.25, 0.75, st1 * 0.65 + st2 * 0.45);
+    vec3 wc = mix(vec3(0.55, 0.58, 0.57), vec3(0.93, 0.94, 0.92), core);
+    float a = mix(0.35, 0.97, core) * (1.0 - wBnd);
+    diffuseColor = mix(diffuseColor, vec4(wc, a), fallF);
+    roughnessFactor = mix(roughnessFactor, 0.6, fallF);
+    wGrad *= 1.0 - fallF;
+  }
   metalnessFactor = 0.0;
 }`)
       .replace('#include <normal_fragment_begin>', `
@@ -543,7 +557,7 @@ float wFoam = 0.0, wBnd = 0.0; vec2 wGrad = vec2(0.0);`)
     diffuseColor.a = clamp(diffuseColor.a + F * (1.0 - diffuseColor.a), 0.0, 1.0) * (1.0 - wBnd); }
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'infra-water-2';
+  m.customProgramCacheKey = () => 'infra-water-3';
   return m;
 }
 
@@ -760,7 +774,7 @@ export async function buildInfra(opts: InfraOptions = {}): Promise<Infra> {
       vertexShader: `attribute vec4 sP; attribute vec4 sR; uniform float uTime; varying vec2 vUv; varying float vA;
         void main(){
           float life = fract(uTime * (0.12 + sR.x * 0.1) + sR.y);          // each card rises, spreads, fades
-          vec3 c = sP.xyz + vec3((sR.w - 0.5) * 3.0 * life, life * (1.5 + 2.5 * sP.w), (sR.x - 0.5) * 3.0 * life);
+          vec3 c = sP.xyz + vec3((sR.w - 0.5) * 5.0 * life, life * (0.6 + 0.9 * min(sP.w, 1.5)), (sR.x - 0.5) * 5.0 * life);   // low, spreading: base mist only
           float size = sR.z * (0.5 + 1.3 * life) * (0.6 + 0.3 * sP.w);
           vec4 mv = modelViewMatrix * vec4(c, 1.0);
           mv.xy += position.xy * size;

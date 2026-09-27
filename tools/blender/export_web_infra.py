@@ -355,7 +355,7 @@ def g_attrs(group, A, sub):
         return {
             'wA': np.stack([u8(get('depth') / 6 * 255), u8(get('foam') * 255), u8(get('wake') * 255), u8(get('shore') / 6 * 255)], 1),
             'wF': np.stack([np.clip(np.round(fl[:, 0] * 127), -127, 127), np.clip(np.round(-fl[:, 1] * 127), -127, 127),
-                            np.round(get('_bnd') * 127), np.zeros(n)], 1).astype(np.int8),
+                            np.round(get('_bnd') * 127), np.round(get('fall') * 127)], 1).astype(np.int8),
         }
     if group == 'bed':
         kind = np.array([BED_MATS.get(m, 0) for m in mname], np.float32)
