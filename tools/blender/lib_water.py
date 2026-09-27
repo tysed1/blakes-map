@@ -672,4 +672,84 @@ def build_water(coll, mat=None):
     b = build_boulders(D, rocks, coll, mrock)
     if b is not None:
         objs.append(b)
+    objs += build_falls(D, coll, mat, mrock)
+    return objs
+
+
+def _local_wl(D, x, y, r=3):
+    """Water level near (x, y) px: finite cells within r px (max = the upstream side of a step)."""
+    xi, yi = int(round(x)), int(round(y))
+    win = D['WL'][max(0, yi - r):yi + r + 1, max(0, xi - r):xi + r + 1]
+    f = win[np.isfinite(win)]
+    return (float(f.max()), float(f.min())) if f.size else (None, None)
+
+
+def build_falls(D, coll, mat, mrock, min_drop=2.0):
+    """Authored waterfalls / cascades (data/manual/waterways.json 'falls'): a whitewater sheet
+    following the channel centreline from the lip to the toe on the actual water surface - where
+    the water level steps (a terrain ledge) the rows stand up into a falling sheet - plus a churned
+    plunge-pool skirt at the toe. Foam = 1 drives the web shader's whitewater lace. Reaches whose
+    water drops less than min_drop are skipped (nothing to show yet)."""
+    try:
+        man = _load_json(P('data/manual/waterways.json'))
+        ww = {f['properties']['id']: np.asarray(f['geometry']['coordinates'], float)[:, :2]
+              for f in _load_json(P('data/water/waterways.geojson'))['features']}
+    except Exception:
+        return []
+    objs = []
+    for r in man.get('rivers', []):
+        C = ww.get(r['id'])
+        if C is None:
+            continue
+        seg = np.r_[0, np.cumsum(np.hypot(*np.diff(C, axis=0).T))]
+        for f in r.get('falls', []):
+            s_l = seg[int(np.argmin(np.hypot(*(C - np.asarray(f['lip'])).T)))]
+            s_t = seg[int(np.argmin(np.hypot(*(C - np.asarray(f['toe'])).T)))]
+            s_l, s_t = min(s_l, s_t), max(s_l, s_t)
+            st = np.arange(s_l - 1.0, s_t + 1.01, 0.5)
+            X = np.interp(st, seg, C[:, 0]); Y = np.interp(st, seg, C[:, 1])
+            Z = np.array([(_local_wl(D, x, y, 2)[0] if _local_wl(D, x, y, 2)[0] is not None else np.nan) for x, y in zip(X, Y)])
+            ok = np.isfinite(Z)
+            if ok.sum() < 4:
+                continue
+            Z = np.interp(st, st[ok], Z[ok])
+            Z = np.minimum.accumulate(Z)                       # monotonic downstream
+            drop = float(Z[0] - Z[-1])
+            if drop < min_drop:
+                print(f"   falls {f['id']}: {drop:.1f} m water drop < {min_drop} m - skipped (needs the terrain step)")
+                continue
+            tx_ = np.gradient(X); ty_ = np.gradient(Y); tl = np.hypot(tx_, ty_) + 1e-9
+            nx_, ny_ = -ty_ / tl, tx_ / tl
+            half = f.get('lip_width_m', 10.0) / MPP / 2
+            nu = max(6, int(half * 2 * 2.5))
+            V, F, dep, foam, flow = [], [], [], [], []
+            for k in range(len(st)):
+                edge_in = min(1.0, (k + 1) / 3.0, (len(st) - k) / 3.0)
+                for u in range(nu + 1):
+                    w = -1 + 2 * u / nu
+                    hw = half * (0.85 + 0.15 * math.sin(k * 0.9))
+                    V.append(px2b(X[k] + nx_[k] * hw * w, Y[k] + ny_[k] * hw * w, Z[k] + 0.07))
+                    dep.append(3.0); foam.append(edge_in * (1.0 - 0.35 * abs(w) ** 4))
+                    flow.append((tx_[k] / tl[k], -ty_[k] / tl[k], 0.0))
+            for k in range(len(st) - 1):
+                for u in range(nu):
+                    a = k * (nu + 1) + u
+                    F += [(a, a + 1, a + nu + 2), (a, a + nu + 2, a + nu + 1)]
+            # plunge-pool / foot: churned water ring around the toe
+            pr = f.get('pool_radius_m', 5.0) / MPP
+            base = len(V)
+            V.append(px2b(X[-1], Y[-1], Z[-1] + 0.05)); dep.append(3.0); foam.append(0.9); flow.append((0.0, 0.0, 0.0))
+            ns = 24
+            for i in range(ns):
+                ang = 2 * math.pi * i / ns
+                V.append(px2b(X[-1] + math.cos(ang) * pr, Y[-1] + math.sin(ang) * pr, Z[-1] + 0.04)); dep.append(2.5)
+                foam.append(0.0); flow.append((math.cos(ang), -math.sin(ang), 0.0))
+            for i in range(ns):
+                F.append((base, base + 1 + i, base + 1 + (i + 1) % ns))
+            V = np.array([[v[0], v[1], v[2]] for v in V], float)
+            ob = _mesh(f"WATER_Falls_{f['id']}", V, np.array(F), coll, mat,
+                       attrs={'depth': ('FLOAT', np.array(dep)), 'foam': ('FLOAT', np.array(foam)), 'wake': ('FLOAT', np.array(foam) * 0.8),
+                              'shore': ('FLOAT', np.full(len(V), 6.0)), 'flow': ('FLOAT_VECTOR', np.array(flow))})
+            objs.append(ob)
+            print(f"   falls {f['id']}: {drop:.1f} m over {(s_t - s_l) * MPP:.0f} m, {len(F)} faces")
     return objs
