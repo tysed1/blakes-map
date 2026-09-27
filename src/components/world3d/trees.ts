@@ -408,27 +408,52 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
     const conical = sp.family === 'hemlock' || sp.name === 'Sapling_Pine' ? 1 : sp.family === 'pine' ? 0.35 : 0;
     bbSp.set([(y0 + y1) / 2, Math.max(x1 - x0, z1 - z0) / 2 * 1.15, (y1 - y0) / 2 * 1.12, conical], si * 4);
   });
-  // the billboard layer is static: every tree once, in the shared sorted buffers; the vertex shader keeps
-  // only the instances inside LOD 4's distance band (no CPU copies; GPU clips the rest). Shrubs and
-  // saplings get a zero-size card (they are gone long before the billboard band).
-  const bbAll = new Float32Array(n * 4); // per sorted instance
-  const cellCount = new Int32Array(NC);
-  for (let k = 0; k < n; k++) {
-    const kk = key[order[k]], si = Math.floor(kk / NC);
-    cellCount[kk % NC]++;
-    if (!SMALL.has(meta.species[si].name)) for (let j = 0; j < 4; j++) bbAll[k * 4 + j] = bbSp[si * 4 + j];
+  // billboard layer (R4 cull): the instances of the non-small species re-ordered cell-major, so the cells in
+  // LOD 4's band (and in the view frustum) are block-copied into the mesh's buffers when the band's cell set
+  // changes; the vertex shader still clips per instance to the exact band. Shrubs / saplings are left out
+  // (they are gone long before the billboard band).
+  const cellStart = new Int32Array(NC + 1);
+  for (let k = 0; k < n; k++) { const kk = key[order[k]]; if (!SMALL.has(meta.species[Math.floor(kk / NC)].name)) cellStart[(kk % NC) + 1]++; }
+  for (let c = 0; c < NC; c++) cellStart[c + 1] += cellStart[c];
+  const nB = cellStart[NC];
+  const bbM = new Float32Array(nB * 16), bbC = new Float32Array(nB * 3), bbI = new Float32Array(nB * 4);
+  {
+    const fill = cellStart.slice(0, NC);
+    for (let k = 0; k < n; k++) {
+      const kk = key[order[k]], si = Math.floor(kk / NC);
+      if (SMALL.has(meta.species[si].name)) continue;
+      const t = fill[kk % NC]++;
+      bbM.set(mats.subarray(k * 16, k * 16 + 16), t * 16); bbC.set(cols.subarray(k * 3, k * 3 + 3), t * 3); bbI.set(bbSp.subarray(si * 4, si * 4 + 4), t * 4);
+    }
   }
   const quad = new THREE.BufferGeometry();
   quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
   quad.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]), 3));
   quad.setIndex([0, 1, 2, 0, 2, 3]);
-  quad.setAttribute('ibb', new THREE.InstancedBufferAttribute(bbAll, 4));
-  const bbMesh = new THREE.InstancedMesh(quad, billboardMaterial(uniforms, coreLeaf, fades[0][4]), Math.max(1, n));
-  bbMesh.instanceMatrix = new THREE.InstancedBufferAttribute(mats, 16);
-  bbMesh.instanceColor = new THREE.InstancedBufferAttribute(cols, 3);
-  bbMesh.count = n; bbMesh.frustumCulled = false; bbMesh.castShadow = false; bbMesh.receiveShadow = false;
+  const ibbAttr = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nB) * 4), 4); ibbAttr.setUsage(THREE.DynamicDrawUsage);
+  quad.setAttribute('ibb', ibbAttr);
+  const bbMesh = new THREE.InstancedMesh(quad, billboardMaterial(uniforms, coreLeaf, fades[0][4]), Math.max(1, nB));
+  bbMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  bbMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, nB) * 3), 3);
+  bbMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+  bbMesh.count = 0; bbMesh.frustumCulled = false; bbMesh.castShadow = false; bbMesh.receiveShadow = false;
   bbMesh.userData.kind = 'tree'; bbMesh.name = 'tree_billboards_lod4';
   group.add(bbMesh);
+  const emitBillboards = () => {
+    const am = bbMesh.instanceMatrix.array as Float32Array, ac = bbMesh.instanceColor!.array as Float32Array, ai = ibbAttr.array as Float32Array;
+    let t = 0;
+    for (let c = 0; c < NC; c++) {
+      if (!(cellMask[c] & 16)) continue;
+      const a = cellStart[c], b = cellStart[c + 1];
+      if (b <= a) continue;
+      am.set(bbM.subarray(a * 16, b * 16), t * 16); ac.set(bbC.subarray(a * 3, b * 3), t * 3); ai.set(bbI.subarray(a * 4, b * 4), t * 4);
+      t += b - a;
+    }
+    bbMesh.count = t; bbMesh.visible = t > 0;
+    if (t) {
+      for (const at of [bbMesh.instanceMatrix, bbMesh.instanceColor!, ibbAttr] as THREE.BufferAttribute[]) { at.clearUpdateRanges(); at.addUpdateRange(0, t * at.itemSize); at.needsUpdate = true; }
+    }
+  };
 
   let quality: TreeQuality = TREE_QUALITY.high;
   // LOD l is drawn over [lo[l], hi[l]] (metres); fade zones are +-FADE_W around each switch distance
@@ -485,8 +510,9 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
       cellMask[c] = m;
       if (m !== prevMask[c]) changed = true;
     }
-    nActive = 0; let nbb = 0;
-    for (let c = 0; c < NC; c++) { if (cellMask[c] & 15) active[nActive++] = c; if (cellMask[c] & 16) nbb += cellCount[c]; }
+    nActive = 0; let bbChanged = force;
+    for (let c = 0; c < NC; c++) { if (cellMask[c] & 15) active[nActive++] = c; if ((cellMask[c] ^ prevMask[c]) & 16) bbChanged = true; }
+    if (bbChanged) emitBillboards();
     // near LODs are filtered per instance: re-emit once the camera has moved past the slack
     if (cp.distanceToSquared(lastEmit) > (SLACK - 1) * (SLACK - 1)) changed = true;
     if (!changed) return;
@@ -539,7 +565,7 @@ export async function buildTrees(hf: Heightfield, sunDir: THREE.Vector3): Promis
         }
       }
     }
-    visible += nbb; tris += n * 2; // billboard layer: all instances submitted, off-band ones collapse in the vertex shader
+    visible += bbMesh.count; tris += bbMesh.count * 2; // billboard layer: band cells in view, per-instance band clip in the shader
   }
 
   return {
