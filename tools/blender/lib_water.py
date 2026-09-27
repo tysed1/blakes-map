@@ -735,12 +735,14 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
             half = f.get('lip_width_m', 10.0) / MPP / 2 * (0.72 if plunge else 1.0)
             nu = max(6, int(half * 2 * 2.5))
             # a plunge splits into 2-3 ribbons around lip rocks (never an even weir sheet)
-            gaps = [(-0.5, -0.22), (0.18, 0.4)] if plunge else []
+            gaps = [(-0.44, -0.28), (0.21, 0.36)] if plunge else []
             V, F, dep, foam, flow, fall = [], [], [], [], [], []
             kd_ = int(np.argmax(-np.diff(Z))) if len(Z) > 4 else 0
             rng_ = np.random.default_rng(7)
             crest_j = rng_.normal(0, 1, nu + 1)
             crest_j = np.convolve(crest_j, np.ones(3) / 3, mode='same')           # irregular crest, not a ruler edge
+            gz = -np.gradient(Z)
+            fall_c = np.clip((np.convolve(gz, np.ones(5) / 5, mode='same') - 0.08) / 0.35, 0, 1) ** 1.5
             for k in range(len(st)):
                 edge_in = min(1.0, (k + 1) / 3.0, (len(st) - k) / 3.0)
                 for u in range(nu + 1):
@@ -755,7 +757,10 @@ def build_falls(D, coll, mat, mrock, min_drop=2.0):
                     dep.append(3.0); foam.append(edge_in * (1.0 - 0.35 * abs(w) ** 4))
                     flow.append((tx_[k] / tl[k], -ty_[k] / tl[k], 0.0))
                     # falling-sheet flag (web shader: vertical streaked whitewater) on the drop itself
-                    fall.append(1.0 if (plunge and kd_ - 1 <= k <= kd_ + 2) or (not plunge and -np.gradient(Z)[k] > 0.25) else 0.0)
+                    if plunge:
+                        fall.append(1.0 if kd_ - 1 <= k <= kd_ + 2 else 0.0)
+                    else:   # cascades: graded by the local drop, soft at the sheet sides
+                        fall.append(float(fall_c[k]) * (1.0 - abs(w) ** 3))
             for k in range(len(st) - 1):
                 for u in range(nu):
                     wc = -1 + 2 * (u + 0.5) / nu
