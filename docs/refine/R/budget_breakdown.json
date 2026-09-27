@@ -1,0 +1,172 @@
+[
+ {
+  "cam": [
+   1050,
+   580,
+   650
+  ],
+  "cullMs": {
+   "veg": 6.9,
+   "gc": 1.7,
+   "infra": 10.7,
+   "rocks": 7.2
+  },
+  "rendered": {
+   "calls": 157,
+   "tris": "2702k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "406k",
+   "water": "454k",
+   "roads": "922k",
+   "bridges": "150k",
+   "trees": "678k",
+   "rocks": "92k",
+   "groundcover": "42k",
+   "backdrop": "498k"
+  }
+ },
+ {
+  "cam": [
+   1030,
+   350,
+   30
+  ],
+  "cullMs": {
+   "veg": 14.1,
+   "gc": 193.4,
+   "infra": 0.7,
+   "rocks": 0.5
+  },
+  "rendered": {
+   "calls": 329,
+   "tris": "5380k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "271k",
+   "water": "454k",
+   "roads": "1074k",
+   "bridges": "150k",
+   "rail": "9k",
+   "trees": "1773k",
+   "rocks": "58k",
+   "groundcover": "389k",
+   "backdrop": "498k"
+  }
+ },
+ {
+  "cam": [
+   1000,
+   336,
+   3
+  ],
+  "cullMs": {
+   "veg": 1.9,
+   "gc": 139.8,
+   "infra": 0.5,
+   "rocks": 3.4
+  },
+  "rendered": {
+   "calls": 390,
+   "tris": "6620k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "529k",
+   "water": "454k",
+   "roads": "1081k",
+   "bridges": "150k",
+   "rail": "8k",
+   "trees": "1854k",
+   "rocks": "86k",
+   "groundcover": "552k",
+   "backdrop": "498k"
+  }
+ },
+ {
+  "cam": [
+   848,
+   380,
+   300
+  ],
+  "cullMs": {
+   "veg": 2.1,
+   "gc": 0.8,
+   "infra": 4.3,
+   "rocks": 0.5
+  },
+  "rendered": {
+   "calls": 220,
+   "tris": "4066k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "529k",
+   "water": "454k",
+   "roads": "1049k",
+   "bridges": "150k",
+   "trees": "1672k",
+   "rocks": "14k",
+   "groundcover": "258k",
+   "backdrop": "498k"
+  }
+ },
+ {
+  "cam": [
+   1760,
+   340,
+   60
+  ],
+  "cullMs": {
+   "veg": 1,
+   "gc": 18,
+   "infra": 0.5,
+   "rocks": 0.2
+  },
+  "rendered": {
+   "calls": 189,
+   "tris": "3063k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "479k",
+   "water": "389k",
+   "roads": "1016k",
+   "bridges": "150k",
+   "rail": "29k",
+   "trees": "971k",
+   "rocks": "0k",
+   "groundcover": "19k",
+   "backdrop": "498k"
+  }
+ },
+ {
+  "cam": [
+   1000,
+   800,
+   1500
+  ],
+  "cullMs": {
+   "veg": 0.5,
+   "gc": 0.5,
+   "infra": 0.2,
+   "rocks": 0.7
+  },
+  "rendered": {
+   "calls": 177,
+   "tris": "2251k"
+  },
+  "visibleTrisByGroup": {
+   "sky": "2k",
+   "terrain": "443k",
+   "water": "373k",
+   "roads": "636k",
+   "bridges": "150k",
+   "trees": "412k",
+   "rocks": "195k",
+   "backdrop": "498k"
+  }
+ }
+]
