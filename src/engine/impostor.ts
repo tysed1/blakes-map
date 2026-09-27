@@ -148,7 +148,9 @@ export function bakeImpostors(renderer: THREE.WebGLRenderer, items: BakeItem[], 
 }
 
 /** Shared calibration (tuned against the geometry LOD, see the R4 A/B). */
-export const impostorTune = { cut: { value: 0.25 }, gain: { value: 2.75 }, quad: { value: 1.08 }, dir: { value: 1.0 }, wrap: { value: 0.0 } };
+// best calibration of the R4 time box (TC_aerial_100 / CAM_US19_LaurelGap LOD3-only A/B): coverage within
+// 2 %, luminance -4..-14 %, contrast (std) -25 %: still flatter than the geometry LOD, so opt-in only
+export const impostorTune = { cut: { value: 0.25 }, gain: { value: 1.15 }, quad: { value: 1.08 }, dir: { value: 1.0 }, wrap: { value: 2.0 } };
 
 /** Uniforms of the tree LOD being replaced (cross-fade band) + per-species tile. */
 export interface ImpostorFade { uFade: { value: THREE.Vector4 }; uFar: { value: THREE.Vector2 }; uCamPos: { value: THREE.Vector3 } }
@@ -235,6 +237,7 @@ export function impostorMaterial(set: ImpostorSet, tile: THREE.Vector4, fade: Im
         float lit, ao;
         sunBakeEval(vW, vH, -(viewMatrix * vec4(vW, 1.0)).z, lit, ao);
         float leaf = sn.a;
+
         // wrapped N.L: the atlas normals are point-sampled per view, harsher than the geometry's smooth crowns
         float ndl = max((dot(N, uSunDirI) + uWrap) / (1.0 + uWrap), 0.0);
         // leaf material: 68 % Lambert + 32 % warm translucency (backlit crowns glow)
