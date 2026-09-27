@@ -10,7 +10,7 @@ Static sun: bake world-space shadow/AO map (terrain + canopy + large structures)
 DONE f35fd8a (+a4417a3, 77889e0) High shadow calls p50 680 -> 66 (Medium 14, Low 0), all-pass tris max 87 M -> 19 M, far canopy pattern kept via the bake (exports/refine/R/it2.jpg, TC_high_1000 luma 56 vs 56.5).
 PROGRESS a4417a3 + 77889e0: bake + near-only CSM, High shadow calls 680 -> 172 (target 150: infra small casters now near-cascade only, next: tree bark group), all-pass tris 87 M -> 20 M, Low 0 shadow calls; far canopy pattern kept (TC_high_1000 luma 56 vs 56.5 baseline).
 
-STATUS R (03:30): R1, R2, R3 done; R5 in progress (mist + clouds in), full golden + perf rerun running. (01:50): R1 committed (a4417a3: bake + near-only CSM, High shadow calls 680 -> 188); follow-up in tree: LOD0 casters only in cascade 1 (layer), staggered culling (one module/frame), terrain-shadow weight retune for E's darkness note (testing TC_high_1000 / CAM_HollowRidge_Valley now). R2 fused post + R3 KTX2 albedo / .wasm packing are wired (in WIP snapshots), verification renders running on :4177.
+STATUS R (06:10): R1, R2, R3 done; R5 done (mist, clouds, key/fill, bloom cap); R4 impostors opt-in only (failed parity); quality-switch crash fixed; handing back. (01:50): R1 committed (a4417a3: bake + near-only CSM, High shadow calls 680 -> 188); follow-up in tree: LOD0 casters only in cascade 1 (layer), staggered culling (one module/frame), terrain-shadow weight retune for E's darkness note (testing TC_high_1000 / CAM_HollowRidge_Valley now). R2 fused post + R3 KTX2 albedo / .wasm packing are wired (in WIP snapshots), verification renders running on :4177.
 
 ### R2. Fused post + bloom at quarter res + zero per-frame allocations (R) impact 4, effort 2
 One uber pass (shafts + grade + vignette + sharpen), bloom quarter res; no `new Vector3/Matrix4` per frame in World3D/trees/infra/groundcover update paths (coordinate with N/E for their modules: R posts a patch request or the owners fix). Accept: post passes 3 -> <= 2 full-screen, identical look in golden shots, cull ms p50 unchanged or lower.
@@ -80,6 +80,7 @@ Period span-wire signals (default), some pedestal heads downtown, a few steel ma
 DONE f2ff5ea Laurel City 27 + Tannersville 35 = 62 signalized junctions (55 span-wire, 7 mast-arm; 55 downtown pedestals w/ WALK boxes), Hollow Ridge 0. Rule: every leg in laurel_city/tannersville, >=3 legs, arterial/main/highway x urban-street+, ramp terminals, downtown 4-way grids; >=120 m apart (75 m downtown). STOP 225 -> 179 (signal approaches get stop bars). +7 instanced draws, heads 138 faces. Sheet exports/refine/N/n6.jpg, cams exports/refine/N/cams_n6.json.
 
 DONE 90947ca E2 verified (rock kit: contour cliff bands, crags, talus/scree, gorge walls, road-cut courses; placement QA; it5.jpg)
+REQUEST E->R/L (World3D.ts, 1 line; groundcover cull budget): groundcover.update() now streams decor tiles under a 1-tile / ~2 ms budget per relist (the 100-190 ms spikes were whole-ring decor generation on camera jumps). Stills must complete it: in snapshot() add `this.gc?.finish(this.camera);` right after `this.updateCulling();` (and call it after a teleport/flyTo end if you want the flowers there at once). Without it QA stills may miss far flowers/weeds.
 ## Sprint 2: the look
 
 ### N4. Water: shallows, banks, rapids, waterfalls (N) impact 5, effort 4
@@ -103,9 +104,11 @@ Accept: TC_high_1000, CAM_Ref_Match, GS_BaldRidge horizons show layered blue rid
 
 ### R4. Far-forest impostors + clipmap terrain (R with E) impact 5, effort 5
 Octahedral impostors per species replacing LOD3/4; CDLOD/clipmap terrain with vertex-texture height + geomorph. Accept: main tris p50 -40 %, calls -30 %, no visible quality loss in aerials.
+PROGRESS (not DONE) R: octahedral impostors for the LOD3 band exist but are opt-in (?impostors): the A/B gate failed (far band darker + sparser; the bake's per-view brightness / coverage needs debugging), so the shipped look is unchanged. Remaining tree cost on High is LOD3 cores 0.27-1.03 M tris + the static LOD4 billboard layer 0.41 M (all 206k instances submitted every frame). Perf High (pre-impostor, 12 samples): main tris p50 2.88 M, calls 179, shadow calls 34, cull/frame 1.3 ms.
 
 ### R5. Atmosphere: cloud shadows, valley mist, sky, grade (R) impact 4, effort 2
 Moving cloud shadows (cheap projected noise), valley mist pockets (height fog modulation), sky/cloud polish, golden-hour key/fill match to graphics ref.png. Accept: side-by-side with graphics ref.png: layered depth, warm key/cool fill, nothing blown out or muddy.
+DONE f35fd8a + 1401d42 valley mist pockets, drifting cloud shadows, warmer key / cool fill + split-tone grade (graphics ref), bloom source capped (lead REVISE on CAM_HollowRidge_Valley fixed, exports/refine/R/it5.jpg).
 PROGRESS f35fd8a valley mist pockets + drifting cloud shadows in; next: golden-hour key/fill vs graphics ref.png, sky polish.
 
 ## Sprint 3: polish + budgets (all)
